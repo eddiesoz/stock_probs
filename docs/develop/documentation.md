@@ -853,3 +853,11 @@ preserve legacy contracts and bind receipt claims to the actual producer. The ma
 consumer and `tests/test_v3_build_receipt.py` are covered with the rehearsal workflow; record scoped
 private QA separately from applied-source, actual-host and release acceptance. See the
 [dual-head checkpoint](../../MVP-PLAN.md#r-astra-121-dual-head-receipt-compatibility-and-current-browser-checkpoint-2026-10-18).
+
+
+The R-ASTRA-121 format-3 helper rebind records immutable image inputs separately from the
+reviewed application head. Its complete fixed delta includes one added regression, whose local
+Git metadata and host GitHub/tree proof must agree on prior absence and exact regular-file identity.
+Record failed broader commands beside focused repairs and keep pending independent/host/release
+checks explicit. Maintain this policy in `AGENTS.md` when changing lineage admission; matching
+files or successful synthetic checks do not establish installed-helper or actual-host acceptance.

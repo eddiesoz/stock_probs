@@ -2108,7 +2108,9 @@ def test_internal_provider_api_binds_proxy_to_durable_owner_turn_and_session(
         assert context["owner_id"] == identity["user_id"]
         assert context["app_session_id"] == identity["session_id"]
         assert context["native_session_id"] == "sesBoundaryNative123"
-        assert context["authorization_check"]() is True
+        authorization_check = context["authorization_check"]
+        assert callable(authorization_check)
+        assert asyncio.run(authorization_check()) is True
 
         with app.state.repository.connect() as connection:
             connection.execute(
@@ -2116,7 +2118,7 @@ def test_internal_provider_api_binds_proxy_to_durable_owner_turn_and_session(
                 (now.isoformat(), identity["token_hash"]),
             )
             connection.commit()
-        assert context["authorization_check"]() is False
+        assert asyncio.run(authorization_check()) is False
 
 
 def test_internal_native_provider_api_bounds_body_and_maps_unavailable_proxy(

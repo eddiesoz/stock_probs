@@ -30,6 +30,47 @@ from stock_probs.repository import Repository
 from tools.deploy_mcp import pr_rehearsal as controller
 
 
+@pytest.mark.parametrize("consumer", (controller, schema13, hotfix_transport))
+@pytest.mark.parametrize(
+    "mutation", (None, "modified_addition", "wrong_mode", "missing", "extra", "wrong_base")
+)
+def test_v3_raw_lineage_admits_only_exact_pinned_added_regression(
+    monkeypatch: pytest.MonkeyPatch, consumer: object, mutation: str | None
+) -> None:
+    """Real Git added-file metadata must prove absence at the image-source revision."""
+
+    path = "tests/test_browser_assistant_fixture.py"
+    zero = "0" * 40
+    head = "a" * 40
+    monkeypatch.setattr(consumer, "HOTFIX_V3_REVIEWED_PR9_FILE_DELTA", ((path, zero, head, 12, 0),))
+    old_mode = "000000"
+    status = "A"
+    base = zero
+    if mutation == "modified_addition":
+        status = "M"
+    elif mutation == "wrong_mode":
+        old_mode = "100644"
+    elif mutation == "wrong_base":
+        base = "b" * 40
+    raw = f":{old_mode} 100644 {base} {head} {status}\0{path}\0"
+    counts = f"12\t0\t{path}\0"
+    if mutation == "missing":
+        raw = counts = ""
+    elif mutation == "extra":
+        raw += f":000000 100644 {zero} {head} A\0unexpected.py\0"
+        counts += "12\t0\tunexpected.py\0"
+    if consumer is hotfix_transport:
+        accepted = consumer._v3_pr9_delta_matches(raw, counts)
+    else:
+        verify = (
+            consumer._local_v3_pr9_delta_matches
+            if consumer is controller
+            else consumer._v3_pr9_delta_matches
+        )
+        accepted = verify(raw.encode("ascii"), counts.encode("ascii"))
+    assert accepted is (mutation is None)
+
+
 def test_rehearsal_error_preserves_local_image_ledger_retirement_failure() -> None:
     error = schema13.RehearsalError(
         "the local rehearsal cleanup could not be verified",
@@ -2722,10 +2763,6 @@ def _valid_host_v3_lineage_responses() -> dict[str, object]:
     reviewed_head = host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA
     helper_head = "a" * 40
     path = "tests/test_assistant_final_boundary_coverage.py"
-    old_line = '    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"'
-    new_line = (
-        '    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"'
-    )
     roots = {"base": "b" * 40, "head": "c" * 40}
     directories = {
         "base": {
@@ -2772,6 +2809,8 @@ def _valid_host_v3_lineage_responses() -> dict[str, object]:
                 parent_sha = child_sha
                 parent_path = prefix
             blob_sha = base_blob if side == "base" else head_blob
+            if blob_sha == "0" * 40:
+                continue
             tree_entries[parent_sha][parts[-1]] = {
                 "path": parts[-1],
                 "mode": "100644",
@@ -2788,29 +2827,31 @@ def _valid_host_v3_lineage_responses() -> dict[str, object]:
     files = []
     for (
         filename,
-        _base_blob,
+        base_blob,
         head_blob,
         additions,
         deletions,
     ) in host_helper.HOTFIX_V3_REVIEWED_PR9_FILE_DELTA:
         changed_file: dict[str, object] = {
             "filename": filename,
-            "status": "modified",
+            "status": "added" if base_blob == "0" * 40 else "modified",
             "additions": additions,
             "deletions": deletions,
             "changes": additions + deletions,
             "sha": head_blob,
         }
         if filename == path:
-            changed_file["patch"] = f"@@ -12 +12 @@\n-{old_line}\n+{new_line}\n"
+            changed_file["patch"] = (
+                "@@ -1 +1 @@\n" + "\n".join(host_helper.HOTFIX_V3_REVIEWED_TEST_PATCH) + "\n"
+            )
         files.append(changed_file)
     responses[
         f"/repos/{host_helper.REPOSITORY}/compare/{image_source}...{reviewed_head}?per_page=3"
     ] = {
         "status": "ahead",
-        "ahead_by": 3,
+        "ahead_by": len(host_helper.HOTFIX_V3_REVIEWED_PR9_COMMITS),
         "behind_by": 0,
-        "total_commits": 3,
+        "total_commits": len(host_helper.HOTFIX_V3_REVIEWED_PR9_COMMITS),
         "base_commit": {
             "sha": image_source,
             "commit": {"tree": {"sha": roots["base"]}},
@@ -2850,7 +2891,7 @@ def test_host_v3_lineage_binds_exact_delta_to_regular_commit_tree_blobs(
         host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
         "a" * 40,
     )
-    assert len(requests) == 16
+    assert len(requests) == 14
     assert requests[0].endswith("?per_page=3")
     assert requests[1].endswith("?per_page=1&page=2")
     assert all("/git/trees/" in request for request in requests[2:])
@@ -2874,6 +2915,10 @@ def test_host_v3_lineage_binds_exact_delta_to_regular_commit_tree_blobs(
         ("truncated_tree", "reviewed_pr_tree_invalid"),
         ("unknown_entry_field", "reviewed_pr_tree_invalid"),
         ("duplicate_blob", "reviewed_pr_test_diff_mismatch"),
+        ("added_as_modified", "reviewed_pr_test_diff_mismatch"),
+        ("added_present_at_base", "reviewed_pr_test_diff_mismatch"),
+        ("added_missing_at_head", "reviewed_pr_tree_invalid"),
+        ("added_head_symlink", "reviewed_pr_tree_identity_mismatch"),
     ],
 )
 def test_host_v3_lineage_rejects_inconsistent_diff_or_tree_proof(
@@ -2958,6 +3003,29 @@ def test_host_v3_lineage_rejects_inconsistent_diff_or_tree_proof(
         compare = responses[compare_path]
         assert isinstance(compare, dict)
         compare["files"][0]["sha"] = "f" * 40
+    elif mutation == "added_as_modified":
+        compare = responses[compare_path]
+        added = next(file for file in compare["files"] if file["status"] == "added")
+        added["status"] = "modified"
+    elif mutation == "added_present_at_base":
+        base = responses[f"/repos/{host_helper.REPOSITORY}/git/trees/{'f' * 40}"]
+        base["tree"].append(
+            {
+                "path": "test_browser_assistant_fixture.py",
+                "mode": "100644",
+                "type": "blob",
+                "sha": "9" * 40,
+            }
+        )
+    elif mutation in {"added_missing_at_head", "added_head_symlink"}:
+        tree = responses[f"/repos/{host_helper.REPOSITORY}/git/trees/{nested_head}"]
+        added = next(
+            entry for entry in tree["tree"] if entry["path"] == "test_browser_assistant_fixture.py"
+        )
+        if mutation == "added_missing_at_head":
+            tree["tree"].remove(added)
+        else:
+            added["mode"] = "120000"
     else:
         raise AssertionError(mutation)
 
@@ -3086,10 +3154,6 @@ def test_controller_v3_admission_requires_exact_delta_and_commit_chain(
     error: str | None,
 ) -> None:
     path = "tests/test_assistant_final_boundary_coverage.py"
-    old_line = '    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"'
-    new_line = (
-        '    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"'
-    )
     commands: list[list[str]] = []
     raw_records: list[bytes] = []
     stat_records: list[bytes] = []
@@ -3106,7 +3170,10 @@ def test_controller_v3_admission_requires_exact_delta_and_commit_chain(
         elif mutation == "wrong_blob" and filename == path:
             head_blob = "3" * 40
         raw_records.append(
-            f":100644 {mode} {base_blob} {head_blob} M\0{filename}\0".encode("ascii")
+            (
+                f":{'000000' if base_blob == '0' * 40 else '100644'} {mode} "
+                f"{base_blob} {head_blob} {'A' if base_blob == '0' * 40 else 'M'}\0{filename}\0"
+            ).encode("ascii")
         )
         if mutation == "wrong_numstat" and filename == path:
             additions += 1
@@ -3135,7 +3202,7 @@ def test_controller_v3_admission_requires_exact_delta_and_commit_chain(
             if "--numstat" in command:
                 return numstat
             if "--unified=0" in command:
-                return f"-{old_line}\n+{new_line}\n".encode()
+                return ("\n".join(controller.HOTFIX_V3_REVIEWED_TEST_PATCH) + "\n").encode()
         raise AssertionError(command)
 
     monkeypatch.setattr(controller, "_run_fixed", run_fixed)
@@ -3156,56 +3223,62 @@ def test_controller_v3_admission_requires_exact_delta_and_commit_chain(
 def test_v3_lineage_pins_match_all_four_consumers() -> None:
     consumers = (host_helper, controller, schema13, hotfix_transport)
     expected_commits = (
-        "c2fe99cbd486b93958c6d5c398da9fc25ddd7075",
-        "0b214bb47886cc7e9db73edccc8648b9af38b678",
-        "68973cbfb8520458f76cbcb4f1edf3c0b149168c",
+        "a8eee53c21cca79a2d6ddc7b2451f89f5e60be7c",
+        "7f66bc6cddb1f389b052714b4872828a3447b127",
     )
     expected_file_delta = (
         (
             "MVP-PLAN.md",
-            "ca82cfb622bc774ad1db1817d2f60bc622ad8d99",
-            "868d27b263909099688baaee703ea4a9fba5243a",
-            54,
+            "d8c3646dcefd04ff2c8c9f3b8e38475500185405",
+            "2f9abeba1afa64de420860f4db00f2facd428907",
+            194,
             0,
         ),
         (
             "docs/develop/testing.md",
-            "e93c28b6fcd44ce896ac27ad9edd70b87b629499",
-            "b1252778077a0f4dee0e11d936c151d56ce225a7",
-            2,
+            "4fdb2800bf272d42e67519745bcb2daa063c70a6",
+            "7da6ceab215cff0463418c65b5f715b406be4102",
+            19,
             0,
         ),
         (
             "tests/test_assistant_final_boundary_coverage.py",
-            "f35a58bd684ca9c38bde034193eece61588ee6f6",
             "652d04666bb17f9b1cd9f93f66a6abeb58b8ffa6",
-            1,
-            1,
-        ),
-        (
-            "tools/browser/tests/assistant.spec.js",
-            "2941924b553ed689c9b70baf72b938f3cd56c755",
-            "3734a80eae843a382ac9b49bc2ec51d77b046903",
-            143,
-            11,
-        ),
-        (
-            "tools/browser/tests/fixtures-lifecycle.unit.js",
-            "5004e1408b74be15ddf11193fd8f4b9c9c84368b",
-            "49702a87fe612b0d248d89a22cfe8244c11a00e2",
-            60,
-            6,
-        ),
-        (
-            "tools/browser/tests/fixtures.js",
-            "40bf53b05c6a29d295366e11834bec4f40f2eafd",
-            "89468fe1a51ab1a7fa46b9fc1f169bf3a1028230",
-            15,
+            "a9ea3c43c160123e812e03d82ced3cb9cab3eac7",
             4,
+            2,
+        ),
+        (
+            "tests/test_assistant_provider_admin_api_flows.py",
+            "29959b587e3a53ce7b3b8f787000130a5771004e",
+            "acf705e6b3b3b378ec923bf2121e6ddfca10cdcb",
+            1,
+            3,
+        ),
+        (
+            "tests/test_browser_assistant_fixture.py",
+            "0000000000000000000000000000000000000000",
+            "1ede43e34010ed48d5282c79c5ea3e1f5424876f",
+            85,
+            0,
+        ),
+        (
+            "tests/test_history_repository.py",
+            "81aae5be41362912d1697b132cc8aa24032fea57",
+            "7676736e90ef20b0e80f89bd33e6e1aa18f92bb3",
+            11,
+            8,
+        ),
+        (
+            "tools/browser/assistant_qa_server.py",
+            "ba6bbdd01d5a9e62f5e99d82b99152151f394bf2",
+            "b944fc9ca9bbb8e4b06aa5b744e94157ecbca030",
+            79,
+            60,
         ),
     )
     assert {consumer.HOTFIX_V3_REVIEWED_PR_HEAD_SHA for consumer in consumers} == {
-        "68973cbfb8520458f76cbcb4f1edf3c0b149168c"
+        "7f66bc6cddb1f389b052714b4872828a3447b127"
     }
     for consumer in consumers:
         assert expected_commits == consumer.HOTFIX_V3_REVIEWED_PR9_COMMITS

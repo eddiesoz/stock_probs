@@ -1033,6 +1033,24 @@ selection. This acceptance-run selector does not change the app's normal model c
 policy, or budgets; no model request occurred. See the [R-ASTRA-120 ledger](../../MVP-PLAN.md)
 for complete evidence and limits.
 
+The 2026-10-21 catalog review supersedes the historical SpaceBunny acceptance selection above.
+Zen's current public inventory omits SpaceBunny and includes the already reviewed LongCat 2.5
+Preview Free row. The first updated native acceptance selection was `longcat-2.5-preview-free`.
+The [current OpenCode model terms](https://opencode.ai/v2/docs/console/models/) still describe
+LongCat as temporarily free, zero-retention, and unused for training. This acceptance selection
+preserves the app's normal model-choice flow, existing consent versions, and budgets; the probe
+still fails closed if its exact selected model becomes unavailable. The same review adds
+Nemotron 3.5 Super VL Free to the trial-model exclusions because its terms prohibit personal or
+confidential data. Native answers and release acceptance require fresh exact-image verification.
+
+The later `39d9c20` native trial on LongCat failed with two turn timeouts and no answers; a
+diagnostic recorded an upstream HTTP 503 without establishing the complete cause. The next
+candidate explicitly selects `minimax-m3.1-flash-free`, which the current official terms also
+describe as temporarily free, zero-retention, and unused for training. It is now a curated choice
+on the existing OpenAI-compatible route, with the same privacy and billing acknowledgements.
+LongCat remains available for explicit selection when discovery returns it. This adds no automatic
+fallback, paid provider, account, or top-up. A fresh native run and release gates remain pending.
+
 The candidate rollout helper waits within its existing 30-check health budget for the requested
 assistant projection as well as application readiness. Disabling requires `enabled=false` and
 `status=disabled`; owner and invited rollout require `enabled=true` and `status=ready`. The kill

@@ -2431,12 +2431,20 @@ test("M04 360–1440 layouts, touch targets, reduced motion, and high contrast s
     await themeRadio(page, theme === "light" ? "Light" : "Dark").click();
     await page.keyboard.press("Escape");
     await page.emulateMedia({ media: "print", forcedColors: "none", reducedMotion: "reduce" });
-    printSurfaces[theme] = await page.evaluate(() => Object.fromEntries([
+    const readPrintSurfaces = () => page.evaluate(() => Object.fromEntries([
       ".search-panel", ".horizon-comparison", ".tail-figure", ".history-table th",
     ].map((selector) => {
       const style = getComputedStyle(document.querySelector(selector));
       return [selector, { color: style.color, background: style.backgroundColor }];
     })));
+    // Wait for the emulated media's computed styles; retain both theme-parity assertions below.
+    await expect.poll(readPrintSurfaces, {
+      message: `${theme} print styles did not settle to the required black-on-white surfaces`,
+      timeout: 5_000,
+    }).toEqual(Object.fromEntries([
+      ".search-panel", ".horizon-comparison", ".tail-figure", ".history-table th",
+    ].map((selector) => [selector, { color: "rgb(0, 0, 0)", background: "rgb(255, 255, 255)" }])));
+    printSurfaces[theme] = await readPrintSurfaces();
   }
   expect(printSurfaces.light).toEqual(printSurfaces.dark);
   expect(new Set(Object.values(printSurfaces.dark).map(({ background }) => background))).toEqual(new Set(["rgb(255, 255, 255)"]));

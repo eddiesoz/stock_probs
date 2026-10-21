@@ -420,7 +420,7 @@ def test_application_sse_replays_events_and_denies_other_owner(settings):
 
 
 def test_revocation_between_sse_chunks_stops_later_events(settings, monkeypatch):
-    """A session revoked while projecting a chunk cannot receive later chunks in that batch."""
+    """A session revoked during projection cannot receive that chunk or later batch events."""
 
     runtime = _Runtime(
         (
@@ -494,8 +494,8 @@ def test_revocation_between_sse_chunks_stops_later_events(settings, monkeypatch)
             assert streamed.status_code == 200
             records = _events(streamed.text)
             assert revoked is True
-            assert [record["event"] for record in records] == ["tool"], f"records={records!r}"
-            assert records[0]["data"]["call_id"] == "call-first"
+            assert records == [], f"post-projection revocation released events: {records!r}"
+            assert "call-first" not in streamed.text
             assert "call-after-revocation" not in streamed.text
         finally:
             client.close()

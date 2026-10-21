@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import ipaddress
 import json
 import math
 import re
 import unicodedata
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import suppress
 from datetime import UTC, datetime
 from typing import NoReturn
@@ -18,6 +19,7 @@ from urllib.parse import parse_qsl, urlsplit
 from fastapi import APIRouter, FastAPI, Query, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import ValidationError
+from starlette.concurrency import run_in_threadpool
 from starlette.types import Send
 
 from stock_probs.assistant import net
@@ -40,6 +42,7 @@ from stock_probs.assistant.schemas import (
     AssistantConversationUpdateRequest,
     AssistantCustomProviderEndpointRequest,
     AssistantModelAdminPolicyRequest,
+    AssistantModelPolicy,
     AssistantOAuthAttemptCallbackRequest,
     AssistantOAuthAttemptCompleteRequest,
     AssistantOAuthAttemptCreateRequest,
@@ -412,9 +415,19 @@ def _defer_provider_close(task: asyncio.Task[bytes], upstream: object) -> None:
         return
 
 
+_ProviderAuthorizationCheck = Callable[[], bool | Awaitable[bool]]
+
+
+async def _provider_proxy_authorized(check: _ProviderAuthorizationCheck) -> bool:
+    """Await live authorization without running synchronous storage I/O on the event loop."""
+
+    result = check() if inspect.iscoroutinefunction(check) else await run_in_threadpool(check)
+    return await result if inspect.isawaitable(result) else result
+
+
 async def _provider_proxy_chunks(
     upstream: AsyncIterator[bytes],
-    is_current: Callable[[], bool],
+    is_current: _ProviderAuthorizationCheck,
 ) -> AsyncIterator[bytes]:
     """Bridge one bounded provider stream and preserve failures as an interrupted stream."""
 
@@ -423,7 +436,7 @@ async def _provider_proxy_chunks(
     next_chunk: asyncio.Task[bytes] | None = None
     try:
         while True:
-            if not is_current():
+            if not await _provider_proxy_authorized(is_current):
                 raise _ProviderProxyProtocolError(
                     stage="proxy_guard", error_code="request_superseded"
                 )
@@ -514,7 +527,7 @@ async def _provider_proxy_chunks(
                 raise _ProviderProxyProtocolError(
                     stage="proxy_validation", error_code="chunk_too_large"
                 )
-            if not is_current():
+            if not await _provider_proxy_authorized(is_current):
                 raise _ProviderProxyProtocolError(
                     stage="proxy_guard", error_code="request_superseded"
                 )
@@ -629,7 +642,7 @@ class _ProviderProxyStreamingResponse(StreamingResponse):
         self,
         content: AsyncIterator[bytes],
         *,
-        authorization_check: Callable[[], bool],
+        authorization_check: _ProviderAuthorizationCheck,
         denied: Response,
         media_type: str,
         headers: dict[str, str],
@@ -651,7 +664,7 @@ class _ProviderProxyStreamingResponse(StreamingResponse):
                 initial_error = exc
 
             try:
-                still_authorized = self._authorization_check()
+                still_authorized = await _provider_proxy_authorized(self._authorization_check)
             except Exception:
                 still_authorized = False
             if not still_authorized:
@@ -718,7 +731,7 @@ def _is_initial_provider_status_failure(
 
 async def _provider_proxy_stream_response(
     upstream: AsyncIterator[bytes],
-    authorization_check: Callable[[], bool],
+    authorization_check: _ProviderAuthorizationCheck,
     *,
     runtime: object,
     execution_id: str,
@@ -745,7 +758,7 @@ async def _provider_proxy_stream_response(
 
 async def _provider_proxy_chunks_with_timing(
     upstream: AsyncIterator[bytes],
-    is_current: Callable[[], bool],
+    is_current: _ProviderAuthorizationCheck,
     *,
     runtime: object,
     execution_id: str,
@@ -1470,18 +1483,31 @@ def _validated_provider_request(
             )
             continue
 
+        reasoning_fields: set[str] = set()
+        if "reasoning_content" in message:
+            reasoning = message["reasoning_content"]
+            if role != "assistant" or not isinstance(reasoning, str) or "\x00" in reasoning:
+                return None
+            reasoning_length = _utf8_length(reasoning)
+            if reasoning_length is None:
+                return None
+            text_bytes += reasoning_length
+            if text_bytes > _PROXY_MAX_MESSAGE_BYTES:
+                return None
+            reasoning_fields.add("reasoning_content")
+
         has_calls = "tool_calls" in message
         if has_calls:
             calls = message.get("tool_calls")
             if (
                 role != "assistant"
-                or set(message) != {"role", "content", "tool_calls"}
+                or set(message) != {"role", "content", "tool_calls"} | reasoning_fields
                 or (content is not None and not isinstance(content, str))
                 or not isinstance(calls, list)
                 or not 1 <= len(calls) <= _PROXY_MAX_TOOL_CALLS
             ):
                 return None
-        elif set(message) != {"role", "content"} or not isinstance(content, str):
+        elif set(message) != {"role", "content"} | reasoning_fields or not isinstance(content, str):
             return None
         if role != "assistant" and set(message) != {"role", "content"}:
             return None
@@ -1498,6 +1524,8 @@ def _validated_provider_request(
             return None
 
         normalized_message: dict[str, object] = {"role": role, "content": content}
+        if reasoning_fields:
+            normalized_message["reasoning_content"] = message["reasoning_content"]
         if has_calls:
             normalized_calls: list[dict[str, object]] = []
             for call in calls:
@@ -2397,11 +2425,62 @@ def create_assistant_router(
             after_value = parsed_header_cursor
         else:
             after_value = after or 0
-        assistant.storage.get_turn(initial.user.id, conversation_id, turn_id)
-        latest = assistant.storage.latest_event_sequence(initial.user.id, conversation_id, turn_id)
+        await run_in_threadpool(
+            assistant.storage.get_turn, initial.user.id, conversation_id, turn_id
+        )
+        latest = await run_in_threadpool(
+            assistant.storage.latest_event_sequence, initial.user.id, conversation_id, turn_id
+        )
         if after_value > latest + 1:
             raise AssistantUnavailable("event_cursor_ahead", 409)
         cookie = request.cookies.get(SESSION_COOKIE_NAME)
+
+        def authorize_stream_event() -> tuple[AuthContext, dict[str, object]] | None:
+            """Check current authorization after all potentially waiting event projection."""
+
+            current = auth_manager.authenticate(cookie, datetime.now(UTC))
+            assistant.require_access(current)
+            current_turn = assistant.storage.get_turn(current.user.id, conversation_id, turn_id)
+            if current_turn.get("status") in {"queued", "running"}:
+                lease_ref = assistant.storage.execution_for_turn(
+                    current.user.id, conversation_id, turn_id
+                )
+                lease = (
+                    assistant.storage.execution_lease(str(lease_ref["execution_id"]))
+                    if lease_ref
+                    else None
+                )
+                if lease is None or not assistant._execution_current(
+                    current.user.id,
+                    str(lease["execution_id"]),
+                    str(current_turn["model_id"]),
+                    str(current_turn["policy_version"]),
+                ):
+                    closed = (
+                        assistant.storage.execution_lease(str(lease_ref["execution_id"]))
+                        if lease_ref
+                        else None
+                    )
+                    if (
+                        closed is not None
+                        and closed.get("status") == "closed"
+                        and closed.get("user_id") == current.user.id
+                        and closed.get("conversation_id") == conversation_id
+                        and closed.get("turn_id") == turn_id
+                    ):
+                        return None
+                    raise AssistantUnavailable("session_revoked", 403)
+            return current, current_turn
+
+        async def rechecked_stream_context() -> tuple[AuthContext, dict[str, object]]:
+            """Re-read a normal completion transition with fresh authorization before emission."""
+
+            # A worker may see lease closure before the event loop commits terminal status.
+            for _ in range(2):
+                current = await run_in_threadpool(authorize_stream_event)
+                if current is not None:
+                    return current
+            raise AssistantUnavailable("session_revoked", 403)
 
         async def events():
             cursor = after_value
@@ -2409,64 +2488,28 @@ def create_assistant_router(
                 if await request.is_disconnected():
                     return
                 try:
-                    current = auth_manager.authenticate(cookie, datetime.now(UTC))
-                    assistant.require_access(current)
-                    current_turn = assistant.storage.get_turn(
-                        current.user.id, conversation_id, turn_id
-                    )
-                    if current_turn.get("status") in {"queued", "running"}:
-                        lease_ref = assistant.storage.execution_for_turn(
-                            current.user.id, conversation_id, turn_id
-                        )
-                        lease = (
-                            assistant.storage.execution_lease(str(lease_ref["execution_id"]))
-                            if lease_ref
-                            else None
-                        )
-                        if lease is None or not assistant._execution_current(
-                            current.user.id,
-                            str(lease["execution_id"]),
-                            str(current_turn["model_id"]),
-                            str(current_turn["policy_version"]),
-                        ):
-                            return
-                    batch = assistant.storage.events_after(
-                        current.user.id, conversation_id, turn_id, after=cursor, limit=100
+                    current, current_turn = await rechecked_stream_context()
+                    batch = await run_in_threadpool(
+                        assistant.storage.events_after,
+                        current.user.id,
+                        conversation_id,
+                        turn_id,
+                        after=cursor,
+                        limit=100,
                     )
                 except Exception:
                     return
                 if batch:
                     for event in batch:
-                        # Revalidate on every emitted chunk; a long stream cannot rely on its
-                        # initial role, current session, TOTP factor, or model-consent snapshot.
+                        projected = await run_in_threadpool(
+                            assistant.project_event_for_browser, current, event
+                        )
+                        # Projection can wait on storage; check again before releasing bytes.
                         try:
-                            current = auth_manager.authenticate(cookie, datetime.now(UTC))
-                            assistant.require_access(current)
-                            current_turn = assistant.storage.get_turn(
-                                current.user.id, conversation_id, turn_id
-                            )
-                            if current_turn.get("status") in {"queued", "running"}:
-                                lease_ref = assistant.storage.execution_for_turn(
-                                    current.user.id, conversation_id, turn_id
-                                )
-                                lease = (
-                                    assistant.storage.execution_lease(
-                                        str(lease_ref["execution_id"])
-                                    )
-                                    if lease_ref
-                                    else None
-                                )
-                                if lease is None or not assistant._execution_current(
-                                    current.user.id,
-                                    str(lease["execution_id"]),
-                                    str(current_turn["model_id"]),
-                                    str(current_turn["policy_version"]),
-                                ):
-                                    return
+                            await rechecked_stream_context()
                         except Exception:
                             return
                         cursor = int(event["sequence"])
-                        projected = assistant.project_event_for_browser(current, event)
                         data = json.dumps(
                             projected["data"], ensure_ascii=False, separators=(",", ":")
                         )
@@ -2475,20 +2518,26 @@ def create_assistant_router(
                             return
                     continue
                 if current_turn.get("status") not in {"queued", "running"}:
-                    terminal_cursor = assistant.storage.latest_event_sequence(
-                        current.user.id, conversation_id, turn_id
+                    terminal_cursor = await run_in_threadpool(
+                        assistant.storage.latest_event_sequence,
+                        current.user.id,
+                        conversation_id,
+                        turn_id,
                     )
-                    has_complete = any(
-                        item["type"] == "complete"
-                        for item in assistant.storage.events_after(
-                            current.user.id,
-                            conversation_id,
-                            turn_id,
-                            after=max(0, terminal_cursor - 2),
-                            limit=4,
-                        )
+                    terminal_events = await run_in_threadpool(
+                        assistant.storage.events_after,
+                        current.user.id,
+                        conversation_id,
+                        turn_id,
+                        after=max(0, terminal_cursor - 2),
+                        limit=4,
                     )
+                    has_complete = any(item["type"] == "complete" for item in terminal_events)
                     if not has_complete and cursor <= terminal_cursor:
+                        try:
+                            await rechecked_stream_context()
+                        except Exception:
+                            return
                         status = str(current_turn.get("status", "failed"))
                         completion = json.dumps({"status": status})
                         yield (
@@ -3075,6 +3124,32 @@ def create_assistant_router(
             raise AssistantUnavailable("oauth_authorization_required", 403)
         return {"provider": _json_safe_provider(result)}
 
+    def provider_execution_context(
+        execution_id: str, capability: str
+    ) -> tuple[Mapping[str, object], Mapping[str, object], AssistantModelPolicy] | None:
+        """Read and validate the leased provider context together on a worker thread."""
+
+        try:
+            lease = assistant.storage.validate_execution_capability(
+                execution_id, capability, now=assistant.now()
+            )
+            user_id = int(lease["user_id"])
+            turn = assistant.storage.get_turn(
+                user_id, str(lease["conversation_id"]), str(lease["turn_id"])
+            )
+            model_id = str(turn["model_id"])
+            policy_version = str(turn["policy_version"])
+            policy = assistant.policy(model_id, owner_id=user_id)
+            if (
+                not assistant.validate_execution_session(lease)
+                or not assistant._execution_current(user_id, execution_id, model_id, policy_version)
+                or policy.policy_version != policy_version
+            ):
+                return None
+        except Exception:
+            return None
+        return lease, turn, policy
+
     async def internal_native_provider_proxy(
         execution_id: str,
         request: Request,
@@ -3110,29 +3185,20 @@ def create_assistant_router(
         if not authorization.startswith("Bearer ") or len(authorization) > 512:
             return denied
         capability = authorization[7:]
-        try:
-            lease = assistant.storage.validate_execution_capability(
-                execution_id, capability, now=assistant.now()
-            )
-            user_id = int(lease["user_id"])
-            turn = assistant.storage.get_turn(
-                user_id, str(lease["conversation_id"]), str(lease["turn_id"])
-            )
-            model_id = str(turn["model_id"])
-            policy_version = str(turn["policy_version"])
-            policy = assistant.policy(model_id, owner_id=user_id)
-        except Exception:
+        execution = await run_in_threadpool(provider_execution_context, execution_id, capability)
+        if execution is None:
             return denied
-        if (
-            not assistant.validate_execution_session(lease)
-            or not assistant._execution_current(user_id, execution_id, model_id, policy_version)
-            or policy.policy_version != policy_version
-            or (policy.provider_id == "openai-chatgpt" and not native_session_id)
-        ):
+        lease, turn, policy = execution
+        user_id = int(lease["user_id"])
+        model_id = str(turn["model_id"])
+        policy_version = str(turn["policy_version"])
+        if policy.provider_id == "openai-chatgpt" and not native_session_id:
             return denied
 
-        def authorization_check() -> bool:
-            return assistant._execution_current(user_id, execution_id, model_id, policy_version)
+        async def authorization_check() -> bool:
+            return await run_in_threadpool(
+                assistant._execution_current, user_id, execution_id, model_id, policy_version
+            )
 
         content_length = request.headers.get("content-length")
         if content_length is not None:
@@ -3173,7 +3239,7 @@ def create_assistant_router(
                     "The provider request is outside its fixed contract.",
                 ),
             )
-        if not authorization_check():
+        if not await authorization_check():
             return denied
 
         manager = assistant.providers
@@ -3281,25 +3347,14 @@ def create_assistant_router(
         if not authorization.startswith("Bearer ") or len(authorization) > 512:
             return denied
         capability = authorization[7:]
-        try:
-            lease = assistant.storage.validate_execution_capability(
-                execution_id, capability, now=assistant.now()
-            )
-            user_id = int(lease["user_id"])
-            turn = assistant.storage.get_turn(
-                user_id, str(lease["conversation_id"]), str(lease["turn_id"])
-            )
-            model_id = str(turn["model_id"])
-            policy_version = str(turn["policy_version"])
-            policy = assistant.policy(model_id, owner_id=user_id)
-        except Exception:
+        execution = await run_in_threadpool(provider_execution_context, execution_id, capability)
+        if execution is None:
             return denied
-        if (
-            not assistant.validate_execution_session(lease)
-            or not assistant._execution_current(user_id, execution_id, model_id, policy_version)
-            or policy.policy_version != policy_version
-            or (policy.provider_id == "openai-chatgpt" and not native_session_id)
-        ):
+        lease, turn, policy = execution
+        user_id = int(lease["user_id"])
+        model_id = str(turn["model_id"])
+        policy_version = str(turn["policy_version"])
+        if policy.provider_id == "openai-chatgpt" and not native_session_id:
             return denied
 
         native_runtime_metadata = None
@@ -3308,8 +3363,10 @@ def create_assistant_router(
             if native_runtime_metadata is None:
                 return denied
 
-        def authorization_check() -> bool:
-            if not assistant._execution_current(user_id, execution_id, model_id, policy_version):
+        async def authorization_check() -> bool:
+            if not await run_in_threadpool(
+                assistant._execution_current, user_id, execution_id, model_id, policy_version
+            ):
                 return False
             if policy.provider_id != "opencode-zen":
                 return True
@@ -3326,7 +3383,7 @@ def create_assistant_router(
                 status_code=400,
                 content=_error("invalid_provider_request", "The provider request is invalid."),
             )
-        if not authorization_check():
+        if not await authorization_check():
             return denied
         restricted_guard = getattr(assistant.runtime, "restricted_native_tools_ready", None)
         include_restricted = (
@@ -3396,7 +3453,7 @@ def create_assistant_router(
                 provider_context["native_session_affinity"] = native_identity["x-session-affinity"]
             if "x-session-id" in native_identity:
                 provider_context["native_session_id_alias"] = native_identity["x-session-id"]
-            if not authorization_check():
+            if not await authorization_check():
                 return denied
             upstream = proxy(
                 policy.provider_id,

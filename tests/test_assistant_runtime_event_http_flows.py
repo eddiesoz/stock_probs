@@ -980,6 +980,169 @@ def test_two_users_cannot_read_each_others_assistant_events_or_history(settings:
         assert owner_stream.status_code == 404
 
 
+@pytest.mark.parametrize("health_path", ["/api/v1/health", "/api/v1/readiness"])
+def test_public_event_storage_wait_preserves_application_health(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, health_path: str
+) -> None:
+    """An SSE storage wait must not monopolize the application's event loop."""
+
+    app = _make_app(settings, _ScriptedRuntime())
+    entered = threading.Event()
+    release = threading.Event()
+    returned = threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80070)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        storage = app.state.assistant.storage
+        original = storage.events_after
+
+        def delayed_events_after(*args: object, **kwargs: object) -> list[dict[str, object]]:
+            entered.set()
+            release.wait(timeout=1.5)
+            returned.set()
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(storage, "events_after", delayed_events_after)
+        event_path = (
+            f"/api/v1/assistant/conversations/{conversation['id']}/turns/{turn['id']}/events"
+        )
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            stream = executor.submit(browser.get, event_path)
+            try:
+                assert entered.wait(timeout=3), "SSE request did not reach storage"
+                health = browser.get(health_path)
+                assert health.status_code == 200
+                assert health.json()["status"] == (
+                    "ready" if health_path.endswith("readiness") else "ok"
+                )
+                assert not returned.is_set(), "health waited for SSE storage to return"
+            finally:
+                release.set()
+                response = stream.result(timeout=5)
+            assert response.status_code == 200
+            assert "event: complete" in response.text
+
+
+def test_public_event_projection_wait_rechecks_revoked_session(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A session revoked during browser projection cannot receive the pending token."""
+
+    marker = "must-not-reach-revoked-projection:"
+    runtime = _ScriptedRuntime([{"type": "token", "data": {"text": marker + "x" * 400}}])
+    app = _make_app(settings, runtime)
+    entered = threading.Event()
+    release = threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80071)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        assistant = app.state.assistant
+        original = assistant.project_event_for_browser
+
+        def delayed_projection(current: object, event: Mapping[str, object]) -> dict[str, object]:
+            if event.get("type") == "token":
+                entered.set()
+                release.wait(timeout=3)
+            return original(current, event)
+
+        monkeypatch.setattr(assistant, "project_event_for_browser", delayed_projection)
+        event_path = (
+            f"/api/v1/assistant/conversations/{conversation['id']}/turns/{turn['id']}/events"
+        )
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            stream = executor.submit(browser.get, event_path)
+            try:
+                assert entered.wait(timeout=3), "SSE request did not reach token projection"
+                app.state.repository.auth_revoke_session(
+                    str(identity["token_hash"]), _NOW.isoformat()
+                )
+            finally:
+                release.set()
+                response = stream.result(timeout=5)
+            assert response.status_code == 200
+            assert marker not in response.text
+
+
+@pytest.mark.parametrize("completion_state", ["completed", "revoked", "closed-only"])
+def test_public_event_stream_preserves_completion_during_execution_recheck(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, completion_state: str
+) -> None:
+    """A legitimate turn finishing during an SSE recheck must retain its terminal event."""
+
+    runtime = _PausedRuntime()
+    app = _make_app(settings, runtime)
+    entered = threading.Event()
+    release = threading.Event()
+    completed = threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80072)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        assert runtime.ready_for_first_event.wait(timeout=3)
+        assert runtime.loop is not None and runtime.start_first_event is not None
+        runtime.loop.call_soon_threadsafe(runtime.start_first_event.set)
+        assert runtime.first_event_ready.wait(timeout=3)
+        assert runtime.resume is not None
+        assistant = app.state.assistant
+        original_check = assistant._execution_current
+        original_status = assistant.storage.set_turn_status
+
+        def delayed_execution_check(*args: object, **kwargs: object) -> bool:
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                if not entered.is_set():
+                    entered.set()
+                    release.wait(timeout=3)
+            return original_check(*args, **kwargs)
+
+        def record_terminal_status(*args: object, **kwargs: object) -> object:
+            result = original_status(*args, **kwargs)
+            if kwargs.get("status") == "completed":
+                completed.set()
+            return result
+
+        monkeypatch.setattr(assistant, "_execution_current", delayed_execution_check)
+        monkeypatch.setattr(assistant.storage, "set_turn_status", record_terminal_status)
+        event_path = (
+            f"/api/v1/assistant/conversations/{conversation['id']}/turns/{turn['id']}/events"
+        )
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            stream = executor.submit(browser.get, event_path)
+            try:
+                assert entered.wait(timeout=3), "SSE did not reach execution authorization"
+                if completion_state == "closed-only":
+                    lease = assistant.storage.execution_for_turn(
+                        int(identity["user_id"]), str(conversation["id"]), str(turn["id"])
+                    )
+                    assert lease is not None
+                    assistant.storage.close_execution(str(lease["execution_id"]), now=_NOW)
+                else:
+                    runtime.loop.call_soon_threadsafe(runtime.resume.set)
+                    assert completed.wait(timeout=3), "turn did not commit completion"
+                if completion_state == "revoked":
+                    app.state.repository.auth_revoke_session(
+                        str(identity["token_hash"]), _NOW.isoformat()
+                    )
+            finally:
+                release.set()
+                try:
+                    response = stream.result(timeout=5)
+                finally:
+                    runtime.loop.call_soon_threadsafe(runtime.resume.set)
+            assert response.status_code == 200
+            if completion_state == "completed":
+                assert "event: complete" in response.text
+                assert "visible-before-revocation:" in response.text
+            else:
+                assert response.text == ""
+
+
 def test_public_event_stream_stops_after_live_session_revocation(settings: Settings) -> None:
     """A live SSE response stops before yielding further events after session revocation."""
 

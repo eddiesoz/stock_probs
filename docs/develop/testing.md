@@ -32,10 +32,31 @@ legacy `/zen/v1` route and `/inference/openai/v1` must preserve known-model excl
 paths on the same host fail closed, while similarly named unrelated hosts are not globally banned.
 Keep session revalidation and stream cancellation covered without a live provider request.
 
+Compatible-chat streams must preserve bounded `reasoning_content` inside the native session so
+the adapter can replay it in assistant tool continuations. It shares the existing history byte
+budget and per-delta limit; malformed values and non-assistant history fields fail closed. Cover
+fragmented credential rejection on its independent choice/channel, and verify that reasoning
+never enters app token events or timeout logs. The pinned V2 adapter supports this field; see
+the [MiniMax continuation contract](https://platform.minimax.io/docs/api-reference/text-openai-api).
+Preserve the fresh model-bound native session per execution and visible-only app history projection;
+private native reasoning must not be replayed into a later app turn after model selection changes.
+For the exact reviewed free Zen MiniMax M3.1 Flash route, assert the fixed `reasoning_effort=low`
+interactive default, unchanged token/deadline limits, and no effort field on other model/provider
+identities. The public request schema stays closed; this is not a browser-supplied option.
+A protocol regression pass does not establish the cause of a live timeout or a completed answer.
+
 For an isolated worktree, set `PYTHONPATH` to its absolute `src` directory and set
 `STOCK_PROBS_BROWSER_RUNTIME` to a task-owned disposable directory. A shared editable environment
 can otherwise import another checkout. Bind actual served asset bytes as well as local staged
 files; a matching local export alone does not identify the running package.
+
+At the native active-search checkpoint, finish the owner-bound private-file and process permission
+checks before sending `continue`. These checks repeatedly require the active owner lease and its
+exact worker config; resuming the child can complete the turn and revoke that lease. A failed
+permission check must stop the child without resuming it. Keep the original turn and observation deadlines,
+then require the final answer, deletion and cache-purge assertions. The
+[coordination repair record](../../MVP-PLAN.md#r-astra-121-f6-active-lease-probe-coordination-repair-2026-10-21)
+does not establish the cause of an earlier native failure or successful runtime restoration.
 
 ## Reviewing incomplete contrast results
 
@@ -974,8 +995,15 @@ The next native-build candidate fixes Bun's `--smol` mode only for the final bui
 and its child processes. Check that a host-supplied `BUN_OPTIONS` cannot alter that command's
 environment and that package installation/source tests retain their prior environment. The pinned
 Bun documentation describes a garbage-collection tradeoff rather than a hard memory cap. The
-embedded app build and final compiler still use the same source pins, arguments, targets and
-deadlines; a source test pass does not establish lower memory use or a successful image.
+final compiler retains the pinned source, targets and deadlines; a source test pass does not
+establish lower memory use or a successful image.
+
+Signal Ledger uses the upstream `--skip-web-ui` build flag to omit OpenCode's embedded web
+interface. Signal Ledger serves its own frontend and uses the native assistant API, MCP tools,
+search and provider paths. The pinned upstream build script supports this flag; native patch
+tests still run before compilation. This avoids the embedded Vite app build that exited with
+signal 137 and BuildKit `cannot allocate memory` in the failed `a0bbfec` local build. It does not
+raise the builder limits or establish a successful replacement image or runtime result.
 
 
 For the PR #11 helper-upgrade candidate, `_run` returns text. Identity parsing must validate that
@@ -1142,3 +1170,166 @@ review (696/696, one real-Docker selector deselected) with unchanged pins. An ea
 review failure remains preserved in the checkpoint. These are source/test checks only: no helper
 installation or host acceptance follows, and the actual-host failure and separate home-group repair
 remain distinct evidence.
+
+### Print media synchronization
+
+The M04 responsive/accessibility journey waits at most five seconds for each emulated print
+surface to compute black text on white before recording Light/Dark samples. It retains the
+original theme-parity and white-background assertions and its existing 90-second test budget.
+This makes the browser state transition explicit; it is not a product CSS change or a confirmed
+root cause for the earlier aggregate-only print mismatch. The original single-case reproduction
+passed unchanged, while that earlier complete browser aggregate remains failed.
+
+### F6 current-model acceptance selection (2026-10-21)
+
+A native run on the exact `9ddd82f` image passed readiness, then failed at `model_inventory`
+with `reviewed_model_not_in_inventory` before either owner started a turn. Preserve that Fail.
+A bounded public inventory GET and the maintained catalog parser confirmed that SpaceBunny is
+absent while the already reviewed LongCat free/no-training row remains available. The explicit
+`zen.native_acceptance_model_id` initially selected LongCat; missing or ineligible selections still fail
+closed. The six-case Super VL regression first failed on the missing NVIDIA trial exclusion;
+it covers the native, Console, and custom identities on both canonical Zen routes.
+
+The headless native builder and its scoped 24-test review remain unchanged. Its successful
+cached `9ddd82f` image build does not accept the later catalog bytes. Bind a fresh image before
+another native functional run, and complete that run before the mandatory release aggregate.
+The full-200 browser Fail and remaining resource, security, rollback, guide, and live-owner
+acceptance gates remain separate. Detailed receipts are in the dated F6 MVP-plan checkpoint.
+
+The newly bound `39d9c20` image later passed readiness but failed its one two-owner native run:
+both turns timed out without answers, and only one completed the summary/search portion. A closed
+diagnostic recorded one anonymous upstream HTTP 503; it does not prove both timeout causes. The
+next catalog candidate adds the currently documented MiniMax M3.1 Flash Free model and explicitly
+selects it for the same full native test. LongCat remains reviewed and selectable; no automatic
+fallback is added. The new row uses the existing OpenAI-compatible adapter and requires the
+existing privacy and billing acknowledgements. A fresh image and native result remain required.
+
+The `858192b` MiniMax image passed its build/source/stage bindings but failed the sole native
+trial during conversation polling. Both owners had matching model and summary receipts, with
+no completed answer or search/fetch source. One read timeout aborted the observation while the
+last snapshots still reported running turns. The default `same_supervised_app_reachable=false`
+does not establish an outage: the final health request was not reached. The runtime cause remains
+unproven; keep the original Fail and its separate successful fixture cleanup.
+
+The attached probe now permits at most two retries after a read timeout only for the current
+owner's read-only conversation poll in that phase. At request start, the original eight-second
+read/two-second connect caps shrink to the remaining polling time. Retry admission and at most
+100 ms backoff use the original deadline without resetting it. These per-phase inactivity limits
+do not guarantee a hard total request duration. The deadline gates polling and retry admission.
+The probe never retries mutations, readiness requests, authorization/protocol failures,
+or connection errors. The 120-second application turns, two-owner answer/tool criteria and
+separate readiness/resource gates are unchanged. Synthetic recovery tests do not establish a
+recovered native run or the timeout cause.
+
+The application-health concurrency regression in `tests/test_api.py` holds a protected request
+inside a synthetic synchronous authentication wait, then requests liveness or readiness on the
+same ASGI event loop. It covers accepted-Origin and no-Origin middleware branches, requires the
+health response before authentication returns, and verifies the protected request is still denied.
+The actual app lifespan runs for the readiness cases. The initial two liveness cases failed before
+the worker-pool repair and passed afterward. This demonstrates event-loop starvation at that
+boundary; it does not establish SQLite contention, worker-pool saturation behavior, or the cause
+of the native trial's readiness timeout. No readiness assertion or retry policy is relaxed.
+
+Authentication uses the same Starlette worker-pool cancellation policy as existing FastAPI sync
+handlers. A bounded independent probe observed AnyIO-scope cancellation waiting for the worker,
+while direct `asyncio.Task.cancel()` could return before it finished. Uvicorn uses direct task
+cancellation after its graceful-shutdown timeout. Absolute request-gate retention through forced
+shutdown is therefore not claimed; the complete ASGI shutdown/restore interaction was not run.
+
+The provider-authorization concurrency regression in `tests/test_assistant_api.py` holds each
+stream guard before upstream read, before chunk yield, or before headers. The first six synchronous
+cases failed before the repair: unrelated liveness/readiness completed only after authorization
+returned. All six passed after moving synchronous checks off the event loop. Expanded coverage
+also checks awaited callbacks and initial lease lookup on the actual native/compatible-chat HTTP
+routes; all 16 cases passed, with denial and upstream cleanup retained. The provider manager already
+accepts awaited authorization callbacks, so both internal routes pass a fresh awaited execution
+check through transport and response guards. Callback fixtures now await that result without
+weakening their true/false assertions. Worker-pool and database contention, forced-cancellation
+limits, and the unproven native timeout cause remain separate; these are synthetic local checks.
+The initial full affected run retained one lease-lookup case that never reached its held lookup
+and six stale callback-test failures. The six assertions were corrected to await actual checks;
+all six plus four unchanged lookup cases passed a focused rerun. The original setup failure
+remains recorded with an unproven cause; a focused pass does not replace a complete affected run.
+
+Repeated full-scope lookup setup failures left the fixture request pending before its held lookup;
+a 74-case provider subset did not reproduce them. The lookup fixture separates a five-second
+setup admission bound from the unchanged two-second health deadline and records admission time
+in JUnit. Health must still answer before the one-second authorization hold returns; denial and
+no-byte-release criteria remain. The setup delay cause and prior failures remain recorded.
+The complete affected rerun passed 175 tests with 518 stable input hashes; its previously failing
+lookup entry took 2.001108 seconds, just beyond the old setup bound, then passed the unchanged
+health/denial criteria. Independent lease/guard re-review passed all 16 cases. This source evidence
+does not establish native runtime health or replace the required newly bound image run.
+
+
+The 2026-10-21 F6 reasoning candidate (`020121b`) built with 150 packaged inputs and 53
+served/export pairs unchanged, then failed its one genuine native trial: owner 0 completed a
+477-byte answer; owner 1 completed approved search/fetch but timed out without an answer. The
+native snapshot retained two reasoning parts; it does not establish the timeout cause or a repair
+causal claim. Exact owned cleanup and parent result-integrity review passed; independent functional
+acceptance is not claimed. Retain the initial receipt/comparator failures and their bounded
+corrections. See the [native-result ledger](../../MVP-PLAN.md#r-astra-121-f6-reasoning-candidate-native-result-2026-10-21).
+No unchanged native retry or full aggregate follows from this failure; the next source-only
+question is the documented MiniMax effort default under the existing interactive deadline.
+
+
+The F6 low-effort candidate (`004c163`) completed both genuine free Zen answers, including approved
+native search and guarded fetch, but its complete native aggregate failed on two health transport
+observations. Unavailable observations carry no schema value; do not describe the resulting schema
+guard failure as an observed wrong schema response. Preserve the three-second observer, existing
+readiness assertions and original 120-second turns while diagnosing the specific blocking path.
+The exact five-object cleanup and parent terminal binding review passed. See the
+[native-result ledger](../../MVP-PLAN.md#r-astra-121-f6-low-effort-candidate-native-result-2026-10-21)
+for bounds, original failures and remaining release gates. Both answers do not establish aggregate
+reliability, authenticated browser acceptance or actual combined 1 GB host acceptance.
+
+
+F6 event-stream responsiveness checks hold the real public SSE route's storage read and require
+both liveness and readiness to answer before that read returns. Both cases failed before moving
+stream reads to the existing Starlette worker pool. A second regression revokes the session while
+browser-event projection waits and requires the pending token to be withheld. The first offload
+candidate failed that regression; final per-event authorization now runs after projection, with
+fresh session, access, turn and execution checks before bytes are emitted. Existing live-stream
+revocation, owner isolation, cursor/replay and UTF-8/output-bound checks remain part of the affected
+scope. These deterministic checks do not establish the earlier native health transport failures'
+cause or replace the required newly bound native image test.
+
+
+The completion-transition regression pauses the public SSE worker's execution recheck while the
+real test runtime finishes. A completed turn must still deliver its saved terminal event; revocation
+during that transition must deliver no bytes. A closed lease without settled terminal state must
+also fail closed. The authorizer permits one fresh state/authorization read only for a normal,
+exactly owner-bound closure; no provider call is retried. Preserve the original empty-stream failure
+and the earlier unrelated native transport failure separately. See the
+[completion-transition ledger](../../MVP-PLAN.md#r-astra-121-f6-sse-completion-transition-repair-2026-10-21).
+
+
+Provider HTTP fixture assertions must await the asynchronous authorization callback both before
+and after revocation. When a session is revoked during SSE event projection, require zero emitted
+bytes and retain the exact committed-revocation timeline and denied follow-up request. For the
+complete-write concurrency fixture, interleave finite write/read waves rather than assuming that
+a continuously queued burst gets fair acquisition of the repository lock. Retain the same total
+writes/reads and verify the production timeout boundary separately; do not extend that bound or
+retry failed writes to make the fixture pass. See the
+[native and canonical reconciliation ledger](../../MVP-PLAN.md#r-astra-121-f6-native-verification-and-canonical-fixture-reconciliation-2026-10-21).
+
+
+The synthetic assistant's loopback MCP client uses the application's existing turn bound for HTTP
+response reads, while retaining three-second connect/write/pool limits. The browser's completion,
+action and case assertions keep their own deadlines. A controlled real-loopback regression checks
+that a valid response beyond three seconds completes and an HTTP failure still emits no answer.
+This fixture contract does not establish the cause of an earlier browser failure; preserve failed
+aggregates beside isolated or controlled passes. See the
+[F6 browser/fixture checkpoint](../../MVP-PLAN.md#r-astra-121-f6-browser-aggregate-and-synthetic-mcp-client-contract-2026-10-21).
+
+
+### Exact added-file lineage for the current F6 candidate
+
+Keep the immutable image source separate from the reviewed PR head. The current format-3
+candidate pins the complete two-commit, seven-file delta, including one new fixture regression.
+Local admission must require its zero base blob, added status, regular-file modes, exact head blob
+and line counts. Host admission must also prove absence at the base tree and presence as the
+correct regular file at the head tree; unexpected presence, missing head, symlink, extra path or
+modified-file status fails closed. Preserve exact callback patch lines across consumers.
+A focused synthetic Pass does not replace a failed broader aggregate, live host rehearsal or release
+gate. See the [current helper lineage checkpoint](../../MVP-PLAN.md#r-astra-121-f6-current-helper-lineage-repair-2026-10-21).

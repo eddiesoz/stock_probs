@@ -10239,7 +10239,7 @@ def test_v3_build_receipt_digest_matches_verified_producer_across_consumers() ->
     from scripts import hotfix_release_transport, rehearse_schema13
     from tools.deploy_mcp import pr_rehearsal
 
-    verified_producer_digest = "a73f76fb2792efb88ed88326ff84f8b22db3f09181dc0571f9ba0aea8c561ae1"
+    verified_producer_digest = "b7810ed4ff96e96207a88886c8d9d1ec81625dc6d73ee1cd0d45121f25fd9ced"
     consumers = {
         "deployment helper": _helper().HOTFIX_V3_BUILD_RECEIPT_SHA256,
         "host helper": rehearsal_host_helper.HOTFIX_V3_BUILD_RECEIPT_SHA256,

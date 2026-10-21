@@ -2893,6 +2893,9 @@ class AssistantProviderManager:
             if parameter_name in body:
                 upstream[parameter_name] = body[parameter_name]
         upstream["max_tokens"] = validated_max_tokens
+        if provider_id == "opencode-zen" and native_model_id == "minimax-m3.1-flash-free":
+            # This model defaults to max thinking; keep app turns at interactive depth.
+            upstream["reasoning_effort"] = "low"
         if clean_tools is not None:
             upstream["tools"] = clean_tools
         encoded = json.dumps(
@@ -4570,18 +4573,34 @@ def _validated_messages(
         has_calls = "tool_calls" in message
         if role not in {"system", "user", "assistant"}:
             raise ProviderUnavailable("provider_request_invalid")
+        reasoning_fields: set[str] = set()
+        if "reasoning_content" in message:
+            reasoning = message["reasoning_content"]
+            if role != "assistant" or not isinstance(reasoning, str) or "\x00" in reasoning:
+                raise ProviderUnavailable("provider_request_invalid")
+            reasoning_bytes = _utf8_length(reasoning)
+            if reasoning_bytes is None:
+                raise ProviderUnavailable("provider_request_invalid")
+            text_size += reasoning_bytes
+            if text_size > 65_536:
+                raise ProviderUnavailable("provider_request_invalid")
+            reasoning_fields.add("reasoning_content")
         if has_calls:
             raw_calls = message.get("tool_calls")
             if (
                 role != "assistant"
-                or set(message) != {"role", "content", "tool_calls"}
+                or set(message) != {"role", "content", "tool_calls"} | reasoning_fields
                 or (content is not None and not isinstance(content, str))
                 or not isinstance(raw_calls, list)
                 or not 1 <= len(raw_calls) <= 8
                 or pending_calls
             ):
                 raise ProviderUnavailable("provider_request_invalid")
-        elif set(message) != {"role", "content"} or not isinstance(content, str) or pending_calls:
+        elif (
+            set(message) != {"role", "content"} | reasoning_fields
+            or not isinstance(content, str)
+            or pending_calls
+        ):
             raise ProviderUnavailable("provider_request_invalid")
         if content is not None:
             if not isinstance(content, str) or "\x00" in content:
@@ -4594,6 +4613,8 @@ def _validated_messages(
                 raise ProviderUnavailable("provider_request_invalid")
 
         normalized: dict[str, object] = {"role": role, "content": content}
+        if reasoning_fields:
+            normalized["reasoning_content"] = message["reasoning_content"]
         if has_calls:
             normalized_calls: list[dict[str, object]] = []
             for raw_call in raw_calls:
@@ -5603,6 +5624,7 @@ def _event_text_channels(frame: bytes, protocol: str) -> dict[str, str]:
                 if not isinstance(delta, Mapping):
                     continue
                 add(("chat-content", choice_index), delta.get("content"))
+                add(("chat-reasoning", choice_index), delta.get("reasoning_content"))
                 calls = delta.get("tool_calls")
                 if isinstance(calls, list):
                     for call in calls[:8]:
@@ -6576,6 +6598,15 @@ def _sanitize_openai_sse_data(
             if not isinstance(content, str) or len(content.encode("utf-8")) > 16_384:
                 raise ProviderUnavailable("provider_response_invalid")
             safe_delta["content"] = content
+        reasoning = delta.get("reasoning_content")
+        if reasoning is not None:
+            if not isinstance(reasoning, str) or "\x00" in reasoning:
+                raise ProviderUnavailable("provider_response_invalid")
+            reasoning_bytes = _utf8_length(reasoning)
+            if reasoning_bytes is None or reasoning_bytes > 16_384:
+                raise ProviderUnavailable("provider_response_invalid")
+            # Native MiniMax tool continuations must replay their original reasoning.
+            safe_delta["reasoning_content"] = reasoning
         calls = delta.get("tool_calls")
         if calls is not None:
             if not isinstance(calls, list) or len(calls) > 8:

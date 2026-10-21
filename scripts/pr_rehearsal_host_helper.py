@@ -31,60 +31,74 @@ HOTFIX_PR_NUMBER = 9
 HOTFIX_CONTRACT = "schema13_same_schema_hotfix_v1"
 HOTFIX_CANDIDATE_REVISION = "f6a51d5c821e6b1ab7974a94f4ff795da10130bc"
 HOTFIX_V3_CONTRACT = "schema13_same_schema_hotfix_v3"
-HOTFIX_V3_IMAGE_SOURCE_REVISION = "68c225a25a76c4bd65c6309e00dd13200a1d4678"
-HOTFIX_V3_REVIEWED_PR_HEAD_SHA = "68973cbfb8520458f76cbcb4f1edf3c0b149168c"
+HOTFIX_V3_IMAGE_SOURCE_REVISION = "e40dbc3b721080057a2ab2b9b23565ebf4d85982"
+HOTFIX_V3_REVIEWED_PR_HEAD_SHA = "7f66bc6cddb1f389b052714b4872828a3447b127"
 HOTFIX_V3_REVIEWED_PR9_COMMITS = (
-    "c2fe99cbd486b93958c6d5c398da9fc25ddd7075",
-    "0b214bb47886cc7e9db73edccc8648b9af38b678",
-    HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+    "a8eee53c21cca79a2d6ddc7b2451f89f5e60be7c",
+    "7f66bc6cddb1f389b052714b4872828a3447b127",
 )
 HOTFIX_V3_REVIEWED_PR9_FILE_DELTA = (
     (
         "MVP-PLAN.md",
-        "ca82cfb622bc774ad1db1817d2f60bc622ad8d99",
-        "868d27b263909099688baaee703ea4a9fba5243a",
-        54,
+        "d8c3646dcefd04ff2c8c9f3b8e38475500185405",
+        "2f9abeba1afa64de420860f4db00f2facd428907",
+        194,
         0,
     ),
     (
         "docs/develop/testing.md",
-        "e93c28b6fcd44ce896ac27ad9edd70b87b629499",
-        "b1252778077a0f4dee0e11d936c151d56ce225a7",
-        2,
+        "4fdb2800bf272d42e67519745bcb2daa063c70a6",
+        "7da6ceab215cff0463418c65b5f715b406be4102",
+        19,
         0,
     ),
     (
         "tests/test_assistant_final_boundary_coverage.py",
-        "f35a58bd684ca9c38bde034193eece61588ee6f6",
         "652d04666bb17f9b1cd9f93f66a6abeb58b8ffa6",
-        1,
-        1,
-    ),
-    (
-        "tools/browser/tests/assistant.spec.js",
-        "2941924b553ed689c9b70baf72b938f3cd56c755",
-        "3734a80eae843a382ac9b49bc2ec51d77b046903",
-        143,
-        11,
-    ),
-    (
-        "tools/browser/tests/fixtures-lifecycle.unit.js",
-        "5004e1408b74be15ddf11193fd8f4b9c9c84368b",
-        "49702a87fe612b0d248d89a22cfe8244c11a00e2",
-        60,
-        6,
-    ),
-    (
-        "tools/browser/tests/fixtures.js",
-        "40bf53b05c6a29d295366e11834bec4f40f2eafd",
-        "89468fe1a51ab1a7fa46b9fc1f169bf3a1028230",
-        15,
+        "a9ea3c43c160123e812e03d82ced3cb9cab3eac7",
         4,
+        2,
+    ),
+    (
+        "tests/test_assistant_provider_admin_api_flows.py",
+        "29959b587e3a53ce7b3b8f787000130a5771004e",
+        "acf705e6b3b3b378ec923bf2121e6ddfca10cdcb",
+        1,
+        3,
+    ),
+    (
+        "tests/test_browser_assistant_fixture.py",
+        "0000000000000000000000000000000000000000",
+        "1ede43e34010ed48d5282c79c5ea3e1f5424876f",
+        85,
+        0,
+    ),
+    (
+        "tests/test_history_repository.py",
+        "81aae5be41362912d1697b132cc8aa24032fea57",
+        "7676736e90ef20b0e80f89bd33e6e1aa18f92bb3",
+        11,
+        8,
+    ),
+    (
+        "tools/browser/assistant_qa_server.py",
+        "ba6bbdd01d5a9e62f5e99d82b99152151f394bf2",
+        "b944fc9ca9bbb8e4b06aa5b744e94157ecbca030",
+        79,
+        60,
     ),
 )
-HOTFIX_V3_IMAGE_ID = "sha256:c3ac6f43749404e36e0ae94a8d749ccafe4c882216db09484c1c34f6fbad5f78"
-HOTFIX_V3_IMAGE_CONTEXT_SHA256 = "e0e79be05acad60f4220c3152c32ba5c5b31aa7c394e36cf28de30fcf31d7458"
-HOTFIX_V3_BUILD_RECEIPT_SHA256 = "a73f76fb2792efb88ed88326ff84f8b22db3f09181dc0571f9ba0aea8c561ae1"
+HOTFIX_V3_REVIEWED_TEST_PATCH = (
+    '-        assert context["authorization_check"]() is True',
+    '+        authorization_check = context["authorization_check"]',
+    "+        assert callable(authorization_check)",
+    "+        assert asyncio.run(authorization_check()) is True",
+    '-        assert context["authorization_check"]() is False',
+    "+        assert asyncio.run(authorization_check()) is False",
+)
+HOTFIX_V3_IMAGE_ID = "sha256:76aecf5483a38a0328f8560e1ae6a09d90f248e712d1dc719f765a224c7ccd2a"
+HOTFIX_V3_IMAGE_CONTEXT_SHA256 = "16dba274c8485b69d3c798ea5f9a587c980eb37dbf6c0e64db2bcbc49ab8bf6c"
+HOTFIX_V3_BUILD_RECEIPT_SHA256 = "b7810ed4ff96e96207a88886c8d9d1ec81625dc6d73ee1cd0d45121f25fd9ced"
 HOTFIX_CANDIDATE_IMAGE_ID = (
     "sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196"
 )
@@ -1173,14 +1187,15 @@ def _verify_v3_pr_lineage(reviewed_pr_head_sha: str, helper_revision: str) -> No
 
     files = image_comparison.get("files")
     path = "tests/test_assistant_final_boundary_coverage.py"
-    old_line = '    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"'
-    new_line = (
-        '    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"'
-    )
     if not isinstance(files, list) or len(files) != len(HOTFIX_V3_REVIEWED_PR9_FILE_DELTA):
         raise RehearsalError("reviewed_pr_test_diff_mismatch")
     expected_file_delta = {
-        filename: (head_blob, additions, deletions)
+        filename: (
+            head_blob,
+            additions,
+            deletions,
+            "added" if _base_blob == "0" * 40 else "modified",
+        )
         for (
             filename,
             _base_blob,
@@ -1199,9 +1214,9 @@ def _verify_v3_pr_lineage(reviewed_pr_head_sha: str, helper_revision: str) -> No
         expected = expected_file_delta.get(filename)
         if expected is None:
             raise RehearsalError("reviewed_pr_test_diff_mismatch")
-        head_blob, additions, deletions = expected
+        head_blob, additions, deletions, status = expected
         if (
-            changed_file.get("status") != "modified"
+            changed_file.get("status") != status
             or type(changed_file.get("additions")) is not int
             or changed_file["additions"] != additions
             or type(changed_file.get("deletions")) is not int
@@ -1226,12 +1241,12 @@ def _verify_v3_pr_lineage(reviewed_pr_head_sha: str, helper_revision: str) -> No
         if (line.startswith("+") and not line.startswith("+++"))
         or (line.startswith("-") and not line.startswith("---"))
     ]
-    if changed_lines != [f"-{old_line}", f"+{new_line}"]:
+    if changed_lines != list(HOTFIX_V3_REVIEWED_TEST_PATCH):
         raise RehearsalError("reviewed_pr_test_diff_mismatch")
 
     base_tree = _v3_commit_tree_sha(base_commit)
     head_tree = _v3_commit_tree_sha(commits[-1])
-    base_blobs = _v3_regular_pr_file_blobs(base_tree)
+    base_blobs = _v3_regular_pr_file_blobs(base_tree, allow_pinned_absence=True)
     head_blobs = _v3_regular_pr_file_blobs(head_tree)
     expected_base_blobs = {
         filename: base_blob
@@ -1266,12 +1281,14 @@ def _v3_commit_tree_sha(commit: dict[str, object]) -> str:
     return sha
 
 
-def _v3_regular_pr_file_blobs(root_tree_sha: str) -> dict[str, str]:
-    """Resolve the six fixed PR #9 paths through bounded nonrecursive Git trees."""
+def _v3_regular_pr_file_blobs(
+    root_tree_sha: str, *, allow_pinned_absence: bool = False
+) -> dict[str, str]:
+    """Resolve the seven fixed PR #9 paths through bounded nonrecursive Git trees."""
 
     tree_cache: dict[str, dict[str, dict[str, object]]] = {}
     blob_shas: dict[str, str] = {}
-    for path, _base_blob, _head_blob, _additions, _deletions in HOTFIX_V3_REVIEWED_PR9_FILE_DELTA:
+    for path, base_blob, _head_blob, _additions, _deletions in HOTFIX_V3_REVIEWED_PR9_FILE_DELTA:
         tree_sha = root_tree_sha
         parts = path.split("/")
         for index, part in enumerate(parts):
@@ -1332,6 +1349,9 @@ def _v3_regular_pr_file_blobs(root_tree_sha: str) -> dict[str, str]:
                 tree_cache[tree_sha] = entries
             selected = entries.get(part)
             if selected is None:
+                if allow_pinned_absence and base_blob == "0" * 40 and index == len(parts) - 1:
+                    blob_shas[path] = "0" * 40
+                    break
                 raise RehearsalError("reviewed_pr_tree_invalid")
             selected_sha = selected["sha"]
             if index < len(parts) - 1:

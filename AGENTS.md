@@ -2710,3 +2710,11 @@ to the actual producer bytes: the managed-v3 14-key local build receipt is disti
 receipt profile. A synchronized digest or mocked receipt alone does not establish producer/consumer
 compatibility; exercise the fixed real receipt through the consumer without overriding its expected
 identity. Preserve the original failed checks and require exact applied-source and release gates.
+
+
+For the R-ASTRA-121 format-3 helper rebind, keep the image-source revision and reviewed PR head
+separate and admit only their fixed commit chain and complete file delta. A pinned new regression
+requires exact added-file status, zero base blob, regular-file head mode/blob and line counts;
+host review must prove absence at the base tree and the exact regular file at the head tree.
+Unexpected presence, missing head, changed mode, extra path or mismatched metadata fails closed.
+This narrow admission does not waive aggregate, native, resource, recovery, rollback or release gates.

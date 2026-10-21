@@ -20,6 +20,7 @@ import uvicorn
 import stock_probs
 from stock_probs.api import create_app
 from stock_probs.assistant.schemas import AssistantModelPolicy, AssistantTurnResult
+from stock_probs.assistant.storage import ASSISTANT_TURN_SECONDS
 from stock_probs.config import Settings
 from stock_probs.provider import FixtureProvider
 
@@ -72,9 +73,7 @@ _MODEL = AssistantModelPolicy(
 _SESSION = "browser-assistant-fixture-session-not-a-production-credential"
 _CSRF = "browser-assistant-fixture-csrf-token-not-a-production-credential"
 _GITHUB_ID = 120120120
-_EVENT_STREAM_PATH = re.compile(
-    r"^/api/v1/assistant/conversations/[^/]+/turns/[^/]+/events$"
-)
+_EVENT_STREAM_PATH = re.compile(r"^/api/v1/assistant/conversations/[^/]+/turns/[^/]+/events$")
 
 
 class _AssistantStreamAudit:
@@ -119,14 +118,16 @@ class _AssistantStreamAudit:
             error_class = type(error).__name__
             raise
         finally:
-            self.records.append({
-                "path": scope.get("path", ""),
-                "status": response_status,
-                "body_bytes": body_bytes,
-                "complete_event": complete_event_seen,
-                "body_end": body_ended,
-                "error": error_class,
-            })
+            self.records.append(
+                {
+                    "path": scope.get("path", ""),
+                    "status": response_status,
+                    "body_bytes": body_bytes,
+                    "complete_event": complete_event_seen,
+                    "body_end": body_ended,
+                    "error": error_class,
+                }
+            )
             del self.records[:-10]
 
 
@@ -189,14 +190,16 @@ class _Runtime:
         }:
             # Exercise the real FastAPI confirmation waiter without making an external request.
             exact_url = "https://example.com/research?fixture=browser-qa&view=research%2Fsummary"
-            await emit({
-                "type": "meta",
-                "data": {
-                    "model_id": context.model_id,
-                    "policy_version": _MODEL.policy_version,
-                    "context_version": context.context_version,
-                },
-            })
+            await emit(
+                {
+                    "type": "meta",
+                    "data": {
+                        "model_id": context.model_id,
+                        "policy_version": _MODEL.policy_version,
+                        "context_version": context.context_version,
+                    },
+                }
+            )
             approved_url = await self.assistant.await_webfetch_approval(context, exact_url, emit)
             if approved_url == exact_url:
                 text = (
@@ -208,7 +211,9 @@ class _Runtime:
             await emit({"type": "token", "data": {"text": text}})
             return AssistantTurnResult(status="completed")
 
-        async with httpx.AsyncClient(timeout=3.0, trust_env=False) as client:
+        # The application owns the tool/turn deadline; transport setup stays bounded locally.
+        timeout = httpx.Timeout(3.0, read=float(ASSISTANT_TURN_SECONDS))
+        async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
             response = await client.post(
                 f"{self.origin}/api/v1/assistant/internal/mcp/{context.execution_id}",
                 headers={
@@ -231,42 +236,52 @@ class _Runtime:
                 f"synthetic browser MCP call returned HTTP {response.status_code} ({error_code})"
             )
         print(
-            json.dumps({
-                "qa_stage": "workspace_summary_received",
-                "status": response.status_code,
-                "monotonic": time.monotonic(),
-            }),
+            json.dumps(
+                {
+                    "qa_stage": "workspace_summary_received",
+                    "status": response.status_code,
+                    "monotonic": time.monotonic(),
+                }
+            ),
             file=sys.stderr,
             flush=True,
         )
         if prompt == "Explain this page without selected references (delayed browser fixture)":
             # Exercise a valid asynchronous response beyond the former five-second poll.
             print(
-                json.dumps({
-                    "qa_stage": "response_delay_started",
-                    "monotonic": time.monotonic(),
-                    "delay_seconds": 6,
-                }),
+                json.dumps(
+                    {
+                        "qa_stage": "response_delay_started",
+                        "monotonic": time.monotonic(),
+                        "delay_seconds": 6,
+                    }
+                ),
                 file=sys.stderr,
                 flush=True,
             )
             await asyncio.sleep(6)
-        await emit({
-            "type": "meta",
-            "data": {
-                "model_id": context.model_id,
-                "policy_version": _MODEL.policy_version,
-                "context_version": context.context_version,
-            },
-        })
-        await emit({
-            "type": "token",
-            "data": {"text": "Synthetic research response from the local browser fixture."},
-        })
-        await emit({
-            "type": "proposed_action",
-            "data": {"action_type": "theme.set", "payload": {"theme": "dark"}},
-        })
+        await emit(
+            {
+                "type": "meta",
+                "data": {
+                    "model_id": context.model_id,
+                    "policy_version": _MODEL.policy_version,
+                    "context_version": context.context_version,
+                },
+            }
+        )
+        await emit(
+            {
+                "type": "token",
+                "data": {"text": "Synthetic research response from the local browser fixture."},
+            }
+        )
+        await emit(
+            {
+                "type": "proposed_action",
+                "data": {"action_type": "theme.set", "payload": {"theme": "dark"}},
+            }
+        )
         print(
             json.dumps({"qa_stage": "runtime_completed", "monotonic": time.monotonic()}),
             file=sys.stderr,
@@ -281,14 +296,16 @@ def _digest(value: str) -> str:
 
 def _seed_session(application, now: datetime) -> int:
     repository = application.state.repository
-    user = repository.auth_create_user({
-        "github_id": _GITHUB_ID,
-        "github_login": "browser-fixture-admin",
-        "display_name": "Browser fixture admin",
-        "role": "admin",
-        "status": "active",
-        "created_at": now,
-    })
+    user = repository.auth_create_user(
+        {
+            "github_id": _GITHUB_ID,
+            "github_login": "browser-fixture-admin",
+            "display_name": "Browser fixture admin",
+            "role": "admin",
+            "status": "active",
+            "created_at": now,
+        }
+    )
     user_id = int(user["id"])
     with repository.connect() as connection:
         cursor = connection.execute(
@@ -375,12 +392,14 @@ def main() -> None:
     user_id = _seed_session(application, assistant_now)
     application.state.service.search("ACDC", "stock", owner_user_id=user_id)
     print(
-        json.dumps({
-            "qa_stage": "fixture_started",
-            "pid": os.getpid(),
-            "port": args.port,
-            "module_path": stock_probs.__file__,
-        }),
+        json.dumps(
+            {
+                "qa_stage": "fixture_started",
+                "pid": os.getpid(),
+                "port": args.port,
+                "module_path": stock_probs.__file__,
+            }
+        ),
         file=sys.stderr,
         flush=True,
     )
