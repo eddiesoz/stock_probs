@@ -9126,3 +9126,94 @@ actual-host 1 GB, recovery/PR-bound rollback, final guide and release gates rema
 restoration remains first, followed by all seven features in the four-release plan. The overall goal
 is active; the existing 1 GB host, backups and US$15 monthly total cap are unchanged. No merge,
 production deployment, rollout, resize or email occurred.
+
+
+### R-ASTRA-121 F6 browser aggregate and synthetic MCP client contract (2026-10-21)
+
+The test-only fixture reconciliation was committed and pushed at
+`a8eee53c21cca79a2d6ddc7b2451f89f5e60be7c` on draft PR #9. Its five changed paths did not
+change the 150 packaged inputs or 53 served/export pairs bound to the `e40dbc3` application image.
+The native and active-search shutdown results retain their original application bindings.
+
+The first independent full browser attempt **Failed before collection** at the unchanged
+30-second web-server readiness guard, `18:32:10Z`–`18:32:41Z`. Startup logged that the existing
+20-second automatic-backup operation timed out, followed by Uvicorn's unsupported-lifespan warning.
+A read-only fixture-state check found migrations 1–13 and no published backup. Separate existing
+CLI migration/backup checks passed in 0.816/0.417 seconds; one focused invocation of the maintained
+startup script, with the same environment keys and unchanged guards, emitted its automatic-backup
+receipt and reached schema-13 readiness in 2.843 seconds. The original timeout's cause is **Unproven**.
+These checks justified one fresh aggregate, without changing application or readiness budgets.
+Initial failed-attempt receipt SHA-256:
+`a7cf6007738b46e6bb50ed92c1abd5b4e7ee118f36cb9de0e985d40f60ac6dc7`.
+Focused startup terminal SHA-256:
+`e9b9d68f47ecfdeb81763b5b44e6a48f7b74812611d023c44bc10341ef559d8c`.
+
+That complete independent aggregate **Failed** on clean native x86_64 head `a8eee53`,
+`18:38:02Z`–`18:56:44Z`: 200 collected, 197 executed, 190 passed, seven failed, three explicitly
+skipped, no retries or flaky results. Two skips are the M06-only performance case; the other is
+mobile's desktop-only geometry case. A 75-minute aggregate envelope accommodated the full suite;
+30-second case, five-second action, ten-second navigation and 30-second server guards were unchanged.
+The failures were desktop WebFetch cancellation (409 `turn_not_active`), three desktop forecast
+response waits, mobile real FastAPI completion, mobile repeated-forecast text and mobile superseded
+lookup/forecast response. JUnit contains three failure and four error elements for those seven cases.
+The WebFetch trace's exact failed turn has `worker_unavailable`; its cause remains **Unproven**.
+The original seven cases all passed unchanged in isolated four-desktop/three-mobile runs, which
+does not repair the aggregate or establish a cause.
+
+Independent aggregate receipt SHA-256:
+`1a1176e8e0c57a8c92a284be7342e7c26a4b5de72a4247f7f21cbdee66784a6d`, in
+`/var/tmp/r12r/f6-browser-full-a8eee53-retry-20261021T183802Z-d6405c0a-519f-4688-9728-3bc864194e17/`.
+The exact same-revision pre/post snapshots from the first attempt were reused; no fresh 416-file
+pre-dispatch rehash was performed for the retry. Launch recorded clean exact HEAD and the manifest
+digest; post-run comparison matched 416 current source/browser pins, 150 packaged inputs and all
+53 served/export pairs against those snapshots. Parent terminal-integrity review passed for this
+scope, SHA-256 `438e16702b4d9eecf7094e267138016f84a95b5d8d46fa6c59da8bd5c015bdd6`.
+The owned unit/PIDs/cgroup and port were absent/refused. Parent reparse verified 32 unique encoded
+axe attachment digests and 38 result objects with zero violations/incompletes. Those objects include
+summary/raw representations; they are not 38 independently established UI states or full-app WCAG
+acceptance. Parent scoped axe receipt SHA-256:
+`d78fd98bc4fdd0d426db712bbbbcea97fdd9508d12e724876e4d16ac3b09e034`.
+
+A bounded original-order desktop prefix then **Failed** at 21 passed/one failed: the real FastAPI
+receipt flow failed after `turn_started`, while the original target WebFetch case passed. The
+existing completion diagnostic recorded a failed turn, completed tool receipt and failed terminal
+record, with no answer; the screenshot visibly reported worker unavailable. Parent terminal SHA-256:
+`0f79b90472aee9daaefaa1288a0f6491a3833ce6a1948184e476567690e8ad69`.
+This narrowed the path without proving the original timeout/error causes.
+
+Parent review found a separate concrete synthetic-runtime contract mismatch: its internal MCP HTTP
+client imposed a three-second read bound against an application operation whose existing turn bound
+is 120 seconds. A controlled real-loopback response delayed 3.25 seconds reproduced `httpx.ReadTimeout`
+on the original fixture; the HTTP-503 control passed. The fixture now takes its read bound from the
+existing application turn constant, retaining three-second connect/write/pool limits and `trust_env=False`.
+Browser completion/assertion/case deadlines, application/native budgets and production code are unchanged.
+The owned fixture was formatted; restoring only the import, timeout setup and client keyword yields
+the exact baseline AST. Builder regression passed both delayed success and HTTP-failure controls with
+152 unchanged pins. Builder terminal SHA-256:
+`d825f1beddfa53d6d4d78cf2485919de4eb52643c4dd62fe1c7865d2edf5878a`.
+Exact baselines/red/green evidence is in
+`/var/tmp/r12r/f6-browser-fixture-client-contract-21d5cf749c2141ceb04a628635d032e8/`.
+Independent Luna fixture QA passed the same two controls and Ruff/security/format checks with
+152 unchanged inputs. Its receipt SHA-256 is
+`058ca02500f1e14e1e29797bc2cf2cd6073d7933c6c3beae6de1b6738af993d4`; parent integrated
+source/evidence review passed, SHA-256
+`b725ba8811325fd29deceb26ad84d94153cbd4b89bee7e6958cde4e80fcf8983`. The independent
+untracked-file no-index whitespace command remains **Unavailable**; parent staged verification
+separately covers the new file. The affected real FastAPI receipt flow then passed desktop/mobile
+2/2 at unchanged browser deadlines, parent terminal SHA-256
+`8787c0c69cd8b2c752b02e0a849a5ccaee676184dddd11838880a8a6a90453b9`.
+The post-repair original-order prefix **Failed** again at 21 passed/one failed, this time before
+submission: the route-only label was visible while context was still loading, and the details
+locator timed out at five seconds. Its exact context response was HTTP 200 after 5,468.009 ms;
+the underlying latency cause remains **Unproven**. No assertion deadline or response wait was
+changed to mask it. Parent terminal SHA-256 is `4fe87df3468cd6923059447be8d491b93606d8c02097e5c7f57e7d7ae45d3a5b`.
+All 417 current source/test pins, 150 packaged inputs and 53 served/export pairs stayed unchanged
+in these rechecks, with known process/cgroup/port cleanup confirmed.
+This proves the controlled fixture mismatch, not the cause or repair of all seven aggregate failures.
+
+The failed canonical and browser aggregates remain **Fail**. No unchanged provider/native trial or
+frontend build was repeated for these test-only changes. Current canonical, complete browser/security,
+authenticated genuine UI, actual combined 1 GB, recovery/PR-bound rollback, final guide and release
+gates remain open. Free Zen restoration still precedes all seven features in the four-release plan.
+The overall goal stays active; production, the 1 GB host, backups and US$15 monthly total cap are
+unchanged. No merge, deployment, rollout, resize or email occurred.

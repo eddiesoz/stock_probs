@@ -953,3 +953,12 @@ a continuously queued burst gets fair acquisition of the repository lock. Retain
 writes/reads and verify the production timeout boundary separately; do not extend that bound or
 retry failed writes to make the fixture pass. See the
 [native and canonical reconciliation ledger](../../MVP-PLAN.md#r-astra-121-f6-native-verification-and-canonical-fixture-reconciliation-2026-10-21).
+
+
+The synthetic assistant's loopback MCP client uses the application's existing turn bound for HTTP
+response reads, while retaining three-second connect/write/pool limits. The browser's completion,
+action and case assertions keep their own deadlines. A controlled real-loopback regression checks
+that a valid response beyond three seconds completes and an HTTP failure still emits no answer.
+This fixture contract does not establish the cause of an earlier browser failure; preserve failed
+aggregates beside isolated or controlled passes. See the
+[F6 browser/fixture checkpoint](../../MVP-PLAN.md#r-astra-121-f6-browser-aggregate-and-synthetic-mcp-client-contract-2026-10-21).
