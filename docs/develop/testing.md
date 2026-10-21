@@ -898,3 +898,14 @@ The complete affected rerun passed 175 tests with 518 stable input hashes; its p
 lookup entry took 2.001108 seconds, just beyond the old setup bound, then passed the unchanged
 health/denial criteria. Independent lease/guard re-review passed all 16 cases. This source evidence
 does not establish native runtime health or replace the required newly bound image run.
+
+
+The 2026-10-21 F6 reasoning candidate (`020121b`) built with 150 packaged inputs and 53
+served/export pairs unchanged, then failed its one genuine native trial: owner 0 completed a
+477-byte answer; owner 1 completed approved search/fetch but timed out without an answer. The
+native snapshot retained two reasoning parts; it does not establish the timeout cause or a repair
+causal claim. Exact owned cleanup and parent result-integrity review passed; independent functional
+acceptance is not claimed. Retain the initial receipt/comparator failures and their bounded
+corrections. See the [native-result ledger](../../MVP-PLAN.md#r-astra-121-f6-reasoning-candidate-native-result-2026-10-21).
+No unchanged native retry or full aggregate follows from this failure; the next source-only
+question is the documented MiniMax effort default under the existing interactive deadline.

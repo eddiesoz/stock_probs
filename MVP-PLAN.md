@@ -8715,3 +8715,65 @@ All native completion/shutdown, authenticated UI, security/accessibility/browser
 1 GB, recovery/rollback, final-guide and release gates remain open. The overall goal stays active;
 Zen restoration precedes all seven feature releases. Production, the 1 GB host, backups and US$15
 total monthly cap remain unchanged; no merge, deployment, rollout, resize or email occurred.
+
+
+### R-ASTRA-121 F6 reasoning candidate native result (2026-10-21)
+
+The reviewed reasoning-continuation repair was committed and pushed at
+`020121b9b07229b1a7b64bcc5816b07f26c04636` on draft PR #9. Its Linux/amd64 image
+`sha256:597c92484e46971d53f83fbb98f608f66a9a68a92615fc0b8962672638abf7fa`
+passed build/source/stage binding, with context
+`433df31819590cc080183aa66260db0aca3266328906564064d0b7ba5033a33c`.
+All 416 source/browser inputs, 150 packaged inputs and 53 served/export pairs remained unchanged
+through the native trial. The protected production and recovery images were retained; exact
+unused-candidate retirement passed before this build. BuildKit was verified stopped at its recorded
+generation with its worker cgroup absent before the serialized native run.
+
+The required independent prelaunch identity/binding review passed. Its first receipt has a
+preserved metadata **Fail** for a guessed receipt path and truncated copied digests; the v3
+supplement directly verified the actual 681-byte, 14-field managed receipt and exact path/hash.
+The original false substring-count comparator is also preserved; sequential application of all
+12 constant substitutions reconstructs the launcher byte-for-byte. No launcher logic changed.
+The parent build verifier's compound assertion failure remains recorded separately; the subsequent
+exact stopped-generation/cgroup readback passed without rebuilding or repeating the stop.
+
+The one genuine two-owner native attempt **Failed** (unit exit 2, child exit 1),
+`2026-10-21T14:48:34.515923Z`–`14:50:48.719857Z`. Owner 0 completed in 82.652 seconds
+with one 477-byte assistant answer and a matching workspace-summary receipt. Owner 1 reached the
+search preview at 72.428 seconds, approval at 82.270, eight interaction-source events at 85.592,
+fetch preview at 113.754, approval at 114.335 and a fetch source at 115.201 seconds, then timed out
+at 121.215 seconds without an answer. The producer's owner evidence reports nine native search
+sources and one fetch source; source attribution was not independently verified. Both owners'
+selected-model predicates matched, but the literal model identity is not retained. The native
+active-search scan acknowledgement was true, exercising the prior probe ordering repair's path;
+no active-kill run occurred. Both conversation deletes finished at HTTP 200; owner 0 required
+four attempts after three pending responses.
+
+The retained native timeout snapshot includes two reasoning parts and three completed tools;
+this is evidence of native reasoning state, not proof that the repair caused the changed outcome.
+Anonymous timing rows include one completed turn and one timed-out turn; they are not owner-mapped.
+The timed-out row's fourth provider request began at 114.662 seconds and its first sanitized
+chunk arrived at 119.403 seconds. Its final stream lifecycle is unresolved at timeout. App health
+was ready in all 104 samples; worker samples were 100 ready, three starting and one unavailable.
+The local 768 MiB failure sample peaked at 499,646,464 bytes with zero high/max/OOM deltas.
+Observed CPU throttling does not establish cause or actual combined 1 GB acceptance.
+
+Parent result-integrity review passed, preserving the functional **Fail** and cause **Unproven**.
+The exact five container/name, volume and network/name cleanup observations, allocated loopback-port
+refusal, helper absence and empty/absent unit cgroup passed. Two cleanup-verifier comparator failures
+are retained: a daemon message-shape mismatch and whitespace-only stdout; the final review classified
+the saved exact responses without another native trial or cleanup mutation. Native packet:
+`/var/tmp/r12r/f6-native-020121b-5227dc5d60ec42f4874d64dd81d873c3/`;
+parent terminal SHA-256 `c64a83c17974603e954f6cf7c260962dbe79b3b7a1d7e0eaed680f91e0f49aff`.
+Independent prelaunch correction v3 SHA-256 is
+`9334fcd5aa12c85527a40bfae50da1c069a8b9e8f554e0440169f0cd757e06d4`.
+No independent functional acceptance is claimed for this failed trial.
+
+The next bounded diagnosis is the model's documented thinking-depth control: MiniMax documents
+that M3.1 Flash defaults to `reasoning_effort=max` and supports lower effort with lower latency;
+the current compatible bridge sends no effort field. This is a source/documentation hypothesis,
+not the native timeout cause or an authorized unchanged trial retry. No full aggregate was repeated.
+All completion/shutdown, authenticated UI, security/accessibility/browser, canonical, actual-host
+1 GB, recovery/rollback, final-guide and release gates remain open. The overall goal stays active;
+free Zen restoration precedes all seven feature releases. Production, the 1 GB host, backups and
+US$15 total monthly cap remain unchanged; no merge, deployment, rollout, resize or email occurred.
