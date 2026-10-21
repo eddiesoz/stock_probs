@@ -912,3 +912,14 @@ acceptance is not claimed. Retain the initial receipt/comparator failures and th
 corrections. See the [native-result ledger](../../MVP-PLAN.md#r-astra-121-f6-reasoning-candidate-native-result-2026-10-21).
 No unchanged native retry or full aggregate follows from this failure; the next source-only
 question is the documented MiniMax effort default under the existing interactive deadline.
+
+
+The F6 low-effort candidate (`004c163`) completed both genuine free Zen answers, including approved
+native search and guarded fetch, but its complete native aggregate failed on two health transport
+observations. Unavailable observations carry no schema value; do not describe the resulting schema
+guard failure as an observed wrong schema response. Preserve the three-second observer, existing
+readiness assertions and original 120-second turns while diagnosing the specific blocking path.
+The exact five-object cleanup and parent terminal binding review passed. See the
+[native-result ledger](../../MVP-PLAN.md#r-astra-121-f6-low-effort-candidate-native-result-2026-10-21)
+for bounds, original failures and remaining release gates. Both answers do not establish aggregate
+reliability, authenticated browser acceptance or actual combined 1 GB host acceptance.

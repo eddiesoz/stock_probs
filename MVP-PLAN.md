@@ -8817,10 +8817,73 @@ These are scoped source/test results only.
 
 Exact five-file baselines, public-source provenance, original failed results and frozen JUnit are
 under `/var/tmp/r12r/f6-minimax-effort-contract-36fccd4312f44052a8914cce3bda2600/`.
-No image or native trial has run for this effort change; a fresh image and a discriminating native
-check follow source review. Unchanged original frontend evidence is reused only for its bound inputs;
+At this source checkpoint no image or native trial had run for this effort change. The following
+004c163 candidate ledger records the subsequent build and failed aggregate. Unchanged original
+frontend evidence is reused only for its bound inputs;
 the failed full browser aggregate remains retained. Completion/shutdown, authenticated UI, security,
 accessibility/browser, canonical, actual-host 1 GB, recovery/rollback, final-guide and release gates
 remain open. The overall goal stays active; free Zen live restoration precedes all seven feature
 releases. Production, the existing 1 GB host, backups and US$15 total monthly cap remain unchanged;
 no merge, deployment, rollout, resize or email occurred.
+
+
+### R-ASTRA-121 F6 low-effort candidate native result (2026-10-21)
+
+The clean pushed `004c1631cffd57f705bbc874d7afb646a0f058cb` candidate built as
+`sha256:152679ac90bca53e3779c9b966ce488989500340b9295c536d89290ae977eb59`, context
+`fea6750fc79e92f412a4f6d28f27240855680586957d53b878b008aff6c50d19`.
+Build/source/stage review passed with 416 source/browser inputs, 150 packaged inputs and 53
+served/export pairs unchanged. The managed builder stopped with the same generation before the
+native run. Original prelaunch comparator/setup and command-metadata failures are preserved;
+the final independent review and exact-command supplement/correction passed their narrow scopes.
+No provider trial was repeated to resolve that metadata.
+
+The one authorized real free-Zen native trial **Failed** at aggregate exit 2. Both concurrent
+owners completed answers: 415 and 937 bytes. Both matched the selected
+`opencode-zen/minimax-m3.1-flash-free` model and owner-scoped workspace summary; the second owner
+completed exact-query approved native search and the approved guarded fetch. The projection recorded
+nine search-attributed sources and one fetch source; independent source attribution is not claimed.
+Cross-owner conversation and forged internal MCP requests returned 404, and both conversation
+deletions returned HTTP 200 on their first attempts. Anonymous timing rows completed in 59.863 and
+96.325 seconds; no owner mapping is inferred. Native driver window:
+`2026-10-21T15:44:46.545521Z`–`2026-10-21T15:46:32.512239Z`.
+
+The aggregate failed its app-readiness/schema guards after two transport failures in 76 health
+samples (74 ready, two unavailable). The observer replaces failed requests with unavailable samples
+whose schema is `None`; no returned wrong schema, non-200, invalid JSON or rejected app schema was
+observed. The fixed observer uses a three-second HTTP timeout. The exact transport subtype, timing
+and cause remain **Unproven**. One closed startup warning recorded `worker_not_ready`; it does not
+establish the health failures' cause. Both completed model answers are meaningful functional
+progress, not aggregate reliability or release acceptance, and do not prove that external Zen
+honored the low-effort field or that the earlier timeout cause was repaired.
+
+The local 768 MiB sample peaked at 469,233,664 bytes with zero high/max/OOM/OOM-kill deltas.
+CPU throttling is diagnostic, not causal proof or actual combined 1 GB host acceptance. Exact
+container/name, volume, network/name, loopback refusal, helper PID and unit cgroup cleanup passed.
+Parent terminal integrity review passed; all 416/150/53 bindings and eight launcher inputs remained
+unchanged at terminal review. Packet:
+`/var/tmp/r12r/f6-native-004c163-af17e30ebad744fbb21ef54b734873b0/`;
+parent terminal SHA-256 `c0bf638b19bb65b3ef15429af78f2e3c6dae79ce5c22907d25a166e8f367e7c0`.
+Independent terminal integrity review passed its declared read-only scope, including fresh exact
+cleanup queries and current image metadata; receipt SHA-256
+`d59cff2c1660d52772f7c1758cbe691c7fd0f2fe5286034fdedd566edd8c27e4` under
+`/var/tmp/r12r/f6-native-004c163-integrity-review-7c180649-259f-4724-9b19-888b13700430/`.
+Its 416-input review reconciles only these two post-terminal documentation changes with saved exact
+baselines. The review labels native attempt argv unavailable in its named terminal/stdout inputs;
+parent `parent-authorized-launch.json` separately records the actual argv, and
+`parent-launch-result-v1.json` records successful dispatch. No delivered receipt is rewritten.
+Parent integrated evidence review passed for this scope; the native aggregate remains **Fail**.
+
+The next bounded source question is synchronous storage/readiness contention: readiness performs
+repository counts in a sync handler, while asynchronous assistant turn admission and event
+persistence still call synchronous storage. The public async event stream also performs synchronous
+session authentication and storage reads before each poll and emitted event. The next scoped
+reproduction belongs in the existing runtime-event HTTP tests, holding that storage read while
+checking unrelated health/readiness. This is a source observation, not a demonstrated
+native cause or an authorized assertion/deadline relaxation. Reproduce the specific blocking path
+before any repair; do not repeat this native trial unchanged or launch a broad aggregate against a
+known failed runtime gate. Required current-image shutdown, authenticated UI, complete security,
+accessibility/browser, canonical, actual-host 1 GB, recovery/rollback, final guide and release gates
+remain open. The overall goal stays active; free Zen restoration precedes all seven feature
+releases. Production, the 1 GB host, backups and US$15 total monthly cap remain unchanged; no merge,
+deployment, rollout, resize or email occurred.
