@@ -35,6 +35,17 @@
         "disclosure": "OpenCode documents Zen models as hosted in the US and EU. For LongCat, OpenCode says the provider follows zero-retention and does not use your data for model training; LongCat is not listed among the privacy exceptions on the reviewed date. This app cannot verify per-request handling.",
         "cost_disclosure": "OpenCode's pricing table currently lists input, output, and cached reads as free; cached writes are not listed. Pricing and availability can change. This app does not enable paid fallback or automatic top-ups."
       },
+      "minimax-m3.1-flash-free": {
+        "display_name": "MiniMax M3.1 Flash Free",
+        "free": true,
+        "training": false,
+        "data_collection_allowed": false,
+        "data_collection_default": false,
+        "available": true,
+        "route": "openai-compatible",
+        "disclosure": "OpenCode documents Zen models as hosted in the US and EU. For MiniMax M3.1 Flash Free, OpenCode says the provider follows zero-retention and does not use your data for model training. This app cannot verify per-request handling.",
+        "cost_disclosure": "OpenCode lists this model as temporarily free for input, output, and cached reads; cached writes are not listed. Pricing and availability can change. This app does not enable paid fallback or automatic top-ups."
+      },
       "big-pickle": {
         "display_name": "Big Pickle",
         "free": true,
@@ -111,7 +122,7 @@
       "nemotron-3.5-lightning-free": "trial terms prohibit personal or confidential data",
       "nemotron-3.5-super-vl-free": "trial terms prohibit personal or confidential data"
     },
-    "native_acceptance_model_id": "longcat-2.5-preview-free"
+    "native_acceptance_model_id": "minimax-m3.1-flash-free"
   },
   "providers": [
     {

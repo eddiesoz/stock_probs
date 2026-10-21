@@ -806,7 +806,7 @@ A native run on the exact `9ddd82f` image passed readiness, then failed at `mode
 with `reviewed_model_not_in_inventory` before either owner started a turn. Preserve that Fail.
 A bounded public inventory GET and the maintained catalog parser confirmed that SpaceBunny is
 absent while the already reviewed LongCat free/no-training row remains available. The explicit
-`zen.native_acceptance_model_id` now selects LongCat; missing or ineligible selections still fail
+`zen.native_acceptance_model_id` initially selected LongCat; missing or ineligible selections still fail
 closed. The six-case Super VL regression first failed on the missing NVIDIA trial exclusion;
 it covers the native, Console, and custom identities on both canonical Zen routes.
 
@@ -815,3 +815,11 @@ cached `9ddd82f` image build does not accept the later catalog bytes. Bind a fre
 another native functional run, and complete that run before the mandatory release aggregate.
 The full-200 browser Fail and remaining resource, security, rollback, guide, and live-owner
 acceptance gates remain separate. Detailed receipts are in the dated F6 MVP-plan checkpoint.
+
+The newly bound `39d9c20` image later passed readiness but failed its one two-owner native run:
+both turns timed out without answers, and only one completed the summary/search portion. A closed
+diagnostic recorded one anonymous upstream HTTP 503; it does not prove both timeout causes. The
+next catalog candidate adds the currently documented MiniMax M3.1 Flash Free model and explicitly
+selects it for the same full native test. LongCat remains reviewed and selectable; no automatic
+fallback is added. The new row uses the existing OpenAI-compatible adapter and requires the
+existing privacy and billing acknowledgements. A fresh image and native result remain required.

@@ -280,6 +280,12 @@ prohibition. No new model permission or data-collection consent is introduced by
 selector update. See the [current provider terms](https://opencode.ai/v2/docs/console/models/)
 and the dated F6 checkpoint in the [MVP plan](../../MVP-PLAN.md).
 
+The same dated review adds MiniMax M3.1 Flash Free to the curated free/no-training choices using
+the existing OpenAI-compatible adapter. OpenCode documents zero retention and no training for
+this model; the app cannot verify per-request provider handling. Existing explicit privacy and
+billing acknowledgements remain required, and no data-collection permission or automatic
+fallback is introduced. A failed LongCat trial is retained separately from this model review.
+
 The following E167–E777 records preserve earlier scoped findings and failures. They are historical;
 the E847/E849/E850 scopes above supersede only the bindings and checks they explicitly cover.
 

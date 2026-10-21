@@ -8231,3 +8231,67 @@ release gates remain pending. Preserve unchanged passing evidence only within it
 bindings. The last recorded production read in this thread was the unchanged `5ad2c3f` release,
 schema 13, ready/invited and loopback-only; no production mutation, merge, deployment, rollout,
 resize or email occurred. The existing 1 GB host, backups and US$15 monthly total cap remain.
+
+## R-ASTRA-121 F6 LongCat native failure and next free-model review (2026-10-21)
+
+The preceding catalog repair passed independent review with 201 provider tests and 17 selected
+native-selector tests, plus lint/security/format and documentation checks. It was pushed to draft
+PR #9 at `39d9c20c3a75811436499795ae690deac01416e0`. Independent receipt SHA-256:
+`9ca91c8f86eb0f56ba87cdf0ac25f20a4ec7812bcbacece3f39e51e3ddac64b5`.
+
+Retirement of the obsolete `941c8d89` candidate retained the production/recovery images. Two
+attempts **Failed**: the first expected one tag on the two-tag recovery image and made no change;
+the second removed only the target with `--no-prune`, then incorrectly invoked full ledger
+validation before acknowledgement. The second stopped before receipt publication/acknowledgement.
+A separately reviewed continuation verified exact target absence, both protected images, the
+unchanged old ledger, and the protected-production pointer, then exclusively published the exact
+single-ID receipt and used the maintained acknowledgement. No removal was repeated or ledger
+manually edited. The receipt SHA-256 is
+`105423b4215c036c8fd480d790ec6cc56953bef79add32b65956e956f300cd6d`; independent postcondition
+review SHA-256 is `ff6b404ca43b58ccc69b72999390b5781ca698e7be7a5398ac099ae6e07f2665`.
+Original removal stdout is **Unavailable**; both failed attempts remain preserved.
+
+The first exact-`39d9c20` image build **Passed** at its original limits for Linux/amd64 build,
+source/context and staging scope: image
+`sha256:7d26b09a933606438e7592f69403ded7aa564d192f8da5451b34ee186bb3dfb0`, context
+`43a063cab825fd131927c3de213a918645a40d017e32009d2f879bfafe107eb9`, 416 source/browser
+inputs, 150 context inputs, and 53 served/export pairs. Managed receipt SHA-256:
+`f33b87a8c0fad644a268db0b908909ba22f680a26f25368f4484905c5cfe6071`; parent terminal
+SHA-256: `53a425c870b0e37bd9b144f1510da2cb52442ec94ec077ae8e283b5f9447af7b`. An initial
+parent verification misread an empty terminal cgroup path; that setup result is **Unavailable**.
+The corrected exact-unit cgroup check passed. Builder stop passed for the same generation, with
+its worker cgroup absent. Independent build/launcher-binding review passed, SHA-256
+`bb92228f888341c096082c37856abc94da7f7ce68ded755f293682ae66b6aeeb`.
+
+The one native trial **Failed**: both model-selection predicates matched, but neither owner
+answered. Owner-indexed host-monotonic durations were 121,560 and 121,686 ms. Owner 0 had no
+summary/search/fetch receipt; owner 1 completed one matching summary receipt and received eight
+approved native search sources, but did not reach WebFetch approval/source. One anonymous
+upstream-stream HTTP 503 was recorded. Separate anonymous timing rows are not mapped to owners;
+the cause of both timeouts remains **Unproven**. Both conversation deletes returned HTTP 200.
+Exact declared container/network/volume and unit-cgroup cleanup passed; allocated-port replay is
+**Unavailable**, while the original trap recorded refusal. The diagnostic-only 768 MiB sample
+peaked at 516,001,792 bytes, with zero high/max/OOM deltas; CPU throttling proves no cause or
+actual combined 1 GB acceptance. No retry or kill ran. Parent terminal SHA-256:
+`8cd3298835f085f2808e62bd0455a4926a8f886c7010ffa1da0876bf0e45259b`; independent terminal
+integrity review SHA-256: `c8556da6590ba4227961fff33376c261fd19539118302c4fe539796d9cd80238`.
+
+Current official model terms describe MiniMax M3.1 Flash Free as temporarily free, zero-retention
+and unused for training, with the existing OpenAI-compatible Chat Completions route. A bounded
+public inventory GET returned HTTP 200 and 86 IDs including this model; the pre-repair maintained
+parser omitted it because it was not curated. The next candidate adds that reviewed row and
+explicitly selects it for the same full native test. LongCat remains reviewed and selectable;
+no automatic fallback, data-collection consent, paid provider, account or top-up is added. The
+official status page named current DeepSeek/GLM free-model incidents, and a historical OpenCode
+collaborator attributed earlier LongCat failures to upstream outages; neither establishes this
+trial's complete cause. Public review and owned pre-edit bytes are in
+`/var/tmp/r12r/f6-minimax-free-policy-992ef11f261b4055a686a4d782b17fca/`.
+
+The new policy's builder checks passed 201 provider tests, 17 selected native-selector tests,
+documentation validation, 177-file/five-change coverage and diff checks. Independent review, a
+fresh image and the native result remain pending at this authored checkpoint. Full
+browser/canonical, current-image shutdown, complete security,
+actual combined 1 GB, PR-bound recovery/rollback, final guide, authenticated live-owner answers
+and release gates remain open. The free Zen repair still precedes all seven feature releases.
+The 1 GB host, backups and US$15 monthly total cap are unchanged; no production mutation, merge,
+deployment, rollout, resize or email occurred.
