@@ -8155,3 +8155,79 @@ SHA-256 dd14e4f7082ddf5e5ba3dcfe0f12869ca4e537aa317de0143137cb3af071f56d. Indepe
 change the recorded full-200 **Fail** or establish a full-browser pass. Native-host,
 current-canonical, rollback, resource, and release gates remain pending; no deployment,
 merge, email, or resize occurred.
+
+
+## R-ASTRA-121 F6 headless build and current-model checkpoint (2026-10-21)
+
+The free Zen/OpenCode restoration remains the first dependency before the seven-feature release
+plan. The parent implemented the bounded build repair directly and used Luna xhigh only for
+required independent review. No release or completion of the overall goal is claimed.
+
+The full-200 browser run at pushed `a0bbfec` **Failed**: report counts were 71 passed, 12 failed,
+and 117 skipped, including 116 rows with no result and one interrupted result; the expected skip
+identities were not established. The first failing Markets reopen case separately **Passed**
+1/1 without source changes. This isolated result does not repair the aggregate or establish its
+cause. Source/context/stage bindings and exact owned cleanup passed. Independent terminal review:
+`/var/tmp/r12r/f6-independent-terminal-review-20261021T051617Z-a64f62ba/receipt.json`, SHA-256
+`c4b7970b8bb0339cc3094a0b1a83a0d0fce54abdafc6c7a88d1ff7831485df8d`.
+
+The fresh `a0bbfec` image build **Failed** while compiling OpenCode's embedded Vite interface:
+its child exited 137/SIGKILL and BuildKit reported `cannot allocate memory`. The exact killed PID
+and cgroup cause remain **Unproven**. Typed local reservation recovery passed. The narrow repair
+uses pinned upstream `--skip-web-ui`, retaining native CLI/API/model/MCP/search code and the
+pre-compilation security suites. Parent and independent focused suites each passed 24 tests,
+with lint, format, and documentation checks. Independent source-review receipt:
+`/var/tmp/r12r/f6-headless-native-independent-review-20261021T0547Z-8cafe842-a41f-4744-98c3-b5b50f26570d/independent-review-receipt.json`,
+SHA-256 `cf30d337b654f861540a4df602ce738550eadeefc1e253c0c5f1eef26fddd0a5`.
+Its exact per-check UTC fields are **Unavailable**; the review was bounded after 05:46:18Z and
+completed by 05:51:10Z. The initial reviewer pytest terminal was unavailable; its recorded repeat
+passed with JUnit evidence. The repair was pushed at `9ddd82f2334a6f46a3bf3c89c6dd9fc589dc8aea`.
+
+The first `9ddd82f` build **Failed** at its original 900-second limit during final OCI export.
+Exact BuildKit logs show all prior vertices complete or cached, including native compilation in
+512.1 seconds. Typed recovery and independent integrity review passed; one cached retry retained
+the same limit. It **Passed** at 06:17:09Z for Linux/amd64 build/source/context/stage scope only:
+image `sha256:941c8d89943c9d5af17aa56fb175d3e6c0f5067b8e8f7491483fcc32f30c28dd`, context
+`be93341cc627d3baef554cdb0b940860b0b84b77d61ecb52b431974958e034bd`, 416 source/browser
+entries, 150 context entries, and 53 served/export pairs. Managed receipt SHA-256
+`031e81cabd5e42f8398045994e41a2229cb227699530266894b5112b64ab69ee`; parent terminal
+`/var/tmp/r12r/f6-image-9ddd-cached-788bad38beaa4fe788bb987bda948092/parent-build-terminal.json`,
+SHA-256 `467dedbb0a7080f15fa65255872f61dbbb623f8c5d5fe1db765cea53c8943e0d`. Independent
+build/launch-binding review SHA-256
+`92e9f132120a86b6d7765cfece5ed74eef8cc18baedc96ddc79b3c3bfee65f55`. Owned BuildKit
+was stopped in the same generation, with its worker cgroup absent, before the native trial.
+The phase observer's `malformed_frame` result remains **Unavailable**; no phase aggregate is
+inferred from it. Both preceding build failures remain preserved.
+
+The one native functional trial on that image **Failed** at `model_inventory` (HTTP 200,
+`reviewed_model_not_in_inventory`). App/worker readiness passed in 11.145 seconds at schema 13;
+both owners stayed `not_started`, with no answer, model event, search/fetch source, or approval.
+No model/tool request or trial retry occurred. Exact fixture container, network and volume
+cleanup passed; nine other prefixed volumes were left untouched. Exact allocated-port replay is
+**Unavailable**, while the original cleanup trap recorded refusal. Parent terminal:
+`/var/tmp/r12r/f6-native-9ddd-85d5609a554d4be4851ddc43845bcbe6/parent-terminal.json`, SHA-256
+`c19be886b15ed51abfcac0b399d1cd4ea74aafb25938b86dda9f84dd6c0088b7`. Independent integrity
+review SHA-256 `451fbfc812ad91307b75765a6ff611363eed66e7ff9c67cc2e0331639eaf1d6f` and
+manifest supplement SHA-256 `1a755b73164021fe65ff94c906dcc88d728738027582284718aef28fd4ad1de6`
+preserve this functional Fail. The first review writer inherited umask 0002 and reset to 0022
+before file creation; the supplement started at 0022. Private artifact modes were 0700/0600.
+
+A subsequent read-only public Zen GET returned 86 model IDs. The maintained parser returned
+three reviewed app rows, of which LongCat met the native acceptance free/no-training/no-data-
+collection predicates. SpaceBunny was absent. Current official terms continue to describe
+LongCat as free, zero-retention, and unused for training. The candidate policy explicitly selects
+that existing reviewed LongCat row and adds the newly documented Nemotron 3.5 Super VL trial
+exclusion; existing consent permissions and versions are retained. The six-case new exclusion
+regression failed in all six cases before repair. The applied-policy builder suite passed 201 provider
+tests and 17 selected native-selector tests, plus Ruff lint/security/format, documentation validation,
+177-file/six-change documentation coverage and diff checks. Independent review and a newly bound
+image remain pending at this authored checkpoint; the `9ddd82f` image does not accept later policy
+bytes. Public catalog evidence is in
+`/var/tmp/r12r/f6-native-9ddd-85d5609a554d4be4851ddc43845bcbe6/current-zen-diagnosis-v1.json`.
+
+Current-image native answers, shutdown, actual combined 1 GB resources, canonical/full browser,
+complete security, PR-bound recovery/rollback, final guide, authenticated live-owner answers and
+release gates remain pending. Preserve unchanged passing evidence only within its original exact
+bindings. The last recorded production read in this thread was the unchanged `5ad2c3f` release,
+schema 13, ready/invited and loopback-only; no production mutation, merge, deployment, rollout,
+resize or email occurred. The existing 1 GB host, backups and US$15 monthly total cap remain.

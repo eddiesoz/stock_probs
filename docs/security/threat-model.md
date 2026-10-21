@@ -272,6 +272,14 @@ application routes, session-owned tool calls, typed tools, bounded request/stora
 loopback callbacks, and a worker UID separate from the FastAPI process. These are source/design
 observations, not independent security acceptance.
 
+The 2026-10-21 Zen terms review retains the existing free/no-training LongCat policy and adds
+`nemotron-3.5-super-vl-free` to the known NVIDIA trial exclusions. These restrictions follow
+the upstream model identity on the exact Zen routes, including Console and compatible custom
+profiles. Administrator review or user consent cannot override the personal/confidential-data
+prohibition. No new model permission or data-collection consent is introduced by the acceptance
+selector update. See the [current provider terms](https://opencode.ai/v2/docs/console/models/)
+and the dated F6 checkpoint in the [MVP plan](../../MVP-PLAN.md).
+
 The following E167–E777 records preserve earlier scoped findings and failures. They are historical;
 the E847/E849/E850 scopes above supersede only the bindings and checks they explicitly cover.
 

@@ -1905,6 +1905,26 @@ def _configured_provider_manager(
     return manager, catalog
 
 
+@pytest.mark.parametrize("provider_id", ("opencode-zen", "opencode-console", "custom"))
+@pytest.mark.parametrize(
+    "endpoint", ("https://opencode.ai/zen/v1", "https://opencode.ai/inference/openai/v1")
+)
+def test_nemotron_super_vl_trial_exclusion_cannot_be_overridden_by_provider_review(
+    tmp_path: Path, provider_id: str, endpoint: str
+) -> None:
+    """The NVIDIA trial restriction applies to the upstream identity on either Zen route."""
+
+    manager = AssistantProviderManager(
+        SimpleNamespace(data_dir=tmp_path, auth_session_secret="t" * 64),
+        vault_dir=tmp_path / "assistant-vault",
+    )
+
+    assert (
+        manager._known_model_exclusion_reason(provider_id, endpoint, "nemotron-3.5-super-vl-free")
+        == "trial terms prohibit personal or confidential data"
+    )
+
+
 @pytest.mark.parametrize(("native_model_id", "reason"), _zen_exclusion_fixtures())
 @pytest.mark.parametrize(
     "endpoint",

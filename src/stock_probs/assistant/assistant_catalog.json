@@ -9,7 +9,7 @@
     "display_name": "OpenCode Zen (free, no-training models)",
     "models_url": "https://opencode.ai/zen/v1/models",
     "terms_url": "https://opencode.ai/docs/zen/",
-    "terms_reviewed_at": "2026-10-07",
+    "terms_reviewed_at": "2026-10-21",
     "policy_version": "zen-free-privacy-2026-10-07-v3",
     "privacy_policy_version": "zen-free-privacy-2026-10-07-v3",
     "billing_policy_version": "zen-temporary-free-billing-2026-10-06-v2",
@@ -108,9 +108,10 @@
     },
     "excluded_models": {
       "nemotron-3-ultra-free": "trial terms prohibit personal or confidential data",
-      "nemotron-3.5-lightning-free": "trial terms prohibit personal or confidential data"
+      "nemotron-3.5-lightning-free": "trial terms prohibit personal or confidential data",
+      "nemotron-3.5-super-vl-free": "trial terms prohibit personal or confidential data"
     },
-    "native_acceptance_model_id": "space-bunny-free"
+    "native_acceptance_model_id": "longcat-2.5-preview-free"
   },
   "providers": [
     {

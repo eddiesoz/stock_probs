@@ -799,3 +799,19 @@ original theme-parity and white-background assertions and its existing 90-second
 This makes the browser state transition explicit; it is not a product CSS change or a confirmed
 root cause for the earlier aggregate-only print mismatch. The original single-case reproduction
 passed unchanged, while that earlier complete browser aggregate remains failed.
+
+### F6 current-model acceptance selection (2026-10-21)
+
+A native run on the exact `9ddd82f` image passed readiness, then failed at `model_inventory`
+with `reviewed_model_not_in_inventory` before either owner started a turn. Preserve that Fail.
+A bounded public inventory GET and the maintained catalog parser confirmed that SpaceBunny is
+absent while the already reviewed LongCat free/no-training row remains available. The explicit
+`zen.native_acceptance_model_id` now selects LongCat; missing or ineligible selections still fail
+closed. The six-case Super VL regression first failed on the missing NVIDIA trial exclusion;
+it covers the native, Console, and custom identities on both canonical Zen routes.
+
+The headless native builder and its scoped 24-test review remain unchanged. Its successful
+cached `9ddd82f` image build does not accept the later catalog bytes. Bind a fresh image before
+another native functional run, and complete that run before the mandatory release aggregate.
+The full-200 browser Fail and remaining resource, security, rollback, guide, and live-owner
+acceptance gates remain separate. Detailed receipts are in the dated F6 MVP-plan checkpoint.
