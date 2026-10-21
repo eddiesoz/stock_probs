@@ -962,3 +962,13 @@ that a valid response beyond three seconds completes and an HTTP failure still e
 This fixture contract does not establish the cause of an earlier browser failure; preserve failed
 aggregates beside isolated or controlled passes. See the
 [F6 browser/fixture checkpoint](../../MVP-PLAN.md#r-astra-121-f6-browser-aggregate-and-synthetic-mcp-client-contract-2026-10-21).
+
+
+Held-await authorization fixtures should send requests through their already-entered lifespan
+TestClient, setting the existing helper's session/CSRF cookies before the timed request. This keeps
+portal startup outside the held-await entry check without extending its deadline. Preserve every
+authorization rejection, consent/provider side-effect assertion and release-in-finally operation.
+A passing subset does not repair a failed aggregate or prove a latency cause. Keep host startup
+admission separate from later reserve readings, and verify restoration of the original image and
+rollout mode independently of a failed pair trial. See the
+[F6 host/fixture checkpoint](../../MVP-PLAN.md#r-astra-121-f6-host-reserve-failure-and-held-await-fixture-setup-2026-10-21).

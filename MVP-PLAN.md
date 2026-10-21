@@ -9217,3 +9217,70 @@ authenticated genuine UI, actual combined 1 GB, recovery/PR-bound rollback, fina
 gates remain open. Free Zen restoration still precedes all seven features in the four-release plan.
 The overall goal stays active; production, the 1 GB host, backups and US$15 monthly total cap are
 unchanged. No merge, deployment, rollout, resize or email occurred.
+
+
+### R-ASTRA-121 F6 host reserve failure and held-await fixture setup (2026-10-21)
+
+The clean `7f66bc6` canonical attempt **Failed** at exit 2, `19:32:18Z`–`19:53:24Z`:
+585 Python passes, two failures, four deselected and 15 warnings. One deliberate SIGINT stopped
+that known-failing run; Python completion, final coverage and the completion contract are unavailable.
+Documentation and the 75 frontend checks are subchecks only. The two failures did not reach their
+held inventory/provider await within five/three seconds. The exact two-case diagnostic, all eight
+related authorization cases with and without coverage, and the original ordered 163-case prefix
+subsequently passed unchanged. This does not rewrite the aggregate or prove its cause. The prefix
+had no contemporaneous hash for `tests/test_api.py`; preserve that binding limitation. Separate
+permission/syscall and device-wide I/O observations establish neither the original failure's cause
+nor a product defect. Canonical receipt SHA-256:
+`fa4289201c68bbefc18d6654563d44678b2a8fab0aebaab9ad38012fe45ccda6`;
+parent terminal SHA-256 `66e2e6810b592d8ca0fa148ee36599f91d3d14dd42d4a1e9e1699d544f1c75b9`.
+
+The two held-await fixtures now send their request through the already-entered lifespan TestClient.
+They set the same session/CSRF cookies and retain the consent helper's authentication assertion,
+rather than constructing a second client whose portal starts during the timed request. All original
+13 assertion nodes, held-await/release operations and timeout arguments remain unchanged. No
+application, provider or auth source changed. Parent AST review verifies that only the two named
+functions changed; the original timeout cause remains **Unproven**. The eight selected cases passed
+with coverage instrumentation (zero failures/errors/skips), and independent Luna verification also
+passed all eight with 147 unchanged declared tracked source/test/config pins. These subset passes
+are not a canonical result. Parent packet:
+`/var/tmp/r12r/f6-auth-managed-portal-b262707306e34999920e77f26e4bdf42/`;
+independent review SHA-256 `c6afbf24d7352b44d1143528f9f74fb0b53676dcd0f47093e335dfcdf9c648b2`;
+covered terminal SHA-256 `ed776faa605ba5657675b3a67372d086ac5deaf7021ce7270bc0949ca210952a`;
+source review SHA-256 `f0fca3551c4caa4d2a1f11c3567c73236de93a65dfef351117fde52638ac54a6`.
+Fresh comparison retained all 150 `e40dbc3` image inputs and 53 served/export pairs, so the existing
+image, genuine free-Zen native and separate shutdown evidence keep their original scoped bindings.
+A fresh mandatory aggregate remains pending.
+
+In separate helper PR #11, exact head `c38f6a4065a0d86f2890d9d616d8a3ef2676dae0` installed the
+reviewed helper bundle after independent 140-case bootstrap QA and exact installed-40ece predecessor
+validation. The same candidate/recovery archive bytes were bound to manifest
+`9c26eb269bf72502c55c2e1dee8db96dca89560a2ec3796f64af7d25b270ebf0`.
+The actual-host pair attempt **Failed**, `21:37:42Z`–`21:40:57Z`, with
+`host_memory_reserve_breached`: temporary-recovery startup admission reported 538,216 KiB available;
+the later monitor recorded 129,988 KiB against the unchanged 131,072 KiB floor. The exact root
+210-byte failure receipt has SHA-256
+`6479609519fba81ff45a47417ad63c00884025548eb37eb6873bed8df7013bac`.
+Docker event metadata shows the attached native driver started before candidate termination;
+owner turns, answers, resource acceptance and PR-pair recovery completion are **Unavailable**.
+The memory cause beyond the guard remains **Unproven**. All nine helper source pins stayed unchanged.
+Post-trial exact-c38 label queries found no containers, volumes or networks. That absence does not
+establish staged-asset cleanup. Preserve the initial event-template query failure separately.
+
+The approved temporary recovery served the app with its assistant disabled during the trial.
+Restoration returned the original `5ad2c3f`/`78746f` image ready but left rollout disabled, so the
+first restoration assertion **Failed**. A c38 controller request failed its different-revision check;
+a direct disabled-to-invited request from the original-release checkout also failed with a generic
+remote error (raw error code unavailable). The maintained original-release controller then completed
+the required owner_canary and invited transitions. Fresh inspect confirmed the original revision/image,
+schema 13, invited mode, app and assistant ready, and loopback-only access. Restoration scope
+**Passed** at `21:47:14Z`; this does not repair the pair failure. Parent reviewed the actual results
+and all 24 independent evidence references. Independent integrity/restoration/lifecycle review
+SHA-256 `68ec48dc772bf11c8969e5d09f3d582c69a4a649afe8354eabdffe77eb29ee4c`.
+The immutable trial packet is
+`/var/tmp/r12r/f6-actual-host-c38-e9aeded9fb604d1497be12fb0a1a1ac2/`.
+
+PRs #9 and #11 remain draft. Current canonical/full-browser, complete security/accessibility,
+genuine authenticated UI, actual combined 1 GB, PR-bound recovery/rollback, guide and release gates
+remain open. No candidate promotion, merge, resize or email occurred. The original production image
+and invited rollout are restored; the existing 1 GB host, backups and US$15 monthly total cap remain.
+Free Zen restoration still precedes the seven features, and the overall goal remains active.
