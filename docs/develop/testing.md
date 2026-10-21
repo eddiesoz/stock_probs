@@ -840,3 +840,18 @@ The probe never retries mutations, readiness requests, authorization/protocol fa
 or connection errors. The 120-second application turns, two-owner answer/tool criteria and
 separate readiness/resource gates are unchanged. Synthetic recovery tests do not establish a
 recovered native run or the timeout cause.
+
+The application-health concurrency regression in `tests/test_api.py` holds a protected request
+inside a synthetic synchronous authentication wait, then requests liveness or readiness on the
+same ASGI event loop. It covers accepted-Origin and no-Origin middleware branches, requires the
+health response before authentication returns, and verifies the protected request is still denied.
+The actual app lifespan runs for the readiness cases. The initial two liveness cases failed before
+the worker-pool repair and passed afterward. This demonstrates event-loop starvation at that
+boundary; it does not establish SQLite contention, worker-pool saturation behavior, or the cause
+of the native trial's readiness timeout. No readiness assertion or retry policy is relaxed.
+
+Authentication uses the same Starlette worker-pool cancellation policy as existing FastAPI sync
+handlers. A bounded independent probe observed AnyIO-scope cancellation waiting for the worker,
+while direct `asyncio.Task.cancel()` could return before it finished. Uvicorn uses direct task
+cancellation after its graceful-shutdown timeout. Absolute request-gate retention through forced
+shutdown is therefore not claimed; the complete ASGI shutdown/restore interaction was not run.

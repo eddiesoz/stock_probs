@@ -8361,3 +8361,63 @@ full-browser aggregate remains **Fail**; canonical, complete security/accessibil
 1 GB, recovery/rollback, final guide, authenticated owner and release gates remain open. Free Zen
 restoration still precedes all seven feature releases. The 1 GB host, backups and US$15 monthly
 total cap are unchanged; no merge, deployment, rollout, resize or email occurred.
+
+### R-ASTRA-121 F6 native answers and authentication concurrency repair (2026-10-21)
+
+The poll-repair wording re-review **Passed** its narrow scope in receipt
+`62ab8131cd98621768b4b9a70996cf0b8999d4f89fb94617694b510151e16302`, retaining the original
+wording finding. Tested head `0bc021849db8b4f314a2dcab2a71205ac24d7387` built image
+`sha256:7de9102824225ee55f82a6169ce5aafc4819735ba155b53ef85cf534e8f653f5`, context
+`b16b6bcd2f1d53721c2f29476dccd2a039cd4596d9584a31602ccfebcace358c`.
+The one native trial **Passed its functional driver scope**: both genuine free MiniMax turns
+completed, with nonempty answers of 417 and 1,030 bytes and matching owner-summary receipts.
+The second owner approved native search and one guarded exact-URL fetch. Its nine source events
+include that fetch; they are not nine text-search sources plus another fetch. Attribution was
+not independently verified. Cross-owner and forged internal MCP lookups returned 404; both
+conversation deletes returned 200 on their first attempt, with zero pending entries. The final
+driver status reported app reachable and worker ready.
+
+The **overall native aggregate Failed** at exit 2 because one of 63 accumulated health samples
+had a transport failure. `post_driver_health` names the later validation stage, not the time of
+a separate final request; the failed sample's time was not retained. Its missing schema field
+produced the generic `schema_mismatch` label, but no actual schema mismatch was observed.
+There were 62 ready app samples. The local 768 MiB sample peaked at 487,292,928 bytes with zero
+high/max/OOM deltas; it does not establish actual combined 1 GB acceptance or a timeout cause.
+Exact owned cleanup and independent terminal integrity review passed. Parent terminal SHA-256
+is `9bf68b19515d593539feebb0c30d4315452f73a7e3ce56934853c917b1b024fa`; interpretation supplement
+is `31cd92270d0351bf4f629f538b1aac5202b584689ec598b35478e380222f2d58`; independent terminal receipt
+is `002eac4bdadfe3d4bca812b094b9c949b0bf0c4bc67be455c4acd4b0649a094e`.
+
+Subsequent source review found synchronous session authentication running directly on the async
+middleware event loop in both accepted-Origin and no-Origin branches. A controlled authentication
+I/O wait reproduced starvation of an unrelated liveness request: both initial regressions failed
+before the repair and passed afterward. The application repair awaits Starlette's worker pool
+before protected-handler dispatch, retaining the same authentication function, MFA/session checks,
+Host/origin policy and response headers. The regression now covers liveness and readiness in both
+branches with the actual app lifespan. This proves the synthetic concurrency defect, not the cause
+of the native timeout. Worker-pool saturation and database contention remain distinct limits.
+The initial reproduction runs lack a contemporaneous hash of the newly authored test; preserved
+original-file baselines and run output do not replace that missing binding. Expanded scoped tests
+have fresh input pins. The full affected API/auth/provider-egress selection **Passed** with exit 0:
+223 tests, zero failures/errors/skips, in 476.372 seconds; all 36 pinned Python inputs remained
+unchanged. Separate data/environment inputs are not comprehensively bound by that parent receipt.
+Terminal receipt SHA-256 is `173a7e337a5cf7bf61f36f7190a74b8c12681a73dc8f36bb36bee0747cbca9cb`;
+JUnit is `864550a70326c310fb88d9c8df50e09fcfeb7e5694882f692f8bf75c39962833`.
+Ruff, formatting, scoped security rules and documentation/map checks passed. Independent repair
+QA **Passed** source review and nine selected middleware/auth cases with zero failures/errors/skips;
+its supplement is `6b3f17801d7ad63a2e1a17dbc32ea78a050f11caef8068c8bc8e88bb57583e75` and publication
+receipt is `e16df21dc5d6329933c25110fdf12814574702cbc71964a835977b5d63073d23`. The initial verifier
+receipt `b69d8612092032d7c835edf28abf80a13faa55b851cfa4f508c4953fda44e712` remains **Fail**:
+it read the outer JUnit envelope's absent counts; the supplement reads the actual nine-case child
+suite without repeating pytest. Independent source review and a bounded standalone probe record
+the shared Starlette/FastAPI forced-cancellation limitation: direct `asyncio.Task.cancel()` can
+return while a sync worker continues. Normal AnyIO cancellation waits for the worker; absolute
+request-gate retention through forced shutdown and full ASGI shutdown/restore safety are not claimed.
+The parent personally reviewed the integrated diff, tests, receipts and limitation and found no
+blocker for this scoped application repair; runtime/release acceptance remains separate.
+
+The application change requires a newly bound image and native run; earlier image results keep
+their original scope. Authenticated owner UI, complete browser/security/accessibility, canonical,
+actual-host 1 GB, recovery/rollback, final guide and release gates remain open. Free Zen restoration
+precedes the seven-feature release plan. The 1 GB host, backups and US$15 monthly total cap remain
+unchanged; no merge, production deployment, rollout, resize or email occurred.
