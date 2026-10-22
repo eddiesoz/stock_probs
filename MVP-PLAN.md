@@ -9513,3 +9513,73 @@ The application repair is pushed at `15a5a1d67c182ded61b0a213e55d6f98c2bff425`; 
 40-case synthetic Pass remains separate from this failed browser diagnostic. Host trials await
 the explicit backup-retention choice; local resource preference is also unanswered. No user apps
 or signed-in browser state were changed. The overall goal remains active and release gates open.
+
+
+### R-ASTRA-121 F6 recovered-resource browser and coordination diagnostic checkpoint (2026-10-22)
+
+A fresh actual local-resource read found MemAvailable 3,350,640 KiB and SwapFree 4,193,372 KiB.
+No user applications, browser profiles or cookies were altered by this task. The next same-four-case
+browser execution Failed at exit 1: two passed, two failed, with no skips, retries or flaky results.
+Desktop receipt and emulated-mobile WebFetch passed. Desktop WebFetch failed at the later decline
+preview: the expected confirmation card was absent, while saved activity retained a running turn
+and meta/webfetch_preview events. The fixture recorded an unhandled RepositoryOperationalError,
+“database coordination lock timed out,” in turn finalization. Its relation to the missing card and
+earlier failures is unproven. Mobile receipt failed because the confirmed theme remained Light;
+it also recorded an unexpected failed resource request. All 416 explicit source pins remained
+matched through terminal, and all 53 served/export pairs matched. Two recorded failing-fixture
+PIDs were absent and their ports plus the known base-server port refused connections; passing
+fixture PID/port evidence is unavailable in this parent extraction. No complete aggregate Pass
+or original-failure cause follows.
+
+The next diagnostic adds only a default-off, exact-flag one-shot all-thread stack dump to the
+local QA fixture, on the exact coordination-timeout exception. It emits a fixed header and stacks
+without locals, suppresses diagnostic-output errors and rethrows the original exception. Production
+code, database lock semantics, assertions and deadlines are unchanged. The first six cases passed;
+a new output-failure regression then Failed, exposing masking of the original exception. Its new
+test bytes lack a contemporaneous red-run prelaunch hash; that binding limitation is preserved.
+An intended guard patch failed before writing and its subsequent seven-case run retained one Fail.
+The corrected guarded-v2 source passed seven tests with two deprecation warnings and stable pins.
+Independent source/privacy and seven-case review plus Ruff/security/format/diff checks passed.
+The reviewer reported successful exits and saved complete JUnit/stdout; interruption prevented its final receipt and contemporaneous after-pin snapshot. Parent supplemental saved-evidence review matched the current seven pins and preserves those limitations. Original failures remain.
+
+The first one-case WebFetch diagnostic was interrupted before any terminal result; its runner,
+browser and fixture processes were subsequently absent. That result is **Unavailable**, not Pass.
+A separately dispatched replacement completed at `12:15:11.457Z`–`12:15:59.116Z`, exit 0, one
+passed desktop case (35.607 seconds case duration). Its two scoped axe scans had zero violations
+and incompletes. All 417 selected inputs and 53 served/export pairs were unchanged. Successful
+cases did not retain fixture stderr at that point, so absence of a coordination timeout is not
+established. The existing 16 KiB log is now retained on success only when the diagnostic flag is
+explicitly enabled; normal runs keep their failure-only attachment rule. Nine existing fixture
+lifecycle tests, Node syntax and diff checks passed; this did not exercise a new product path.
+
+The separate mobile receipt diagnostic **Failed**, `12:17:17.363Z`–`12:18:09.470Z`, exit 1.
+The synthetic runtime completed, while confirmation of the reopened theme proposal left the page
+Light. Trace metadata records its confirmation POST pending without a response; the theme assertion
+expired after the unchanged five seconds. A stream abort was also unexpected at teardown. The
+retained fixture log has no coordination-timeout dump; no shared cause with desktop WebFetch is
+inferred. A temporary fixture-only first-confirmation four-second stack timer passed 12 parent
+unit cases with two warnings and stable pins. The next mobile diagnostic **Passed**,
+`12:21:27.664Z`–`12:21:53.207Z`, exit 0, one case (18.965 seconds), including confirmed theme and
+saved receipts. Neither stack diagnostic fired in its retained log. Both mobile runs retained all
+417 source bindings and 53 served/export pairs; their recorded fixture PIDs were absent and both
+known ports per run refused connections at parent review. No broader cleanup claim follows.
+The unused pending-confirmation experiment was preserved privately and restored byte for byte to
+the earlier seven-case source. It is not a product fix or independent acceptance result.
+
+These isolated passes do not repair the earlier failed aggregate or establish either original
+cause. Do not repeat unchanged trials. The next bounded action is a newly bound image and genuine
+native functional verification of the already reviewed history-read service repair; image inputs
+remain changed from e40. Current canonical/full-browser/security/accessibility, actual combined
+1 GB, authenticated owner UI, PR-bound recovery/rollback, guide and release gates remain open.
+Host trials still await the explicit backup-retention decision; all 32 active originals and the
+verified separately preserved task archive remain intact. No main merge, deployment, resize,
+rollout or email occurred. The full active goal, seven-feature dependency order, 1 GB host,
+backups and US$15 monthly total cap remain unchanged.
+
+Selected immutable receipts (private task-owned SD packets):
+
+- Recovered-resource four-case terminal review: `/var/tmp/r12r/f6-browser-resources-recovered-4c4f1c434ca84a45873b8c56e5d903c1/parent-terminal-review-v1.json`, SHA-256 `200f51b18e734c9e084811526597ea628579e7c50de7e5c80b76d3db92723fcf`.
+- Parent saved independent evidence review: `/var/tmp/r12r/f6-lock-diagnostic-independent-38c68f06-b340-4b1c-b2cd-e9b79230c3ea/parent-saved-evidence-review-v1.json`, SHA-256 `91cf59e89dfe57b1bc40c20166dc9f3ffbb19cdb2a1e42e4a47a58510e89be46`.
+- Desktop diagnostic terminal review: `/var/tmp/r12r/f6-lock-browser-relaunch-748b2bf6524242448bee7ec63a3b203f/parent-terminal-review-v1.json`, SHA-256 `003469b5b14c349a01ee1e97a2fc2399591b0efe753fd814b1c2e2844cdde017`.
+- Mobile failure terminal review: `/var/tmp/r12r/f6-lock-mobile-receipt-7ee978f0c7254bcb814104d59ebd1619/parent-terminal-review-v1.json`, SHA-256 `238419434b2cfc357efb1ed57a16b8fe59a7348c12a49b440a14e6f9e484c869`.
+- Mobile scoped pass terminal review: `/var/tmp/r12r/f6-pending-confirmation-fecc2ddac6824d0e9168e1679c397047/parent-terminal-review-v1.json`, SHA-256 `77bb115a5761b81d388f68589c836e21c15541dfdb971b52a88d03334412e629`.

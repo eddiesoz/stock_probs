@@ -1014,3 +1014,13 @@ requires a newly bound image/runtime result. Keep backup-capacity failures separ
 failures, retain all archives pending an explicit retention decision, and distinguish restored
 production state from a failed rehearsal. See the
 [F6 capacity/liveness checkpoint](../../MVP-PLAN.md#r-astra-121-f6-backup-capacity-and-turn-history-liveness-checkpoint-2026-10-22).
+
+
+For an exact local-fixture database coordination timeout, the opt-in
+`STOCK_PROBS_BROWSER_LOCK_DIAGNOSTIC=1` flag captures stacks once without local values. It retains
+the original exception and lock bounds; a diagnostic-output failure must not replace the database
+error. Diagnostic mode retains the existing bounded stderr attachment on successful cases too.
+Keep logs private, preserve failed/interrupted results, and distinguish a scoped later pass from
+an original cause or aggregate acceptance. A temporary pending-request probe that did not fire
+was preserved separately and removed from the maintained fixture; no application fix follows.
+See the [F6 coordination diagnostic checkpoint](../../MVP-PLAN.md#r-astra-121-f6-recovered-resource-browser-and-coordination-diagnostic-checkpoint-2026-10-22).

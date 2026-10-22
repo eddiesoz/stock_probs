@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import faulthandler
 import hashlib
 import json
 import os
 import re
 import sys
+import threading
 import time
+from contextlib import contextmanager, suppress
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -23,6 +26,7 @@ from stock_probs.assistant.schemas import AssistantModelPolicy, AssistantTurnRes
 from stock_probs.assistant.storage import ASSISTANT_TURN_SECONDS
 from stock_probs.config import Settings
 from stock_probs.provider import FixtureProvider
+from stock_probs.repository import RepositoryOperationalError
 
 _CATALOG_PATH = (
     Path(__file__).resolve().parents[2]
@@ -158,6 +162,39 @@ class _Providers:
     async def proxy_chat_completion(self, provider_id, model_id, body):
         del provider_id, model_id, body
         yield b"data: [DONE]\n\n"
+
+
+def _install_lock_failure_diagnostic(repository):
+    """Dump stacks once on an exact coordination timeout in an opted-in local fixture."""
+
+    if os.environ.get("STOCK_PROBS_BROWSER_LOCK_DIAGNOSTIC") != "1":
+        return
+    original = repository._coordinated
+    diagnostic_lock = threading.Lock()
+    emitted = False
+
+    @contextmanager
+    def coordinated():
+        nonlocal emitted
+        try:
+            with original():
+                yield
+        except RepositoryOperationalError as error:
+            if error.args == ("database coordination lock timed out",):
+                with diagnostic_lock:
+                    first = not emitted
+                    emitted = True
+                if first:
+                    with suppress(Exception):
+                        print(
+                            "Fixture repository coordination timeout stack:",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                        faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+            raise
+
+    repository._coordinated = coordinated
 
 
 class _Runtime:
@@ -376,6 +413,7 @@ def main() -> None:
         assistant_catalog=_Catalog(),
         assistant_providers=_Providers(),
     )
+    _install_lock_failure_diagnostic(application.state.repository)
     runtime.assistant = application.state.assistant
     stream_audits = []
 

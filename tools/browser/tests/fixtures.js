@@ -301,7 +301,7 @@ exports.test = base.test.extend({
       await use({ url: application.url, logs: application.logs });
     } finally {
       try {
-        if (testInfo.status !== testInfo.expectedStatus) {
+        if (testInfo.status !== testInfo.expectedStatus || process.env.STOCK_PROBS_BROWSER_LOCK_DIAGNOSTIC === "1") {
           await testInfo.attach("assistant-fixture-stderr", {
             body: Buffer.from(application.logs(), "utf8"),
             contentType: "text/plain",
