@@ -1119,3 +1119,16 @@ A fixture failing its runtime-ready signal before the selected action is an unre
 failure, not evidence that later cancellation/deletion assertions failed. Preserve the exact failed
 aggregate and wait bound. A later affected-path selection cannot replace it; use a bounded anonymous
 startup-stage diagnostic before repeating that path, and do not raise timeouts to make it pass.
+
+
+Provider-policy persistence tests must use the real policy manager, not only a mutable fake boolean.
+Hold a runtime storage entry after the service's policy check, complete an administrator policy
+change, release the write, then inspect committed rows; keep an unchanged-policy live control.
+A manager call is not an authenticated administrator HTTP/browser observation. Preserve a failing
+regression as Fail until the application rejects or correctly serializes the late write.
+
+The policy authority boundary must begin before SQLite and cover commit without provider/auth
+callbacks inside SQL. Test event-loop health under contention, coherent catalog/Console cache
+publication, stale in-flight refresh rejection and expiry during database-lock waits. Locks freeze
+mutations, not time. Keep fresh publication authorization outside held synchronous scopes and
+preserve original deadlines. See the [F6 policy-race record](../../MVP-PLAN.md#r-astra-121-f6-reproduced-provider-policy-persistence-race-2026-10-22).

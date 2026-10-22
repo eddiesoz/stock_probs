@@ -10096,3 +10096,73 @@ cross-store synchronization, forecast/full-browser failures, current-source nati
 actual combined 1 GB, recovery/rollback, final canonical/security and release remain open. No
 Docker build, native/provider trial, production change, rollout, resize or email occurred here.
 Keep the existing host/backups and US$15 monthly total cap. This is no feature completion or handoff.
+
+
+### R-ASTRA-121 F6 reproduced provider-policy persistence race (2026-10-22)
+
+**Status: Fail; repair remains in progress.** At clean pushed PR #9 checkpoint
+`6639ed1ba129540479a90b56bc03ad19085023d1`, a controlled runtime write can commit after a real
+provider-manager model-disable operation has returned. The reproduction uses the maintained
+eligible free Zen model identity, the real provider metadata/policy manager, entered FastAPI/auth/
+SQLite lifespans and a synthetic runtime. It makes no provider, native OpenCode or external-network
+request. The test holds `append_event` after the service policy check, completes a real manager
+`update_model_policy(enabled=False)` call, releases the write, then checks committed token rows.
+This is a direct manager operation, not an authenticated administrator HTTP/browser action.
+
+The private reproduction **Failed** as intended: live control Passed, disabled-policy case Failed
+because the token persisted, two completed cases, exit 1, no errors/skips,
+`2026-10-22T17:59:31.651994Z`–`17:59:43.752500Z` (12.101 seconds). The maintained regression
+`tests/test_assistant_policy_authority.py` separately executed by the parent on the unchanged
+application also **Failed** with the same one-pass/one-failure outcome,
+`18:08:08.262108Z`–`18:08:30.200921Z` (21.939 seconds). All 418 allowed inputs remained fixed;
+output was complete without timeout/truncation, child/process groups were absent, and exact owned
+pytest temporary cleanup Passed. These are parent-run synthetic checks with explicit worktree,
+absolute argv and PYTHONPATH; this run did not add an in-process import attestation. No independent
+execution or application repair is claimed. Receipts and pre-edit recovery bytes are under
+`/var/tmp/r12r/f6-provider-policy-authority-20261022-v2/`: `race-red-v1/terminal.json`,
+`tracked-red-v1/terminal.json`, their JUnit files, and `baseline-v1.json`.
+
+The original preparation attempt requested nonexistent `tests/test_assistant_model_catalog.py`
+and Failed before source edits or test execution; six partial baselines remain preserved in
+`/var/tmp/r12r/f6-provider-policy-authority-20261022/` with its supplemental preparation record.
+The corrected packet records eight existing raw-byte baselines and the new test path's absence.
+The private reproduction file was created before chmod 0600; its initial mode is Unavailable,
+and final mode does not establish initial-private-mode proof. Corrected baseline/runner/receipt
+creation used explicit 0700 directories, 0600 files and normal test-child umask 022.
+
+Independent read-only security design review **Failed** current serialization and any proposal
+that blocks the event loop on a lock held by a database worker. It bound five unchanged source
+files at 6639; tests were Skipped and independent runtime reproduction was Unavailable. Receipt:
+`/var/tmp/r12r/f6-provider-policy-design-review-20261022T180322Z-v3-3ef74d37-620e-49d0-8eb1-d44108c09722/source-review.json`,
+SHA-256 `abaf7ca7f917f82f57664d16eccaf10b04f1d7a98441636867ec6b86813f64bb`.
+Its two private receipt-builder setup failures occurred before receipt/source publication and stay
+separate. A provider mutation lock alone does not freeze time or cover unlocked cache publication.
+
+The coherent repair must satisfy all of these conditions before a new native image/run:
+
+- Acquire the provider/catalog authority scope before opening SQLite, freshly validate the exact
+  usable policy, and retain authority through commit. Keep provider/network/authentication
+  callbacks outside SQL transactions; keep consent/session/canary/lease checks inside SQL.
+- Serialize all authoritative catalog, Console review/cache and provider metadata publications.
+  Use a consistent manager/catalog lock order or one shared lock. Atomically publish one immutable
+  snapshot of rows and freshness timestamps for readers; do not combine generations.
+- Keep every blocking authority-lock access off the event loop, including async model response,
+  policy update, Console review/clear, provider inventory and catalog refresh paths. No await,
+  OAuth-lock acquisition or network operation belongs inside the synchronous held authority scope.
+- Bind fetched inventory to its source generation/fingerprint and reject stale in-flight publication
+  after settings/review changes. Preserve fresh authorization at publication after a wait; do not
+  move an asynchronous authorization callback into a held synchronous scope.
+- Carry the earliest applicable cache deadline into the runtime guard and recheck it using a pure
+  transaction-time clock after database-lock waits. A held mutation lock does not freeze expiry.
+- Verify policy disable/change, Console review/cache replacement, stale refresh, cache expiry,
+  cancellation and health/readiness while authority is contended, with live controls. Reuse
+  unchanged evidence, then run required current-source native and release checks.
+
+The next bounded action is to implement and verify the shared authority/snapshot publication
+boundary, including authorization after waits, before wiring it through the existing SQL guard.
+Another pre-write policy check is insufficient. No broad suite, Docker build, native/provider trial,
+production mutation, backup deletion, rollout, resize or email occurred in this scope. Earlier
+startup/full-browser/aggregate failures remain visible. The existing 1 GB host, backups and US$15
+monthly total cap are unchanged; the complete free-Zen/owner-UI/security/resource/recovery/rollback/
+canonical/release goal and all seven approved features remain active. This is no feature completion
+or handoff.
