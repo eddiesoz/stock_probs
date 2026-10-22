@@ -490,7 +490,7 @@ async def _provider_proxy_chunks(
                     exc.provider_error_type_class
                     if type(exc) is net.PublicHTTPError
                     and error_code == "provider_upstream_unavailable"
-                    and status_code == 403
+                    and status_code in {403, 429}
                     and type(exc.provider_error_type_class) is str
                     and exc.provider_error_type_class in _PROVIDER_403_ERROR_TYPE_CLASSES
                     else None
@@ -621,7 +621,7 @@ class _ProviderProxyProtocolError(AssistantUnavailable):
         error_type_is_valid = (
             self.stage == "upstream_stream"
             and self.error_code == "provider_upstream_unavailable"
-            and self.status_code == 403
+            and self.status_code in {403, 429}
             and type(provider_error_type_class) is str
             and provider_error_type_class in _PROVIDER_403_ERROR_TYPE_CLASSES
         )
@@ -682,11 +682,24 @@ class _ProviderProxyStreamingResponse(StreamingResponse):
                 assert type(initial_error) is _ProviderProxyProtocolError
                 status_code = initial_error.status_code
                 assert type(status_code) is int
+                failure_body = _error(
+                    "provider_unavailable", "The selected model provider is unavailable."
+                )
+                if (
+                    status_code == 429
+                    and initial_error.provider_error_type_class == "free_usage_limit_error"
+                ):
+                    # Preserve only this recognized quota type for native retry classification.
+                    failure_body = {
+                        "error": {
+                            "code": "provider_unavailable",
+                            "message": "The selected model provider is unavailable.",
+                            "type": "FreeUsageLimitError",
+                        }
+                    }
                 failure_response = JSONResponse(
                     status_code=status_code,
-                    content=_error(
-                        "provider_unavailable", "The selected model provider is unavailable."
-                    ),
+                    content=failure_body,
                     headers={"Cache-Control": "no-store"},
                 )
                 await send(
@@ -797,7 +810,7 @@ async def _provider_proxy_chunks_with_timing(
         if (
             stage == "upstream_stream"
             and error_code == "provider_upstream_unavailable"
-            and status_code == 403
+            and status_code in {403, 429}
             and type(provider_error_type_class) is str
             and provider_error_type_class in _PROVIDER_403_ERROR_TYPE_CLASSES
         ):

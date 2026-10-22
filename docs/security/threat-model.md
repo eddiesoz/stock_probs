@@ -586,3 +586,15 @@ owner-visible terminal history without reopening the execution's tool capability
 old authorization decision. Completion, concurrent revocation and unsettled closure are separate
 regression cases; this source evidence does not establish native reliability or the earlier health
 transport failures' cause.
+
+## Provider rejection type boundary
+
+The assistant proxy projects bounded provider JSON error types into a closed class set on HTTP
+403 and 429. It retains no raw body or arbitrary error text, and header diagnostics remain limited
+to 403. The existing JSON framing, byte/read-time bounds, active authorization checks and stream
+cancellation apply to the diagnostic read. Only an initial 429 positively classified as
+`free_usage_limit_error` carries the app-owned nested type `FreeUsageLimitError` in the sanitized
+no-store error response. This preserves the pinned native client's quota classification without
+changing retry limits or turn deadlines. Unknown 429s stay generic. Neither HTTP status alone nor
+a synthetic classification test establishes the cause of a live provider rejection or a completed
+assistant answer; see the [MVP evidence ledger](../../MVP-PLAN.md).

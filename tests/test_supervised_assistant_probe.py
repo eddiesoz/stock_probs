@@ -2144,9 +2144,11 @@ def test_native_timing_v4_projects_closed_403_header_classes() -> None:
     assert "challenge token=" not in encoded
 
 
+@pytest.mark.parametrize("status_code", (403, 429))
 @pytest.mark.parametrize("error_type_class", ["region_error", "free_tier_access_error"])
 def test_native_timing_v4_projects_error_type_class_without_header_classes(
     error_type_class: str,
+    status_code: int,
 ) -> None:
     payload = _native_timing_v4_payload()
     requests = payload["provider_requests"]
@@ -2156,7 +2158,7 @@ def test_native_timing_v4_projects_error_type_class_without_header_classes(
         {
             "stage": "upstream_stream",
             "error_code": "provider_upstream_unavailable",
-            "http_status": 403,
+            "http_status": status_code,
             "provider_error_type_class": error_type_class,
         },
     )
@@ -2170,7 +2172,7 @@ def test_native_timing_v4_projects_error_type_class_without_header_classes(
             "kind": "provider_stream_failure",
             "stage": "upstream_stream",
             "error_code": "provider_upstream_unavailable",
-            "http_status": 403,
+            "http_status": status_code,
             "provider_error_type_class": error_type_class,
         }
     ]
@@ -2482,6 +2484,20 @@ def test_native_timing_v5_rejects_missing_unknown_or_forged_pre_session_values(c
             "error_code": "provider_upstream_unavailable",
             "http_status": 503,
             "provider_error_type_class": "free_usage_limit_error",
+        },
+        {
+            "stage": "upstream_stream",
+            "error_code": "provider_upstream_unavailable",
+            "http_status": 429,
+            "content_type_class": "json",
+            "cf_mitigated_class": "challenge",
+            "provider_error_type_class": "free_usage_limit_error",
+        },
+        {
+            "stage": "upstream_stream",
+            "error_code": "provider_upstream_unavailable",
+            "http_status": 429,
+            "provider_error_type_class": "free_usage_limit_error token=synthetic-private",
         },
         {
             "stage": "upstream_stream",

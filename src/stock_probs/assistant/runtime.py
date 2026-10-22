@@ -836,7 +836,11 @@ class _TurnTimingDiagnostics:
         elif content_type_class is not None or cf_mitigated_class is not None:
             return
         if provider_error_type_class is not None and (
-            not is_classified_403
+            not (
+                stage == "upstream_stream"
+                and error_code == "provider_upstream_unavailable"
+                and safe_status in {403, 429}
+            )
             or type(provider_error_type_class) is not str
             or provider_error_type_class not in _TURN_TIMING_PROVIDER_403_ERROR_TYPE_CLASSES
         ):
@@ -1116,7 +1120,7 @@ class _TurnTimingDiagnostics:
                     and (
                         failure_diagnostic.get("stage") != "upstream_stream"
                         or failure_diagnostic.get("error_code") != "provider_upstream_unavailable"
-                        or failure_diagnostic.get("http_status") != 403
+                        or failure_diagnostic.get("http_status") not in {403, 429}
                         or type(failure_diagnostic.get("provider_error_type_class")) is not str
                         or failure_diagnostic["provider_error_type_class"]
                         not in _TURN_TIMING_PROVIDER_403_ERROR_TYPE_CLASSES

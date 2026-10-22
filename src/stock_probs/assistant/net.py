@@ -184,11 +184,11 @@ class PublicHTTPError(Exception):
         if provider_error_type_class is not None and (
             type(code) is not str
             or code != "provider_upstream_unavailable"
-            or status_code != 403
+            or status_code not in {403, 429}
             or type(provider_error_type_class) is not str
             or provider_error_type_class not in _PROVIDER_403_ERROR_TYPE_CLASSES
         ):
-            raise ValueError("HTTP 403 provider error type class is invalid")
+            raise ValueError("HTTP provider error type class is invalid")
         super().__init__(code)
         self.code = code
         self.status_code = status_code
@@ -796,6 +796,18 @@ async def stream_public_https(
                     status_code=status_code,
                     content_type_class=provider_403_content_type_class or "missing",
                     cf_mitigated_class=provider_403_cf_mitigated_class or "absent",
+                    provider_error_type_class=provider_error_type_class,
+                )
+            if status_code == 429:
+                provider_error_type_class = await _read_provider_403_json_error_type_class(
+                    reader,
+                    response_headers,
+                    deadline=deadline,
+                    authorization_check=live_authorization,
+                )
+                raise PublicHTTPError(
+                    "provider_upstream_unavailable",
+                    status_code=status_code,
                     provider_error_type_class=provider_error_type_class,
                 )
             raise PublicHTTPError("provider_upstream_unavailable", status_code=status_code)

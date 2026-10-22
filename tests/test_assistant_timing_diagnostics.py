@@ -856,8 +856,11 @@ def test_runtime_provider_failure_v4_keeps_only_valid_403_classes() -> None:
     }
 
 
+@pytest.mark.parametrize("status_code", (403, 429))
 @pytest.mark.parametrize("error_type_class", ["free_usage_limit_error", "free_tier_access_error"])
-def test_runtime_provider_failure_v4_keeps_closed_error_type_class(error_type_class: str) -> None:
+def test_runtime_provider_failure_v4_keeps_closed_error_type_class(
+    error_type_class: str, status_code: int
+) -> None:
     diagnostics = assistant_runtime._TurnTimingDiagnostics(clock=lambda: 30.0)
     diagnostics.begin(EXECUTION_ID, 27)
     ordinal = diagnostics.provider_started(EXECUTION_ID, 27)
@@ -868,7 +871,7 @@ def test_runtime_provider_failure_v4_keeps_closed_error_type_class(error_type_cl
         ordinal,
         "upstream_stream",
         "provider_upstream_unavailable",
-        403,
+        status_code,
         provider_error_type_class=error_type_class,
     )
     diagnostics.provider_finished(EXECUTION_ID, 27, ordinal, "failed", "safe_protocol_error")
@@ -879,7 +882,7 @@ def test_runtime_provider_failure_v4_keeps_closed_error_type_class(error_type_cl
     assert receipt["provider_requests"][0]["failure_diagnostic"] == {
         "stage": "upstream_stream",
         "error_code": "provider_upstream_unavailable",
-        "http_status": 403,
+        "http_status": status_code,
         "provider_error_type_class": error_type_class,
     }
     assert "execution_id" not in json.dumps(receipt)
@@ -892,6 +895,8 @@ def test_runtime_provider_failure_v4_keeps_closed_error_type_class(error_type_cl
         ("upstream_stream", "provider_upstream_unavailable", 403, True),
         ("upstream_stream", "provider_upstream_unavailable", 403, "private token=synthetic"),
         ("upstream_stream", "provider_upstream_unavailable", 503, "free_usage_limit_error"),
+        ("upstream_stream", "provider_upstream_unavailable", [], "free_usage_limit_error"),
+        ("upstream_stream", "provider_upstream_unavailable", 429, "private token=synthetic"),
         ("proxy_guard", "upstream_error_unknown", 403, "free_usage_limit_error"),
     ],
 )
@@ -982,6 +987,7 @@ def test_runtime_provider_failure_v4_preserves_legacy_unclassified_403_shape() -
         ("upstream_stream", "provider_upstream_unavailable", 403, "json", "private"),
         ("upstream_stream", "provider_upstream_unavailable", 403, True, "challenge"),
         ("upstream_stream", "provider_upstream_unavailable", 503, "json", "challenge"),
+        ("upstream_stream", "provider_upstream_unavailable", 429, "json", "challenge"),
         ("proxy_guard", "upstream_error_unknown", 403, "json", "challenge"),
     ],
 )

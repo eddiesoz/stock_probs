@@ -10353,3 +10353,126 @@ and real GLM native functional result remain pending. Current canonical, owner U
 1 GB, recovery/rollback and release gates remain open. The existing 1 GB host, backups and
 US$15/month including tax remain unchanged. No deployment, rollout, resize or email occurred.
 This is no feature completion or handoff; the complete goal and seven features remain active.
+
+
+### R-ASTRA-121 F6 GLM native rejection and closed 429 type repair (2026-10-22)
+
+**Status: In progress.** Catalog checkpoint `805538007d90a789cac82e33379e396ce264fa01` was
+pushed to draft PR #9. Its Linux/amd64 Compose build Passed at
+`20:29:14.412647Z`–`20:35:11.450264Z`, exit 0 (357.038 seconds), producing image
+`sha256:35218f22af605c667e38bd5ef6178586f95e9463c3e02cd8f9a0b1d2351875b3`, context
+`7494032667a125c73b807b3af6758127fc20a5ec5a929f7f2625200fdecaa090`. All 150 image inputs
+and 53 served/export pairs matched. The outer wrapper nevertheless **Failed**, exit 1, when the
+post-build stop helper exhausted its cleanup deadline before its final state query
+(`local_builder_stop_deadline_exceeded`). Preserve that failure separately from the successful
+Compose build. No build or stop command was repeated. Fresh read-only state at
+`20:37:01.839849Z` confirmed the same controller generation stopped with PID 0 and absent cgroup,
+153 unchanged source/helper pins and 53 matching served/export pairs.
+
+Build packet: `/var/tmp/r12r/f6-image-glm-preparation-4c51109f64b14589a3e60eb20e470494/`.
+The original `build-terminal-v1.json` was never produced. Separate immutable
+`parent-build-terminal-v2.json` binds the actual Compose exit 0 and the later read-only state;
+SHA-256 `a6c1da4dc0d31358db1ca754fb571eae1a22631826b4096d994ce2b0979f9fcd`.
+Outer-failure receipt SHA-256:
+`501671c5b2d4c5aa47b28b92348c3839c4b28ae71c335d405b809afc002e34c0`;
+read-only supplement SHA-256:
+`54d36caec51295e6be5f9228320b2074f04a8cdcb3689cacde61f77470d0de5b`.
+This is build/source/stage evidence only.
+
+After independent static prelaunch review, the single authorized genuine native trial **Failed**,
+exit 2, at `20:43:34.385626Z`–`20:46:01.045774Z`. Readiness Passed after 22 attempts in
+11.108 seconds. Both owners matched the selected GLM identity and received a model-session event,
+but returned `provider_unavailable` without an answer, workspace summary, search or fetch source.
+The projection recorded 16 upstream HTTP 429 failures and two anonymous timing rows with eight
+observed failed-request ordinals each, zero sanitized chunks and zero bytes. These rows do not map
+to owners or establish a retry limit of eight. The provider body/type was not captured: quota,
+capacity, account/IP restrictions and the specific upstream cause remain **Unproven**.
+Both conversation deletes returned HTTP 200; one required three pending retries before success.
+The local 768 MiB/one-CPU diagnostic peaked at 516,456,448 bytes with zero observed high/max/OOM
+deltas; it does not establish actual combined 1 GB acceptance or a latency cause.
+
+Native packet: `/var/tmp/r12r/f6-native-8055380-d1ca2fce776549cf8f2054d48013c44e/`.
+Independent terminal/integrity/cleanup review Passed its selected scope while preserving native
+Fail and the earlier build-wrapper Fail. It verified complete bounded output, 153 unchanged pins,
+53 served/export pairs, exact container and network ID/name absence, named-volume absence,
+process-group absence, loopback port refusal and private Docker-config cleanup. A separate volume
+ID is Unavailable because the named-volume interface exposes its name. Independent receipt
+`independent-native-terminal-review-v1.json` SHA-256:
+`97487de2fed0a90d5323443421630e75cb31515211a270e329fa50352dd86bfd`.
+No second native trial or kill followed.
+
+The focused source diagnosis found that the app's existing bounded JSON type classifier ran only
+on 403, so 429s lost their structured error type before reaching the native client. The exact
+manifest-pinned V2 source at commit `ca27d3328fcd0d470588149c902a963452f1abaf` distinguishes
+[known quota codes](https://github.com/anomalyco/opencode/blob/ca27d3328fcd0d470588149c902a963452f1abaf/packages/ai/src/provider-error.ts)
+from generic rate limits, and its
+[retry policy](https://github.com/anomalyco/opencode/blob/ca27d3328fcd0d470588149c902a963452f1abaf/packages/core/src/session/runner/retry.ts)
+marks quota errors non-retryable. Git blob IDs and bytes of both public sources were verified;
+initial guessed source paths failed to read and are retained as read failures only. This identifies
+a boundary defect; it does not prove the failed live run contained a quota type.
+
+The scoped repair retains closed error-type classes on 403/429 through transport, API, anonymous
+timing projection and supervised probe. Header classes stay 403-only. Only a recognized
+`free_usage_limit_error` on an initial 429 adds the app-owned nested `FreeUsageLimitError` type to
+the sanitized JSON response. Unknown and other types keep the generic response. No raw provider
+text, retry count, deadline, model-selection, paid fallback or external-account requirement changed.
+Exact baselines for all 11 owned source/test/documentation paths were preserved before edits in
+`/var/tmp/r12r/f6-429-diagnosis-243fb6d1caf941cb9a4d14e57a53c4e0/`.
+
+The initial 10-case parent regression Failed as expected: all five existing 403 cases Passed and
+all five new 429 cases Failed. The first repaired selection produced JUnit 252/252 passing cases,
+but its command **Failed** because the child attestation's exclusive-create path collided with
+the red run's existing receipt after pytest; no receipt was overwritten and no aggregate Pass is
+claimed. A subsequent 220-case transport/runtime/probe selection Failed one new fixture that
+incorrectly assumed the 403-only challenge-header guard also applied on 429. The fixture was
+narrowed to duplicate shared framing cases while retaining the original 403 challenge case.
+The corrected three-file selection Passed 219/219, exit 0, no errors/skips, at
+`21:03:39.719781Z`–`21:03:43.785920Z`, with exact-worktree net imports, unchanged explicit pins,
+complete bounded output, process-group absence and owned-temp cleanup. Command:
+`python3 /var/tmp/r12r/f6-429-diagnosis-243fb6d1caf941cb9a4d14e57a53c4e0/final-parent-v3/run-final-v3.py`.
+Its terminal receipt SHA-256 is
+`33ea905343495ed74d569d48052158c952d1582871fff28c2033befc1378ce04`.
+Parent regression checkpoint SHA-256:
+`1323959990b455f55e70012b94684a5c5b46277d4f892a4cf25b1e444f347d4c`.
+Ruff source/test checks Passed. Independent GPT-6 Luna xhigh source review found no blocker, and
+the exact 20-case synthetic API selector Passed at `21:15:05.058300Z`–`21:17:22.603815Z`, child
+exit 0, no failures/errors/skips, complete bounded output, 415 unchanged pins, 34 matching imported
+module hashes and exact temp/process-group cleanup. It used a recorded private HOME and disposable
+fixture data/backups, with child umask 022; it did not exercise a real provider. Command:
+`/home/james/.codex/worktrees/signal-ledger-assistant-fix/stock_probs/.dev-venv/bin/python /var/tmp/r12r/f6-429-api20-independent-6f72842a-8c36-4d05-a925-12fe485c4fb7/attested_pytest_api20_v1.py`.
+Final independent receipt SHA-256:
+`33ca83e99086b61621269cdb5300560c2d2c03865e5d4ec0cfd84af3889209f1`, at
+`/var/tmp/r12r/f6-429-api20-independent-6f72842a-8c36-4d05-a925-12fe485c4fb7/independent-review-final-v1.json`.
+Its original API20 checker **Failed** by assuming the selector preceded configured pytest addopts;
+the separate saved-output review verified the exact selector and all 20 JUnit cases without a
+rerun. A prior HOME mismatch Failed before collecting tests. The earlier independent 274-case
+outer aggregate remains **Fail** despite clean child JUnit, because finalization lost its original
+supervisor drain/truncation counters. The reviewer also preserves an initial old-manifest-shape
+setup failure. These are separate results, not a reconstructed aggregate Pass.
+Configured Ruff security and format checks Passed; strict Ruff S **Failed** with the same 14 S101
+assertions as exact pre-edit source (three API, eleven runtime), with no new production assertions.
+The held build wrapper passed independent static review only. It preserves a stop-helper deadline
+Fail before a separate fresh read-only same-generation PID-0/cgroup check; it neither repeats the
+stop command nor extends the original guard. Its pending source-head binding remains unexecuted.
+The parent reviewed the integrated source/evidence and preserved the narrow scope: 429 adds a new
+bounded diagnostic read, and forwarding the recognized quota type restores the existing native
+quota decision; retry configuration/limits and turn deadlines are unchanged. The earlier untyped
+live rejection's cause remains Unproven. Documentation validation and completeness/change-aware
+coverage Passed (177 mapped files, 11 changed inputs, zero violations).
+
+The failed 805 candidate was subsequently archived and checksum-verified (183,520,543 bytes,
+SHA-256 `237bc6f08f8ce6d8b8ec87cff5abac44d0cb03dd9c0420891d0367bfe0b8cf43`). The exact
+full image ID was retired at `21:09:31.314334Z` using `--no-prune`, after registered receipt,
+unique tag, bounded 115-image RootFS, no descendant/equal-layer ambiguity and no container-reference
+checks. Image/tag absence was verified before the typed ledger update; the two protected deployed
+and recovery images remain. The local-development pointer was explicitly selected to the protected
+5ad image without starting an app or changing production. Archive/retirement packet:
+`/var/tmp/r12r/f6-image-429-preparation-12808060c57d4508a390b3d25dadce0b/`;
+typed retirement receipt SHA-256:
+`9faab96ae667d9907905fa0ecb799e4e189aea3d159b3fdcf9b3fa29ee7c6af3`.
+
+This image predates the 429 repair. A fresh image and discriminating native result are required;
+no successful current native or authenticated owner UI answer follows. Canonical, shutdown,
+security/browser, actual combined 1 GB, host recovery/rollback and release gates remain open.
+The 1 GB host, existing backups and US$15/month including tax are unchanged. No production action,
+resize, rollout or email occurred. The free-Zen repair and seven-feature goal remain active.

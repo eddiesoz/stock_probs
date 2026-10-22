@@ -119,7 +119,9 @@ def test_public_https_stream_projects_only_closed_403_header_classes_without_rea
         assert caught.value.status_code == status
         assert caught.value.content_type_class == expected_content_type
         assert caught.value.cf_mitigated_class == expected_cf_mitigated
-        assert caught.value.provider_error_type_class == ("unknown" if status == 403 else None)
+        assert caught.value.provider_error_type_class == (
+            "unknown" if status in {403, 429} else None
+        )
         assert str(caught.value) == "provider_upstream_unavailable"
         assert len(readers) == 1
         assert readers[0].body_read_calls == 0
@@ -199,11 +201,13 @@ def test_public_http_error_keeps_code_only_compatibility_and_validates_403_class
         ("UNTRUSTED_PROVIDER_TYPE_SECRET", "other"),
     ],
 )
+@pytest.mark.parametrize("status", (403, 429))
 def test_public_https_stream_projects_only_closed_provider_error_type_classes(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
     error_type: str,
     expected_class: str,
+    status: int,
 ) -> None:
     body = json.dumps(
         {
@@ -252,8 +256,8 @@ def test_public_https_stream_projects_only_closed_provider_error_type_classes(
     async def open_connection(*_args: object, **_kwargs: object):
         reader = TrackingReader()
         reader.feed_data(
-            b"HTTP/1.1 403 Forbidden\r\n"
-            b"Content-Type: application/json; charset=utf-8\r\n"
+            f"HTTP/1.1 {status} Synthetic\r\n".encode("ascii")
+            + b"Content-Type: application/json; charset=utf-8\r\n"
             + f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
             + body
         )
@@ -278,7 +282,7 @@ def test_public_https_stream_projects_only_closed_provider_error_type_classes(
 
     error = asyncio.run(exercise())
     assert error.code == "provider_upstream_unavailable"
-    assert error.status_code == 403
+    assert error.status_code == status
     assert error.provider_error_type_class == expected_class
     assert error.args == ("provider_upstream_unavailable",)
     assert error.__cause__ is None
@@ -293,6 +297,7 @@ def test_public_https_stream_projects_only_closed_provider_error_type_classes(
     assert writers[0].closed
 
 
+@pytest.mark.parametrize("status", (403, 429))
 @pytest.mark.parametrize(
     ("body", "expected_class"),
     [
@@ -314,6 +319,7 @@ def test_public_https_stream_projects_only_closed_provider_error_type_classes(
 def test_public_https_stream_marks_malformed_provider_error_json_without_retaining_body(
     monkeypatch: pytest.MonkeyPatch,
     body: bytes,
+    status: int,
     expected_class: str,
 ) -> None:
     class TrackingReader(asyncio.StreamReader):
@@ -350,8 +356,8 @@ def test_public_https_stream_marks_malformed_provider_error_json_without_retaini
     async def open_connection(*_args: object, **_kwargs: object):
         reader = TrackingReader()
         reader.feed_data(
-            b"HTTP/1.1 403 Forbidden\r\n"
-            b"Content-Type: application/json\r\n"
+            f"HTTP/1.1 {status} Synthetic\r\n".encode("ascii")
+            + b"Content-Type: application/json\r\n"
             + f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
             + body
         )
@@ -388,100 +394,106 @@ def test_public_https_stream_marks_malformed_provider_error_json_without_retaini
 @pytest.mark.parametrize(
     ("status", "headers", "expected_error_code", "expected_type_class"),
     [
-        (
-            403,
-            [b"Content-Type: text/html", b"Content-Length: 2"],
-            "provider_upstream_unavailable",
-            "unknown",
-        ),
-        (
-            403,
-            [
-                b"Content-Type: application/json",
-                b"cf-mitigated: challenge",
-                b"Content-Length: 2",
-            ],
-            "provider_upstream_unavailable",
-            "unknown",
-        ),
-        (
-            403,
-            [b"Content-Type: application/json"],
-            "provider_upstream_unavailable",
-            "unknown",
-        ),
-        (
-            403,
-            [b"Content-Type: application/json", b"Transfer-Encoding: chunked"],
-            "provider_upstream_unavailable",
-            "unknown",
-        ),
-        (
-            403,
-            [
-                b"Content-Type: application/json",
-                b"Content-Length: 2",
-                b"Content-Encoding: gzip",
-            ],
-            "provider_upstream_unavailable",
-            "unknown",
-        ),
-        (
-            403,
-            [b"Content-Type: application/json", b"Content-Length: 4097"],
-            "provider_upstream_unavailable",
-            "unknown",
-        ),
-        (
-            403,
-            [b"Content-Type: application/json", b"Content-Length: +2"],
-            "provider_upstream_unavailable",
-            "unknown",
-        ),
-        (
-            403,
-            [b"Content-Type: application/json", b"Content-Length: 0"],
-            "provider_upstream_unavailable",
-            "malformed",
-        ),
-        (
-            403,
-            [b"Content-Type: application/json", b"Content-Length: 0000000000000000000000002"],
-            "provider_upstream_unavailable",
-            "unknown",
-        ),
-        (
-            403,
-            [
-                b"Content-Type: application/json",
-                b"Content-Length: 2",
-                b"Transfer-Encoding: chunked",
-            ],
-            "provider_upstream_unavailable",
-            "unknown",
-        ),
-        (
-            403,
-            [b"Content-Type: application/problem+json", b"Content-Length: 2"],
-            "provider_upstream_unavailable",
-            "unknown",
-        ),
-        (
-            401,
-            [b"Content-Type: application/json", b"Content-Length: 2"],
-            "provider_upstream_unavailable",
-            None,
-        ),
-        (
-            403,
-            [
-                b"Content-Type: application/json",
-                b"Content-Length: 2",
-                b"Content-Length: 2",
-            ],
-            "provider_response_invalid",
-            None,
-        ),
+        (variant, headers, code, expected)
+        for status, headers, code, expected in [
+            (
+                403,
+                [b"Content-Type: text/html", b"Content-Length: 2"],
+                "provider_upstream_unavailable",
+                "unknown",
+            ),
+            (
+                403,
+                [
+                    b"Content-Type: application/json",
+                    b"cf-mitigated: challenge",
+                    b"Content-Length: 2",
+                ],
+                "provider_upstream_unavailable",
+                "unknown",
+            ),
+            (
+                403,
+                [b"Content-Type: application/json"],
+                "provider_upstream_unavailable",
+                "unknown",
+            ),
+            (
+                403,
+                [b"Content-Type: application/json", b"Transfer-Encoding: chunked"],
+                "provider_upstream_unavailable",
+                "unknown",
+            ),
+            (
+                403,
+                [
+                    b"Content-Type: application/json",
+                    b"Content-Length: 2",
+                    b"Content-Encoding: gzip",
+                ],
+                "provider_upstream_unavailable",
+                "unknown",
+            ),
+            (
+                403,
+                [b"Content-Type: application/json", b"Content-Length: 4097"],
+                "provider_upstream_unavailable",
+                "unknown",
+            ),
+            (
+                403,
+                [b"Content-Type: application/json", b"Content-Length: +2"],
+                "provider_upstream_unavailable",
+                "unknown",
+            ),
+            (
+                403,
+                [b"Content-Type: application/json", b"Content-Length: 0"],
+                "provider_upstream_unavailable",
+                "malformed",
+            ),
+            (
+                403,
+                [b"Content-Type: application/json", b"Content-Length: 0000000000000000000000002"],
+                "provider_upstream_unavailable",
+                "unknown",
+            ),
+            (
+                403,
+                [
+                    b"Content-Type: application/json",
+                    b"Content-Length: 2",
+                    b"Transfer-Encoding: chunked",
+                ],
+                "provider_upstream_unavailable",
+                "unknown",
+            ),
+            (
+                403,
+                [b"Content-Type: application/problem+json", b"Content-Length: 2"],
+                "provider_upstream_unavailable",
+                "unknown",
+            ),
+            (
+                401,
+                [b"Content-Type: application/json", b"Content-Length: 2"],
+                "provider_upstream_unavailable",
+                None,
+            ),
+            (
+                403,
+                [
+                    b"Content-Type: application/json",
+                    b"Content-Length: 2",
+                    b"Content-Length: 2",
+                ],
+                "provider_response_invalid",
+                None,
+            ),
+        ]
+        for variant in (
+            (403, 429) if status == 403 and b"cf-mitigated: challenge" not in headers else (status,)
+        )
     ],
 )
 def test_public_https_stream_does_not_read_unsupported_403_diagnostic_framing(
@@ -559,8 +571,10 @@ def test_public_https_stream_does_not_read_unsupported_403_diagnostic_framing(
     assert writers[0].closed
 
 
+@pytest.mark.parametrize("status", (403, 429))
 def test_public_https_stream_bounds_403_diagnostic_timeout(
     monkeypatch: pytest.MonkeyPatch,
+    status: int,
 ) -> None:
     monkeypatch.setattr(net, "_PROVIDER_403_DIAGNOSTIC_TIMEOUT_SECONDS", 0.01)
     readers: list[asyncio.StreamReader] = []
@@ -589,8 +603,8 @@ def test_public_https_stream_bounds_403_diagnostic_timeout(
     async def open_connection(*_args: object, **_kwargs: object):
         reader = asyncio.StreamReader()
         reader.feed_data(
-            b"HTTP/1.1 403 Forbidden\r\n"
-            b"Content-Type: application/json\r\n"
+            f"HTTP/1.1 {status} Synthetic\r\n".encode("ascii")
+            + b"Content-Type: application/json\r\n"
             b"Content-Length: 64\r\n\r\nSYNTHETIC_PARTIAL_SECRET"
         )
         writer = Writer()
@@ -620,8 +634,10 @@ def test_public_https_stream_bounds_403_diagnostic_timeout(
     assert writers[0].closed
 
 
+@pytest.mark.parametrize("status", (403, 429))
 def test_public_https_stream_suppresses_truncated_403_body_exception_details(
     monkeypatch: pytest.MonkeyPatch,
+    status: int,
 ) -> None:
     partial = b'{"error":{"type":"RegionError","message":"SYNTHETIC_PARTIAL_SECRET"}}'
 
@@ -659,8 +675,8 @@ def test_public_https_stream_suppresses_truncated_403_body_exception_details(
     async def open_connection(*_args: object, **_kwargs: object):
         reader = TrackingReader()
         reader.feed_data(
-            b"HTTP/1.1 403 Forbidden\r\n"
-            b"Content-Type: application/json\r\n"
+            f"HTTP/1.1 {status} Synthetic\r\n".encode("ascii")
+            + b"Content-Type: application/json\r\n"
             + f"Content-Length: {len(partial) + 3}\r\n\r\n".encode("ascii")
             + partial
         )
@@ -692,8 +708,10 @@ def test_public_https_stream_suppresses_truncated_403_body_exception_details(
     assert writers[0].closed
 
 
+@pytest.mark.parametrize("status", (403, 429))
 def test_public_https_stream_treats_truncated_403_diagnostic_as_unknown_without_cause(
     monkeypatch: pytest.MonkeyPatch,
+    status: int,
 ) -> None:
     partial = b'{"error":{"type":"RegionError","message":"SYNTHETIC_PARTIAL_SECRET"}}'
 
@@ -731,8 +749,8 @@ def test_public_https_stream_treats_truncated_403_diagnostic_as_unknown_without_
     async def open_connection(*_args: object, **_kwargs: object):
         reader = Reader()
         reader.feed_data(
-            b"HTTP/1.1 403 Forbidden\r\n"
-            b"Content-Type: application/json\r\n"
+            f"HTTP/1.1 {status} Synthetic\r\n".encode("ascii")
+            + b"Content-Type: application/json\r\n"
             + f"Content-Length: {len(partial) + 10}\r\n\r\n".encode("ascii")
             + partial
         )
@@ -764,8 +782,10 @@ def test_public_https_stream_treats_truncated_403_diagnostic_as_unknown_without_
     assert writers[0].closed
 
 
+@pytest.mark.parametrize("status", (403, 429))
 def test_public_https_stream_rejects_short_403_read_result_without_exception(
     monkeypatch: pytest.MonkeyPatch,
+    status: int,
 ) -> None:
     partial = b'{"error":{"type":"RegionError","message":"SYNTHETIC_SHORT_READ_SECRET"}}'
 
@@ -804,8 +824,8 @@ def test_public_https_stream_rejects_short_403_read_result_without_exception(
     async def open_connection(*_args: object, **_kwargs: object):
         reader = Reader()
         reader.feed_data(
-            b"HTTP/1.1 403 Forbidden\r\n"
-            b"Content-Type: application/json\r\n"
+            f"HTTP/1.1 {status} Synthetic\r\n".encode("ascii")
+            + b"Content-Type: application/json\r\n"
             + f"Content-Length: {len(partial) + 7}\r\n\r\n".encode("ascii")
         )
         writer = Writer()
@@ -835,8 +855,10 @@ def test_public_https_stream_rejects_short_403_read_result_without_exception(
     assert writers[0].closed
 
 
+@pytest.mark.parametrize("status", (403, 429))
 def test_public_https_stream_propagates_revocation_around_403_diagnostic_read(
     monkeypatch: pytest.MonkeyPatch,
+    status: int,
 ) -> None:
     body = b'{"error":{"type":"RegionError","message":"SYNTHETIC_REVOKED_SECRET"}}'
 
@@ -874,8 +896,8 @@ def test_public_https_stream_propagates_revocation_around_403_diagnostic_read(
     async def open_connection(*_args: object, **_kwargs: object):
         reader = TrackingReader()
         reader.feed_data(
-            b"HTTP/1.1 403 Forbidden\r\n"
-            b"Content-Type: application/json\r\n"
+            f"HTTP/1.1 {status} Synthetic\r\n".encode("ascii")
+            + b"Content-Type: application/json\r\n"
             + f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
             + body
         )
@@ -921,8 +943,10 @@ def test_public_https_stream_propagates_revocation_around_403_diagnostic_read(
     assert writers[1].closed
 
 
+@pytest.mark.parametrize("status", (403, 429))
 def test_public_https_stream_cancellation_during_403_diagnostic_closes_writer(
     monkeypatch: pytest.MonkeyPatch,
+    status: int,
 ) -> None:
     class WaitingReader(asyncio.StreamReader):
         def __init__(self) -> None:
@@ -958,8 +982,8 @@ def test_public_https_stream_cancellation_during_403_diagnostic_closes_writer(
     async def open_connection(*_args: object, **_kwargs: object):
         reader = WaitingReader()
         reader.feed_data(
-            b"HTTP/1.1 403 Forbidden\r\n"
-            b"Content-Type: application/json\r\n"
+            f"HTTP/1.1 {status} Synthetic\r\n".encode("ascii")
+            + b"Content-Type: application/json\r\n"
             b"Content-Length: 32\r\n\r\n"
         )
         writer = Writer()

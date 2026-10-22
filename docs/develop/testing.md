@@ -26,6 +26,14 @@ prefetch, close the iterator, and never forward raw provider bodies or invent a 
 Keep unknown initial failures and failures after the first chunk interrupted; do not emit a clean
 completion. A correctly reported 429 is failure handling, not proof that the provider can answer.
 
+For HTTP 403 and 429, classify only the existing bounded, identity-encoded JSON error body into
+closed error-type classes. Header diagnostics remain specific to 403. On an initial 429, only a
+positively recognized `free_usage_limit_error` may add the app-owned `error.type` value
+`FreeUsageLimitError` to the sanitized response. The pinned native client classifies that type as
+quota rather than a retryable rate limit. Other or unknown types keep the generic response; never
+infer a reset time or forward upstream text. Cover the complete transport/API/timing/probe flow,
+including unsupported framing, malformed bodies, cancellation and authorization revocation.
+
 Verify that Zen display, validation, policy identity and outbound requests all use the fixed
 reviewed chat route even when stored metadata contains a legacy or unrelated base URL. Both the
 legacy `/zen/v1` route and `/inference/openai/v1` must preserve known-model exclusions; ambiguous

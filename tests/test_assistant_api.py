@@ -7875,9 +7875,23 @@ def test_internal_provider_proxy_uses_db_model_and_closes_on_bad_capability(sett
 
 
 @pytest.mark.parametrize("route_kind", ("chat", "native"), ids=("chat", "native"))
-@pytest.mark.parametrize("status_code", (401, 403, 429))
+@pytest.mark.parametrize(
+    ("status_code", "error_type_class"),
+    [
+        (401, None),
+        (403, None),
+        (403, "free_usage_limit_error"),
+        (429, None),
+        (429, "free_usage_limit_error"),
+        (429, "other"),
+        (429, "unknown"),
+        (429, "malformed"),
+        (429, "free_tier_access_error"),
+        (429, "region_error"),
+    ],
+)
 def test_internal_provider_proxy_returns_initial_upstream_status_before_stream(
-    settings, route_kind: str, status_code: int
+    settings, route_kind: str, status_code: int, error_type_class: str | None
 ) -> None:
     class Runtime(FakeRuntime):
         def __init__(self) -> None:
@@ -7908,6 +7922,7 @@ def test_internal_provider_proxy_returns_initial_upstream_status_before_stream(
                     status_code=status_code,
                     content_type_class="json" if status_code == 403 else None,
                     cf_mitigated_class="absent" if status_code == 403 else None,
+                    provider_error_type_class=error_type_class,
                 )
                 yield b"unreachable"
             finally:
@@ -7964,12 +7979,15 @@ def test_internal_provider_proxy_returns_initial_upstream_status_before_stream(
             assert response.status_code == status_code
             assert response.headers["cache-control"] == "no-store"
             assert response.headers["content-type"].startswith("application/json")
-            assert response.json() == {
-                "error": {
-                    "code": "provider_unavailable",
-                    "message": "The selected model provider is unavailable.",
-                }
+            expected_error = {
+                "code": "provider_unavailable",
+                "message": "The selected model provider is unavailable.",
             }
+            if status_code == 429 and error_type_class == "free_usage_limit_error":
+                expected_error["type"] = "FreeUsageLimitError"
+            assert response.json() == {"error": expected_error}
+            if error_type_class is not None:
+                assert runtime.failures[0][-1] == error_type_class
             assert "provider_upstream_unavailable" not in response.text
             assert "synthetic-private" not in response.text
             assert providers.closed

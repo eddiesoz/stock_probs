@@ -2131,7 +2131,17 @@ def _project_native_embedded_provider_stream_failure(
     has_header_classes = {"content_type_class", "cf_mitigated_class"}.issubset(value)
     has_error_type_class = "provider_error_type_class" in value
     has_response_failure_phase = "response_failure_phase" in value
-    if version in {4, 5} and (has_header_classes or has_error_type_class) and not is_classified_403:
+    if version in {4, 5} and (
+        (has_header_classes and not is_classified_403)
+        or (
+            has_error_type_class
+            and not (
+                stage == "upstream_stream"
+                and error_code == "provider_upstream_unavailable"
+                and status_code in {403, 429}
+            )
+        )
+    ):
         raise ProbeError("native provider stream diagnostic payload was malformed")
     if has_response_failure_phase and (
         version != 5
