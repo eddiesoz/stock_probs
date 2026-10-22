@@ -1040,3 +1040,16 @@ The coordination diagnostic must catch acquisition failures only around context 
 exception raised by the protected body must propagate without a lock-acquisition dump. Retain exact
 exception identity, output-error suppression and the default-off flag. See the
 [F6 persistence checkpoint](../../MVP-PLAN.md#r-astra-121-f6-turn-persistence-liveness-repair-checkpoint-2026-10-22).
+
+
+SSE release-contract tests that create background turns must send turn creation and replay through
+the already-entered lifespan TestClient. An unentered client creates a per-request portal whose
+shutdown can cancel the background turn after an off-loop storage yield. Keep separate owner
+cookies for cross-owner denial, retain complete tool/token/terminal/replay assertions, and require
+the intended first tool event before testing post-projection session revocation. An early error
+must not accidentally satisfy a revocation test. Preserve the isolated red `turn_cancelled`
+evidence beside a passing fixture repair; do not change production behavior or deadlines to repair
+this setup. Reuse unchanged image/native/browser evidence only within its exact input bindings,
+and rerun the mandatory aggregate after affected QA. A failed/interrupted aggregate has no final
+coverage or Python-completion acceptance even when its earlier subchecks passed. See the
+[F6 repaired-image/SSE checkpoint](../../MVP-PLAN.md#r-astra-121-f6-repaired-image-native-pass-and-sse-fixture-checkpoint-2026-10-22).

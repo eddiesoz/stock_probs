@@ -9663,3 +9663,125 @@ limitation. Receipt `/var/tmp/r12r/f6-turn-create-independent-20261022T1312Z/ind
 SHA-256 `365e38e03fc385b63da09704c532c95778285f48ccd9cfc80d2ea6380c473a1d`.
 This supersedes only the pending affected-QA status above. The earlier late-cleanup Fail remains
 unresolved; no browser, native, provider, Docker or release acceptance follows from these tests.
+
+
+### R-ASTRA-121 F6 repaired-image native pass and SSE fixture checkpoint (2026-10-22)
+
+The persistence repair is pushed at `af0cfcd63077abd914909b956e19b682c3c37618` in draft PR #9.
+Its new maintained local build Passed, `13:23:21.849449Z`–`13:30:41.325369Z`, exit 0: image
+`sha256:f7efa37555080db0ab9ef03bac67420a97420e59135d02fb36f66ce0398ca11c`, context
+`0001da38acf61fb4021d884f7c3358af30aed4c550d1e61179e4041e6cbb8283`, 150 image inputs,
+153 build-runner pins and 53 served/export pairs. The actual detached runner/helper/Docker
+processes exited. The exact owned builder controller was stopped; its maintained cgroup proof
+was `absent`, not an empty-cgroup or systemd claim. This build saved the setup-receipt digest
+before launch and matched it afterward. Independent build/input/safe-image-metadata review Passed.
+
+Before that build, the obsolete c188 candidate was archived with the maintained Docker-save/gzip
+helper. A streamed reread independently matched 183,512,180 bytes and SHA-256
+`1ced4043797c1a085651871dbfb2bf69f81e5f4b9fd9bf5191d4f6b20a52955a`. A bounded 115-image RootFS
+inventory, unique exact tag, managed build receipt and no container-reference/protection checks
+preceded full-ID `--no-prune` retirement and the maintained ledger acknowledgment. Protected
+production/recovery IDs remained; the managed count was two before the new build restored three.
+The pointer transition used the maintained typed operation but lacks a dedicated saved receipt;
+tool evidence and before/after readbacks remain distinct. Explicit `0077` covered private archive
+and controller-start audit subprocesses only; normal tests/build/probes used `0022`.
+
+Initial independent native prelaunch review Failed before execution because the newly prepared
+packet omitted its task-local readiness helper. The unchanged predecessor helper was copied,
+mode `0600`, SHA-256 `35a5bd8b565d2013d253b4ebe1d7e4d9f109314eb79d2e3ac2011c45a7c63309`.
+Supplemental independent review Passed all referenced paths, exact immutable launcher substitutions,
+static syntax and the extracted read-only build validator. No native attempt ran during the failure.
+
+The one subsequently authorized genuine native functional run Passed at
+`13:39:17.904681Z`–`13:41:38.176422Z`, exit 0, on the exact f7 image. Readiness passed after
+25 probes in 12.465 seconds, schema 13. Both concurrent synthetic-owner turns completed nonempty
+answers with matching model and aggregate workspace-summary receipts using
+`opencode-zen/minimax-m3.1-flash-free` (324 and 621 answer bytes). The second owner obtained nine
+native search sources and one approved guarded IANA fetch. Both conversation DELETEs returned
+200; cross-owner conversation and forged internal MCP requests returned 404. Worker-cache marker
+counts were zero after deletion. Native search-text attribution was not independently verified.
+All 153 source/probe pins and 53 stage pairs matched. All 92 sampled app-health states were ready;
+worker samples were 84 ready, seven starting and one unavailable. The local 768 MiB/one-CPU sample
+peaked at 515,895,296 of 805,306,368 bytes with zero high/max/OOM deltas. CPU throttling was
+observed without causal inference. This is not actual combined 1 GB acceptance.
+
+Independent native integrity/cleanup review Passed its scope, including exact fixture container,
+network and volume absence and recorded runner/launcher process absence. The parent independently
+confirmed refusal at recorded loopback port 32769. The native child's raw stdout was not retained
+separately: only its bounded projection, recorded SHA and byte count remain, so that child digest
+cannot be independently recomputed. Earlier reviewer-only schema/predicate Fail receipts remain
+beside corrected supplements; no native retry or kill ran. The parent also preserved its initial
+reader mistake (treating trailing cleanup text as JSON) and corrected bounded extraction without
+rerunning native. Earlier failed native runs and the one-off late-cleanup observation remain
+preserved; this Pass establishes neither their cause nor universal reliability.
+
+The same four focused browser journeys then Passed, `13:44:35.169032Z`–`13:46:28.166014Z`,
+exit 0, desktop Chromium and emulated Pixel 7: four passed, zero skips/retries/flaky results.
+The 417 selected inputs and all 53 served/export pairs were unchanged. Four sampled WebFetch
+preview axe scans had zero violations/incompletes; this is not full-app accessibility acceptance.
+Four recorded fixture PIDs were absent, their four ports and the known base port refused, and no
+coordination stack dump appeared in the retained bounded logs. No broader temp/descendant cleanup
+or original-timeout cause is inferred. The earlier full aggregate (190 passed, seven failed,
+three expected skips) remains Fail. A parent attachment listing accidentally emitted binary base64
+and was truncated; the corrected reviewer reads only selected JSON/text metadata, never binary
+attachments, and did not rerun browser tests.
+
+The next mandatory canonical check Failed/interrupted on clean af0cfcd, native x86_64:
+producer window `13:48:53Z`–`14:12:50Z`, exit 2. Documentation and 75 frontend checks/build/stage
+completed; Python did not complete and final coverage is Unavailable. After the first failure
+marker, the parent verified the exact task-owned cgroup/cwd/pytest command and sent one SIGINT to
+that pytest child to retain its diagnostic. Partial output records 1,168 passed, one failed,
+four deselected and 17 warnings. The selector was
+`tests/test_assistant_release_contract.py::test_application_sse_replays_events_and_denies_other_owner`:
+first SSE event was error rather than tool. Parent terminal review verified all 417 inputs and
+53 stage pairs before any source edit, plus process/cgroup absence. A first read-only terminal
+checker incorrectly interpreted empty post-terminal ControlGroup as the root; it was corrected to
+the pre-observed task-owned path without mutation. Independent terminal review Passed integrity
+while preserving aggregate Fail and Unavailable independent contemporaneous final-test binding:
+its later snapshot saw the authorized post-terminal test edit, with the other 416 pins, all
+150 image inputs and 53 stage pairs unchanged. No late snapshot is backdated into the gate.
+
+The unchanged failing selector reproduced in a separate parent-run check at
+`14:15:05.008206Z`–`14:15:12.794468Z`, exit 1, with 417 stable pins. A bounded assertion-message
+diagnostic reproduced `turn_cancelled`, `14:16:59.839145Z`–`14:17:07.673117Z`, exit 1, stable pins.
+The test had an entered lifespan client but sent turn creation/replay through separate unentered
+clients, whose per-request portals could cancel background generation after the new off-loop yield.
+The test-only repair reuses the entered client for both SSE cases; all replay/token/completion/
+ordering/404/revocation assertions remain. A first-tool precondition now ensures revocation occurs
+on the intended event rather than accidentally on an early error. Both affected cases Passed,
+then the whole six-case module Passed at `14:19:11.514269Z`–`14:19:54.937910Z`, exit 0, stable pins.
+Ruff security/format and diff checks Passed. Independent affected QA is pending at this checkpoint.
+Application/image inputs are unchanged; the f7 native and focused browser evidence retain their
+original bindings and do not require a new image or repeated native trial for this fixture repair.
+A fresh mandatory aggregate is still required; no aggregate Pass is manufactured from subchecks.
+
+Current full-browser/canonical/security/accessibility, current-image kill, authenticated owner UI,
+actual combined 1 GB, PR-bound recovery/rollback, final guide and release gates remain open. The
+helper still binds older e40/8622 and requires a reviewed rebind after this checkpoint. Host trials
+await the explicit backup-retention decision; all 32 active originals remain intact. No merge,
+deployment, resize, rollout or email occurred. The full active goal and seven-feature order,
+existing 1 GB host/backups and US$15 monthly total cap remain unchanged.
+
+Selected immutable private receipts:
+
+- New build parent terminal: `/var/tmp/r12r/f6-image-af0cfcd-preparation-280fe56d37034f4c96cbbe719a763568/parent-build-terminal-v2.json`, SHA-256 `498f7be4db98b219a60606bb5266ba8c25b35e16102ec416f01cfff62da81505`.
+- Independent build binding: `/var/tmp/r12r/f6-image-retirement-review-af0cfcd-20261022T1324Z/independent-build-binding-review-v2.json`, SHA-256 `fc6c29ab8f3caceb96efad3ec18b6723ab712a74001100426442e64629132ed8`.
+- Corrected native prelaunch: `/var/tmp/r12r/f6-native-af0cfcd-independent-prelaunch-review-20261022T1334Z/post-helper-review/native-prelaunch-supplemental-review-v1.json`, SHA-256 `0595c4f8ec0e5043d4017bd31b8b12dbb71df61dbc2d2b680deae40e3eff8f4c`.
+- Independent native integrity: `/var/tmp/r12r/f6-native-af0cfcd-independent-integrity-v3-20261022T1349Z/independent-review-v3-supplement.json`, SHA-256 `f40a2ebd44f10353d5701d869e9d0179df22e13780d098833db439e9f529c297`.
+- Parent native review: `/var/tmp/r12r/f6-native-af0cfcd-63c223e8e5b6467f906f19d58d334a6f/parent-integrated-native-review-v1.json`, SHA-256 `85318c655d49ed757c5d23a5818747a8783242fd1ca2f79c599a47189a9fd17b`.
+- Four-case browser parent review: `/var/tmp/r12r/f6-browser-af0cfcd-138b16cd3eac4d929c62a61a9277717a/parent-terminal-review-v1.json`, SHA-256 `c9e0c289ad4ce5b4b7905b73f49b962a7cf65731f6630abded2d8718647b1805`.
+- Failed canonical: `test-results/local-gates/R-ASTRA-121-20261022T134853Z/evidence.json`, SHA-256 `ea421028702444191609a7697f0e482c0b3ffafcf9097231cd4afc341d2f76dc`.
+- Independent failed-terminal review: `/var/tmp/r12r/f6-canonical-af0cfcd-independent-terminal-review-v2-20261022T1419Z/independent-terminal-review-v2.json`, SHA-256 `3dc07a9d36b8104394436af04f78a553bd31f9feef250d7463d3821f2813bed6`.
+- SSE fixture baseline/red/green evidence: `/var/tmp/r12r/f6-sse-contract-reproduction-4d06b8a7aa5a44c489603dd58be19d9a/`.
+
+
+Independent affected QA subsequently Passed the six-case release-contract module, native x86_64,
+Python 3.11.15, child umask `0022`, `14:24:14.469Z`–`14:24:42.638Z`, exit 0, no failures.
+All 148 Python/test/import/config pins remained stable; all 150 application-image inputs and
+53 served/export pairs matched before/after. Ruff check/security/format and scoped diff Passed.
+Independent source review preserves all replay/order/completion/404/revocation invariants. Receipt
+`/var/tmp/r12r/f6-canonical-af0cfcd-independent-scoped-qa-20261022T1422Z/independent-scoped-review-v1.json`,
+SHA-256 `a87f092d42ff369d2f46cc58a16bf102abe57c3fc9672194b5186c4b511e29e0`.
+This resolves only the pending affected-QA status above. The parent reviewed the integrated diff
+and confirmed every original assertion predicate remains, with one added first-tool precondition.
+No canonical/native failure cause is upgraded, and no aggregate or release Pass follows.

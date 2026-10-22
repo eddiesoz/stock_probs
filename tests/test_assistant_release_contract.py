@@ -209,8 +209,11 @@ def _add_user(app: Any, github_id: int) -> dict[str, str | int]:
     }
 
 
-def _browser(app: Any, identity: Mapping[str, str | int]) -> TestClient:
-    client = TestClient(app, client=("127.0.0.1", 51120))
+def _browser(
+    app: Any, identity: Mapping[str, str | int], *, client: TestClient | None = None
+) -> TestClient:
+    if client is None:
+        client = TestClient(app, client=("127.0.0.1", 51120))
     client.cookies.set(SESSION_COOKIE_NAME, str(identity["token"]), path="/")
     client.cookies.set(CSRF_COOKIE_NAME, str(identity["csrf"]), path="/")
     return client
@@ -371,7 +374,7 @@ def test_application_sse_replays_events_and_denies_other_owner(settings):
     with TestClient(app) as _lifecycle:
         owner = _add_user(app, 51200)
         other = _add_user(app, 51201)
-        client = _browser(app, owner)
+        client = _browser(app, owner, client=_lifecycle)
         other_client = _browser(app, other)
         try:
             page_context, conversation = _create_conversation(client, owner, model)
@@ -394,7 +397,10 @@ def test_application_sse_replays_events_and_denies_other_owner(settings):
             streamed = client.get(stream_path)
             assert streamed.status_code == 200
             records = _events(streamed.text)
-            assert records[0]["event"] == "tool"
+            assert records[0]["event"] == "tool", {
+                "first_event": records[0]["event"],
+                "error_code": records[0]["data"].get("code"),
+            }
             assert records[-1]["event"] == "complete"
             assert all(record["event"] == "token" for record in records[1:-1])
             assert len(records[1:-1]) >= 1
@@ -448,7 +454,7 @@ def test_revocation_between_sse_chunks_stops_later_events(settings, monkeypatch)
     app, model = _application(settings, runtime=runtime)
     with TestClient(app) as _lifecycle:
         owner = _add_user(app, 51202)
-        client = _browser(app, owner)
+        client = _browser(app, owner, client=_lifecycle)
         try:
             page_context, conversation = _create_conversation(client, owner, model)
             started = client.post(
@@ -472,6 +478,7 @@ def test_revocation_between_sse_chunks_stops_later_events(settings, monkeypatch)
                 nonlocal revoked
                 projected = original_project(context, event)
                 if not revoked:
+                    assert event.get("type") == "tool", "fixture did not reach its first tool event"
                     with app.state.repository.connect() as connection:
                         connection.execute(
                             "UPDATE sessions SET revoked_at = ?, revocation_reason = ? "
