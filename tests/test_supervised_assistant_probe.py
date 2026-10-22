@@ -39,6 +39,177 @@ sys.modules[NATIVE_SPEC.name] = native_probe
 NATIVE_SPEC.loader.exec_module(native_probe)
 
 
+def _conversation_poll_request(outcomes: list[object], **changes: object):
+    """Exercise the attached driver's real request function without starting a runtime."""
+
+    from collections.abc import Mapping
+
+    import httpx
+
+    tree = ast.parse(NATIVE_MODULE_PATH.read_text(encoding="utf-8"))
+    function = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "request"
+    )
+    calls: list[dict[str, object]] = []
+    clock = type("Clock", (), {"now": 100.0})()
+    clock.monotonic = lambda: clock.now
+    clock.sleep = lambda seconds: setattr(clock, "now", clock.now + seconds)
+
+    class Client:
+        def request(self, method: str, path: str, **kwargs: object):
+            calls.append({"method": method, "path": path, **kwargs})
+            outcome = outcomes.pop(0)
+            if isinstance(outcome, Exception):
+                raise outcome
+            return httpx.Response(int(outcome), json={})
+
+    path = "/api/v1/assistant/conversations/owned-conversation"
+    namespace = {
+        "httpx": httpx,
+        "Mapping": Mapping,
+        "clients": [Client()],
+        "validated_users": [{"session_cookie": "fixture-session", "csrf_cookie": "fixture-csrf"}],
+        "SESSION_COOKIE_NAME": "session",
+        "CSRF_COOKIE_NAME": "csrf",
+        "_AttachedProbeFailure": native_probe._AttachedProbeFailure,
+        "_attached_json": native_probe._attached_json,
+        "failure_stage": "turn_poll_and_search_confirmation",
+        "conversations": ["owned-conversation"],
+        "deadline": 150.0,
+        "time": clock,
+        **changes,
+    }
+    module = ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[]))
+    exec(compile(module, str(NATIVE_MODULE_PATH), "exec"), namespace)  # noqa: S102
+    return namespace["request"], path, calls, clock
+
+
+@pytest.mark.parametrize("timeout_count", [1, 2])
+def test_attached_conversation_poll_recovers_bounded_read_timeout(timeout_count: int) -> None:
+    import httpx
+
+    request, path, calls, _clock = _conversation_poll_request(
+        [*[httpx.ReadTimeout("synthetic") for _ in range(timeout_count)], 200]
+    )
+    response, payload = request(0, "GET", path)
+    assert response.status_code == 200 and payload == {}
+    assert len(calls) == timeout_count + 1
+
+
+def test_attached_conversation_poll_stops_after_three_read_attempts() -> None:
+    import httpx
+
+    request, path, calls, _clock = _conversation_poll_request(
+        [httpx.ReadTimeout("synthetic") for _ in range(4)]
+    )
+    with pytest.raises(native_probe._AttachedProbeFailure, match="transport_readtimeout"):
+        request(0, "GET", path)
+    assert len(calls) == 3
+
+
+@pytest.mark.parametrize("changes", [{"deadline": 100.0}, {"deadline": 100.05}])
+def test_attached_conversation_poll_stops_retry_admission_at_deadline(changes) -> None:
+    import httpx
+
+    request, path, calls, clock = _conversation_poll_request(
+        [httpx.ReadTimeout("synthetic"), 200], **changes
+    )
+    with pytest.raises(native_probe._AttachedProbeFailure, match="transport_readtimeout"):
+        request(0, "GET", path)
+    assert clock.now <= changes["deadline"]
+    assert len(calls) <= 1
+
+
+@pytest.mark.parametrize(
+    "method,path,kwargs,stage",
+    [
+        ("POST", None, {}, "turn_poll_and_search_confirmation"),
+        ("GET", "/api/v1/assistant/status", {}, "turn_poll_and_search_confirmation"),
+        ("GET", None, {"csrf": True}, "turn_poll_and_search_confirmation"),
+        ("GET", None, {"body": {}}, "turn_poll_and_search_confirmation"),
+        ("GET", None, {}, "model_inventory"),
+    ],
+)
+def test_attached_conversation_poll_does_not_retry_other_requests(method, path, kwargs, stage):
+    import httpx
+
+    request, owned_path, calls, _clock = _conversation_poll_request(
+        [httpx.ReadTimeout("synthetic"), 200], failure_stage=stage
+    )
+    with pytest.raises(native_probe._AttachedProbeFailure, match="transport_readtimeout"):
+        request(0, method, path or owned_path, **kwargs)
+    assert len(calls) == 1
+
+
+def test_attached_conversation_poll_preserves_http_authorization_failure() -> None:
+    request, path, calls, _clock = _conversation_poll_request([403, 200])
+    response, payload = request(0, "GET", path)
+    with pytest.raises(native_probe._AttachedProbeFailure):
+        native_probe._attached_require(response, payload, {200})
+    assert len(calls) == 1
+
+
+def test_attached_conversation_poll_does_not_retry_connection_errors() -> None:
+    import httpx
+
+    request, path, calls, _clock = _conversation_poll_request(
+        [httpx.ConnectError("synthetic"), 200]
+    )
+    with pytest.raises(native_probe._AttachedProbeFailure, match="transport_connecterror"):
+        request(0, "GET", path)
+    assert len(calls) == 1
+
+
+def test_attached_conversation_poll_caps_each_attempt_to_remaining_time() -> None:
+    request, path, calls, _clock = _conversation_poll_request([200], deadline=101.5)
+    request(0, "GET", path)
+    assert calls[0]["timeout"].read == 1.5
+    assert calls[0]["timeout"].connect == 1.5
+
+
+@pytest.mark.parametrize("deadline", [None, 1234.5])
+def test_live_probe_preserves_location_verification_deadline(deadline: float | None) -> None:
+    """Instrumentation must not prevent native dispatch or remove its deadline."""
+
+    tree = ast.parse(NATIVE_MODULE_PATH.read_text(encoding="utf-8"))
+    wrapper = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "traced_verify_location"
+    )
+    calls: list[tuple[object, str, object, float | None]] = []
+    context = type("Context", (), {"execution_id": "probe-execution"})()
+    descriptor = object()
+
+    async def original_verify(
+        actual_context: object,
+        directory: str,
+        actual_descriptor: object,
+        *,
+        turn_deadline: float | None,
+    ) -> dict[str, str]:
+        calls.append((actual_context, directory, actual_descriptor, turn_deadline))
+        return {"id": "assistant-selected", "providerID": "opencode"}
+
+    namespace: dict[str, object] = {
+        "trace": {},
+        "location_root": Path("/synthetic-locations"),
+        "original_verify": original_verify,
+    }
+    module = ast.fix_missing_locations(ast.Module(body=[wrapper], type_ignores=[]))
+    exec(compile(module, str(NATIVE_MODULE_PATH), "exec"), namespace)  # noqa: S102
+    result = asyncio.run(
+        namespace["traced_verify_location"](
+            context, "/synthetic-locations/probe-execution", descriptor, turn_deadline=deadline
+        )
+    )
+    assert result == {"id": "assistant-selected", "providerID": "opencode"}
+    assert calls == [(context, "/synthetic-locations/probe-execution", descriptor, deadline)]
+    assert namespace["trace"]["location_verify_directory_matches"] is True
+
+
 def test_native_probe_defers_mcp_service_import_until_synthetic_tool_use() -> None:
     """Attached-mode import stays light while synthetic modes keep the exact app schemas."""
 
@@ -1973,7 +2144,10 @@ def test_native_timing_v4_projects_closed_403_header_classes() -> None:
     assert "challenge token=" not in encoded
 
 
-def test_native_timing_v4_projects_error_type_class_without_header_classes() -> None:
+@pytest.mark.parametrize("error_type_class", ["region_error", "free_tier_access_error"])
+def test_native_timing_v4_projects_error_type_class_without_header_classes(
+    error_type_class: str,
+) -> None:
     payload = _native_timing_v4_payload()
     requests = payload["provider_requests"]
     assert isinstance(requests, list)
@@ -1983,7 +2157,7 @@ def test_native_timing_v4_projects_error_type_class_without_header_classes() -> 
             "stage": "upstream_stream",
             "error_code": "provider_upstream_unavailable",
             "http_status": 403,
-            "provider_error_type_class": "region_error",
+            "provider_error_type_class": error_type_class,
         },
     )
 
@@ -1997,7 +2171,7 @@ def test_native_timing_v4_projects_error_type_class_without_header_classes() -> 
             "stage": "upstream_stream",
             "error_code": "provider_upstream_unavailable",
             "http_status": 403,
-            "provider_error_type_class": "region_error",
+            "provider_error_type_class": error_type_class,
         }
     ]
     assert "execution_id" not in json.dumps(projection)
@@ -2983,13 +3157,12 @@ def test_worker_cache_markers_follow_native_attached_probe_contract() -> None:
 
 
 @pytest.mark.parametrize("fail_dac", [False, True])
-def test_native_active_search_ack_precedes_dac_and_requires_dac_before_purge(
+def test_native_active_search_checks_dac_before_resuming_owner_turn(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fail_dac: bool
 ) -> None:
     owner1_cookie = "B" * 43
     config_path = f"/run/assistant/worker-locations/{'2' * 32}/opencode.json"
     ack_path = tmp_path / "acknowledged"
-    release_path = tmp_path / "release"
     checkpoint = {
         "mode": "attach-existing-app",
         "phase": "active_search_wait",
@@ -3006,13 +3179,11 @@ def test_native_active_search_ack_precedes_dac_and_requires_dac_before_purge(
     checkpoint_line = json.dumps(checkpoint, separators=(",", ":"))
     driver_script = "\n".join(
         (
-            "import pathlib,sys,time",
+            "import pathlib,sys",
             "sys.stdin.readline()",
             f"sys.stdout.write({checkpoint_line!r}+'\\n'); sys.stdout.flush()",
             "if sys.stdin.readline() != '{\"continue\":true}\\n': sys.exit(2)",
             f"pathlib.Path({str(ack_path)!r}).write_text('ack')",
-            f"release=pathlib.Path({str(release_path)!r})",
-            "while not release.exists(): time.sleep(0.01)",
             f"sys.stdout.write({final_line!r}+'\\n'); sys.stdout.flush()",
         )
     )
@@ -3075,7 +3246,8 @@ def test_native_active_search_ack_precedes_dac_and_requires_dac_before_purge(
 
     def active_config(_candidate: object, cookie: str) -> str:
         assert cookie == owner1_cookie
-        assert not ack_sent["value"]
+        if ack_sent["value"]:
+            raise probe.ProbeError("synthetic owner lease ended after resume")
         events.append("active_config")
         return config_path
 
@@ -3084,11 +3256,10 @@ def test_native_active_search_ack_precedes_dac_and_requires_dac_before_purge(
     ) -> dict[str, object]:
         assert users[1]["session_cookie"] == owner1_cookie
         assert path == config_path
-        assert ack_sent["value"]
         events.append("dac")
+        probe._require_active_owner_config(_candidate, owner1_cookie, path)
         if fail_dac:
             raise probe.ProbeError("synthetic DAC denial")
-        release_path.write_text("release")
         return {"worker_uid_10002": "denied"}
 
     monkeypatch.setattr(probe, "_scan_worker_cache", scan_cache)
@@ -3119,7 +3290,15 @@ def test_native_active_search_ack_precedes_dac_and_requires_dac_before_purge(
         with pytest.raises(probe.ProbeError, match="synthetic DAC denial"):
             probe._run_native_driver(candidate, users)
         assert cache_scans == ["checkpoint"]
-        assert events == ["active_health", "cache_checkpoint", "active_config", "ack", "dac"]
+        assert events == [
+            "active_health",
+            "cache_checkpoint",
+            "active_config",
+            "dac",
+            "active_config",
+        ]
+        assert not ack_sent["value"]
+        assert not ack_path.exists()
         assert launched and launched[0].poll() is not None
     else:
         driver, _resources, _config, dac, cache = probe._run_native_driver(candidate, users)
@@ -3132,11 +3311,15 @@ def test_native_active_search_ack_precedes_dac_and_requires_dac_before_purge(
             "active_health",
             "cache_checkpoint",
             "active_config",
-            "ack",
             "dac",
+            "active_config",
+            "ack",
             "cache_purge",
             "returned",
         ]
+        assert ack_path.read_text() == "ack"
+    assert launched[0].stdin is not None
+    assert launched[0].stdin._stream.closed
 
 
 def test_active_config_is_selected_from_owner_one_session_lease(

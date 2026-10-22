@@ -9,6 +9,7 @@ import json
 import os
 import runpy
 import sqlite3
+import stat
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -1190,6 +1191,8 @@ def test_recovery_overlay_has_fixed_file_hash_manifest_and_migration_identity(
 ) -> None:
     base_context = tmp_path / "base"
     rehearsal._extract_base_archive(REPOSITORY_ROOT, base_context)
+    base_provider = base_context / "src/stock_probs/provider.py"
+    base_provider_bytes = base_provider.read_bytes()
     overlay = rehearsal._apply_recovery_overlay(REPOSITORY_ROOT, base_context)
 
     expected_paths = {
@@ -1216,6 +1219,9 @@ def test_recovery_overlay_has_fixed_file_hash_manifest_and_migration_identity(
 
     migration = base_context / "src/stock_probs/migrations/013_assistant_conversations.sql"
     assert hashlib.sha256(migration.read_bytes()).hexdigest() == rehearsal.MIGRATION_013_SHA256
+    provider = base_context / "src/stock_probs/provider.py"
+    assert provider.read_bytes() == base_provider_bytes
+    assert "src/stock_probs/provider.py" not in overlay["files"]
     repository = (base_context / "src/stock_probs/repository.py").read_text(encoding="utf-8")
     assert "SCHEMA_VERSION = 13" in repository
     assert f'13: "{rehearsal.MIGRATION_013_SHA256}"' in repository
@@ -1246,6 +1252,65 @@ def test_recovery_overlay_fails_closed_when_pinned_base_anchor_changes(tmp_path:
 
     with pytest.raises(rehearsal.RehearsalError, match="anchor changed"):
         rehearsal._apply_recovery_overlay(REPOSITORY_ROOT, base_context)
+
+
+def test_recovery_overlay_does_not_rewrite_unlisted_base_provider(tmp_path: Path) -> None:
+    base_context = tmp_path / "base"
+    rehearsal._extract_base_archive(REPOSITORY_ROOT, base_context)
+    provider = base_context / "src/stock_probs/provider.py"
+    provider.write_bytes(provider.read_bytes() + b"\n# fixture base variation\n")
+    provider_bytes = provider.read_bytes()
+
+    overlay = rehearsal._apply_recovery_overlay(REPOSITORY_ROOT, base_context)
+
+    assert "src/stock_probs/provider.py" not in overlay["files"]
+    assert provider.read_bytes() == provider_bytes
+
+
+def test_recovery_overlay_ignores_unlisted_provider_source(tmp_path: Path) -> None:
+    base_context = tmp_path / "base"
+    rehearsal._extract_base_archive(REPOSITORY_ROOT, base_context)
+    base_provider = base_context / "src/stock_probs/provider.py"
+    base_provider_bytes = base_provider.read_bytes()
+    source_root = tmp_path / "source"
+    provider = source_root / "src/stock_probs/provider.py"
+    migration = source_root / "src/stock_probs/migrations/013_assistant_conversations.sql"
+    provider.parent.mkdir(parents=True)
+    migration.parent.mkdir(parents=True)
+    provider.write_bytes(b"unreviewed provider content is not an overlay input\n")
+    migration.write_bytes(
+        (
+            REPOSITORY_ROOT / "src/stock_probs/migrations/013_assistant_conversations.sql"
+        ).read_bytes()
+    )
+
+    overlay = rehearsal._apply_recovery_overlay(source_root, base_context)
+
+    assert "src/stock_probs/provider.py" not in overlay["files"]
+    assert base_provider.read_bytes() == base_provider_bytes
+    assert overlay["files"]["src/stock_probs/migrations/013_assistant_conversations.sql"] == (
+        rehearsal.MIGRATION_013_SHA256
+    )
+
+
+def test_recovery_overlay_rejects_changed_migration_source_digest(tmp_path: Path) -> None:
+    base_context = tmp_path / "base"
+    rehearsal._extract_base_archive(REPOSITORY_ROOT, base_context)
+    source_root = tmp_path / "source"
+    migration = source_root / "src/stock_probs/migrations/013_assistant_conversations.sql"
+    migration.parent.mkdir(parents=True)
+    migration.write_bytes(
+        (
+            REPOSITORY_ROOT / "src/stock_probs/migrations/013_assistant_conversations.sql"
+        ).read_bytes()
+        + b"\n-- unreviewed migration change\n"
+    )
+
+    with pytest.raises(
+        rehearsal.RehearsalError,
+        match="schema-13 migration checksum does not match the reviewed value",
+    ):
+        rehearsal._apply_recovery_overlay(source_root, base_context)
 
 
 def test_recovery_image_run_profile_is_private_and_identity_drop_is_fixed() -> None:
@@ -1394,24 +1459,36 @@ def test_fixed_pr_verifier_uses_only_the_approved_api_endpoint_and_head(
         "base": {"ref": "main"},
         "head": {"sha": reviewed_sha, "repo": {"full_name": "eddiesoz/stock_probs"}},
     }
+    hotfix_payload = {
+        "number": rehearsal.HOTFIX_PR_NUMBER,
+        "state": "open",
+        "base": {"ref": "main"},
+        "head": {"sha": reviewed_sha, "repo": {"full_name": "eddiesoz/stock_probs"}},
+    }
 
     class Response:
         status = 200
 
+        def __init__(self, response_payload: dict[str, object]) -> None:
+            self.response_payload = response_payload
+
         def read(self, size: int) -> bytes:
             assert size == 64 * 1024 + 1
-            return json.dumps(payload).encode()
+            return json.dumps(self.response_payload).encode()
 
     class Connection:
         def __init__(self, host: str, *, timeout: int) -> None:
             assert host == "api.github.com"
             assert timeout == 10
+            self.response_payload = payload
 
         def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
             requests.append((method, path, headers))
+            if path == f"/repos/eddiesoz/stock_probs/pulls/{rehearsal.HOTFIX_PR_NUMBER}":
+                self.response_payload = hotfix_payload
 
         def getresponse(self) -> Response:
-            return Response()
+            return Response(self.response_payload)
 
         def close(self) -> None:
             pass
@@ -1420,9 +1497,180 @@ def test_fixed_pr_verifier_uses_only_the_approved_api_endpoint_and_head(
     rehearsal._verify_reviewed_pr(repository, reviewed_sha)
     assert requests[0][0:2] == ("GET", "/repos/eddiesoz/stock_probs/pulls/2")
 
+    requests.clear()
+    rehearsal._verify_reviewed_pr(repository, reviewed_sha, rehearsal.HOTFIX_PR_NUMBER)
+    assert requests[0][0:2] == (
+        "GET",
+        f"/repos/eddiesoz/stock_probs/pulls/{rehearsal.HOTFIX_PR_NUMBER}",
+    )
+    assert requests[0][2] == {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "signal-ledger-schema13-rehearsal",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    for invalid_pull_number in (12, True, 9.0):
+        requests.clear()
+        with pytest.raises(
+            rehearsal.RehearsalError,
+            match="fixed reviewed PR verifier is unavailable",
+        ):
+            rehearsal._verify_reviewed_pr(repository, reviewed_sha, invalid_pull_number)
+        assert requests == []
+
+    requests.clear()
+    with pytest.raises(rehearsal.RehearsalError, match="reviewed_pr_invalid"):
+        rehearsal._verify_reviewed_pr(repository, "B" * 40, rehearsal.HOTFIX_PR_NUMBER)
+    assert requests == []
+
+    requests.clear()
+    rehearsal._verify_reviewed_pr(
+        repository,
+        reviewed_sha,
+        rehearsal.HELPER_SOURCE_PR_NUMBER,
+    )
+    assert requests[0][0:2] == (
+        "GET",
+        f"/repos/eddiesoz/stock_probs/pulls/{rehearsal.HELPER_SOURCE_PR_NUMBER}",
+    )
+
+    requests.clear()
     payload["head"]["sha"] = "c" * 40
     with pytest.raises(rehearsal.RehearsalError, match="reviewed_pr_mismatch"):
         rehearsal._verify_reviewed_pr(repository, reviewed_sha)
+
+
+@pytest.mark.parametrize(
+    ("status", "response_body", "expected_error"),
+    [
+        (503, b"{}", "reviewed_pr_unavailable"),
+        (200, b"{", "reviewed_pr_invalid"),
+        (200, b"[]", "reviewed_pr_invalid"),
+        (200, b"x" * (64 * 1024 + 1), "reviewed_pr_unavailable"),
+    ],
+)
+def test_fixed_hotfix_pr_verifier_preserves_bounded_response_errors(
+    status: int,
+    response_body: bytes,
+    expected_error: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Response:
+        def __init__(self) -> None:
+            self.status = status
+
+        def read(self, size: int) -> bytes:
+            assert size == rehearsal.REVIEWED_PR_RESPONSE_LIMIT + 1
+            return response_body
+
+    class Connection:
+        def __init__(self, host: str, *, timeout: int) -> None:
+            assert host == "api.github.com"
+            assert timeout == 10
+
+        def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
+            assert method == "GET"
+            assert (
+                path == f"/repos/{rehearsal.FIXED_PR_REPOSITORY}/pulls/{rehearsal.HOTFIX_PR_NUMBER}"
+            )
+            assert headers["Accept"] == "application/vnd.github+json"
+
+        def getresponse(self) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(http.client, "HTTPSConnection", Connection)
+    with pytest.raises(rehearsal.RehearsalError, match=expected_error):
+        rehearsal._verify_reviewed_pr(Path("/unused"), "b" * 40, rehearsal.HOTFIX_PR_NUMBER)
+
+
+@pytest.mark.parametrize(
+    "response_payload",
+    [
+        {
+            "number": 9,
+            "state": "closed",
+            "base": {"ref": "main"},
+            "head": {"sha": "b" * 40, "repo": {"full_name": "eddiesoz/stock_probs"}},
+        },
+        {
+            "number": 9,
+            "state": "open",
+            "base": {"ref": "release"},
+            "head": {"sha": "b" * 40, "repo": {"full_name": "eddiesoz/stock_probs"}},
+        },
+        {
+            "number": 9,
+            "state": "open",
+            "base": {"ref": "main"},
+            "head": {"sha": "c" * 40, "repo": {"full_name": "eddiesoz/stock_probs"}},
+        },
+        {
+            "number": 9,
+            "state": "open",
+            "base": {"ref": "main"},
+            "head": {"sha": "b" * 40, "repo": {"full_name": "attacker/stock_probs"}},
+        },
+        {
+            "number": 10,
+            "state": "open",
+            "base": {"ref": "main"},
+            "head": {"sha": "b" * 40, "repo": {"full_name": "eddiesoz/stock_probs"}},
+        },
+    ],
+)
+def test_fixed_hotfix_pr_verifier_rejects_unreviewed_pull_request_metadata(
+    response_payload: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Response:
+        status = 200
+
+        def read(self, size: int) -> bytes:
+            assert size == rehearsal.REVIEWED_PR_RESPONSE_LIMIT + 1
+            return json.dumps(response_payload).encode()
+
+    class Connection:
+        def __init__(self, host: str, *, timeout: int) -> None:
+            assert host == "api.github.com"
+            assert timeout == 10
+
+        def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
+            assert method == "GET"
+            assert (
+                path == f"/repos/{rehearsal.FIXED_PR_REPOSITORY}/pulls/{rehearsal.HOTFIX_PR_NUMBER}"
+            )
+
+        def getresponse(self) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(http.client, "HTTPSConnection", Connection)
+    with pytest.raises(rehearsal.RehearsalError, match="reviewed_pr_mismatch"):
+        rehearsal._verify_reviewed_pr(Path("/unused"), "b" * 40, rehearsal.HOTFIX_PR_NUMBER)
+
+
+def test_fixed_hotfix_pr_verifier_maps_transport_errors_to_safe_code(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Connection:
+        def __init__(self, host: str, *, timeout: int) -> None:
+            assert host == "api.github.com"
+            assert timeout == 10
+
+        def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
+            raise TimeoutError("private transport detail")
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(http.client, "HTTPSConnection", Connection)
+    with pytest.raises(rehearsal.RehearsalError, match="reviewed_pr_unavailable") as captured:
+        rehearsal._verify_reviewed_pr(Path("/unused"), "b" * 40, rehearsal.HOTFIX_PR_NUMBER)
+    assert "private transport detail" not in str(captured.value)
 
 
 def test_build_image_delegates_to_bounded_helper_with_fixed_identity(
@@ -1940,3 +2188,481 @@ def test_deployed_baseline_flag_is_rejected_outside_full_rehearsal(
     failure = json.loads(capsys.readouterr().err)
     assert failure["status"] == "fail"
     assert "only valid for a full rehearsal" in failure["reason"]
+
+
+def test_reviewed_candidate_build_receipt_path_and_pins_are_exact() -> None:
+    assert rehearsal.HOTFIX_CANDIDATE_REVISION == "f6a51d5c821e6b1ab7974a94f4ff795da10130bc"
+    assert rehearsal.HOTFIX_CANDIDATE_IMAGE_ID == (
+        "sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196"
+    )
+    assert rehearsal.HOTFIX_CANDIDATE_CONTEXT_SHA256 == (
+        "a332dca5d27f4bb6fda4673e826096158c038e218f6291f01069951378c4fbae"
+    )
+    assert rehearsal.HOTFIX_BUILD_RECEIPT_SHA256 == (
+        "d3529f24499ea2f3b7921055a4308be019798b7be083fc6e75f1ad94b205b0b5"
+    )
+    assert (
+        Path(
+            "/home/james/.local/state/stock-probs/r120-buildkit-v1/build-runs/"
+            "f6a51d5c821e6b1ab7974a94f4ff795da10130bc/"
+            "5962e1c34bd3f66db6d3bed981d8ed75cccbddef5043e3d916b3e69b4242accf/"
+            "build-receipt.json"
+        )
+        == rehearsal.HOTFIX_BUILD_RECEIPT_PATH
+    )
+
+
+def test_fixed_hotfix_build_receipt_accepts_only_the_pinned_image_and_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    receipt = {
+        "schema": "r120-bounded-image-build-v1",
+        "status": "built",
+        "stage": "complete",
+        "build_exit_code": 0,
+        "candidate_role": "current",
+        "source_branch": "codex/signal-ledger-assistant-fix",
+        "source_head": rehearsal.HOTFIX_CANDIDATE_REVISION,
+        "revision_label": rehearsal.HOTFIX_CANDIDATE_REVISION,
+        "image_platform": "linux/amd64",
+        "image_id": rehearsal.HOTFIX_CANDIDATE_IMAGE_ID,
+        "context_sha256": rehearsal.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+        "setup_receipt_sha256": (
+            "291ca40fc11266bac55fb095a30bcc17e9f0baf49530f72d5f703b300f0d7ceb"
+        ),
+        "post_build_root_identity_verified": True,
+    }
+    raw = json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
+    receipt_path = tmp_path / "build-receipt.json"
+    receipt_path.write_bytes(raw)
+    receipt_path.chmod(0o600)
+    monkeypatch.setattr(rehearsal, "HOTFIX_BUILD_RECEIPT_PATH", receipt_path)
+    monkeypatch.setattr(rehearsal, "HOTFIX_BUILD_RECEIPT_SHA256", hashlib.sha256(raw).hexdigest())
+
+    accepted = rehearsal._read_fixed_hotfix_build_receipt()
+    assert accepted["image_id"] == rehearsal.HOTFIX_CANDIDATE_IMAGE_ID
+    assert accepted["source_head"] == rehearsal.HOTFIX_CANDIDATE_REVISION
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("schema", "unexpected-schema"),
+        ("status", "running"),
+        ("stage", "failed"),
+        ("build_exit_code", 1),
+        ("build_exit_code", False),
+        ("candidate_role", "recovery"),
+        ("source_branch", "unreviewed"),
+        ("source_head", "0" * 40),
+        ("revision_label", "0" * 40),
+        ("image_platform", "linux/arm64"),
+        ("image_id", "sha256:" + "0" * 64),
+        ("context_sha256", "0" * 64),
+        ("setup_receipt_sha256", "0" * 64),
+        ("post_build_root_identity_verified", False),
+    ],
+)
+def test_fixed_hotfix_build_receipt_rejects_noncurrent_or_incomplete_producer_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    replacement: object,
+) -> None:
+    receipt = {
+        "schema": "r120-bounded-image-build-v1",
+        "status": "built",
+        "stage": "complete",
+        "build_exit_code": 0,
+        "candidate_role": "current",
+        "source_branch": "codex/signal-ledger-assistant-fix",
+        "source_head": rehearsal.HOTFIX_CANDIDATE_REVISION,
+        "revision_label": rehearsal.HOTFIX_CANDIDATE_REVISION,
+        "image_platform": "linux/amd64",
+        "image_id": rehearsal.HOTFIX_CANDIDATE_IMAGE_ID,
+        "context_sha256": rehearsal.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+        "setup_receipt_sha256": (
+            "291ca40fc11266bac55fb095a30bcc17e9f0baf49530f72d5f703b300f0d7ceb"
+        ),
+        "post_build_root_identity_verified": True,
+    }
+    receipt[field] = replacement
+    raw = json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
+    receipt_path = tmp_path / "build-receipt.json"
+    receipt_path.write_bytes(raw)
+    receipt_path.chmod(0o600)
+    monkeypatch.setattr(rehearsal, "HOTFIX_BUILD_RECEIPT_PATH", receipt_path)
+    monkeypatch.setattr(rehearsal, "HOTFIX_BUILD_RECEIPT_SHA256", hashlib.sha256(raw).hexdigest())
+
+    with pytest.raises(
+        rehearsal.RehearsalError,
+        match="accepted_hotfix_build_receipt_identity_mismatch",
+    ):
+        rehearsal._read_fixed_hotfix_build_receipt()
+
+
+def test_fixed_hotfix_recovery_archive_requires_exact_digest_and_size(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive = b"exact prior production image archive"
+    path = tmp_path / f"signal-ledger-image-{rehearsal.HOTFIX_RECOVERY_REVISION}.tar.gz"
+    path.write_bytes(archive)
+    path.chmod(0o600)
+    monkeypatch.setattr(
+        rehearsal, "HOTFIX_RECOVERY_ARCHIVE_SHA256", hashlib.sha256(archive).hexdigest()
+    )
+    monkeypatch.setattr(rehearsal, "HOTFIX_RECOVERY_ARCHIVE_SIZE", len(archive))
+
+    assert rehearsal._verify_fixed_hotfix_recovery_archive(tmp_path) == (
+        hashlib.sha256(archive).hexdigest(),
+        len(archive),
+    )
+
+    monkeypatch.setattr(rehearsal, "HOTFIX_RECOVERY_ARCHIVE_SHA256", "0" * 64)
+    with pytest.raises(
+        rehearsal.RehearsalError, match="fixed_hotfix_recovery_archive_digest_mismatch"
+    ):
+        rehearsal._verify_fixed_hotfix_recovery_archive(tmp_path)
+
+
+def test_prepare_schema13_hotfix_pair_emits_explicit_no_migration_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reviewed_helper_sha = "a" * 40
+    artifact_directory = tmp_path / "private-pair"
+    artifact_directory.mkdir(mode=0o700)
+    artifact_directory.chmod(0o700)
+    recovery_archive = b"pinned 5ad source image"
+    recovery_path = artifact_directory / (
+        f"signal-ledger-image-{rehearsal.HOTFIX_RECOVERY_REVISION}.tar.gz"
+    )
+    recovery_path.write_bytes(recovery_archive)
+    recovery_path.chmod(0o600)
+    candidate_archive = b"pinned reviewed source image"
+    receipt = {"image_id": rehearsal.HOTFIX_CANDIDATE_IMAGE_ID}
+    monkeypatch.setattr(rehearsal, "_verify_local_pr_head", lambda *_args: None)
+    verified_pr_numbers: list[int] = []
+
+    def verify_reviewed_pr(_root: Path, _sha: str, pull_number: int = 2) -> None:
+        verified_pr_numbers.append(pull_number)
+
+    monkeypatch.setattr(rehearsal, "_verify_reviewed_pr", verify_reviewed_pr)
+    monkeypatch.setattr(rehearsal, "_read_fixed_hotfix_build_receipt", lambda: receipt)
+    monkeypatch.setattr(rehearsal, "_docker_environment", lambda _path: {})
+    monkeypatch.setattr(
+        rehearsal,
+        "_verify_candidate_image",
+        lambda image_id, context, _env, **_kwargs: {
+            "id": image_id,
+            "architecture": "linux/amd64",
+            "source_context_sha256": context,
+            "revision_label": "pinned",
+        },
+    )
+    monkeypatch.setattr(rehearsal, "_image_platform", lambda *_args: "linux/amd64")
+
+    def save(image_id: str, path: Path, _env: dict[str, str]) -> tuple[str, int]:
+        assert image_id == rehearsal.HOTFIX_CANDIDATE_IMAGE_ID
+        path.write_bytes(candidate_archive)
+        path.chmod(0o600)
+        return hashlib.sha256(candidate_archive).hexdigest(), len(candidate_archive)
+
+    monkeypatch.setattr(rehearsal, "_save_image_archive", save)
+    monkeypatch.setattr(
+        rehearsal,
+        "HOTFIX_RECOVERY_ARCHIVE_SHA256",
+        hashlib.sha256(recovery_archive).hexdigest(),
+    )
+    monkeypatch.setattr(rehearsal, "HOTFIX_RECOVERY_ARCHIVE_SIZE", len(recovery_archive))
+
+    result = rehearsal.prepare_schema13_hotfix_pair(
+        REPOSITORY_ROOT,
+        reviewed_helper_sha,
+        artifact_directory,
+    )
+
+    manifest_path = artifact_directory / result["manifest_name"]
+    manifest = json.loads(manifest_path.read_bytes())
+    assert stat.S_IMODE(manifest_path.stat().st_mode) == 0o600
+    assert manifest["contract"] == rehearsal.HOTFIX_CONTRACT
+    assert verified_pr_numbers == [rehearsal.HELPER_SOURCE_PR_NUMBER]
+    assert manifest["helper_source"] == {
+        "pull_number": rehearsal.HELPER_SOURCE_PR_NUMBER,
+        "revision": reviewed_helper_sha,
+    }
+    assert manifest["candidate"]["pull_number"] == rehearsal.HOTFIX_PR_NUMBER
+    assert manifest["candidate"]["revision"] == rehearsal.HOTFIX_CANDIDATE_REVISION
+    assert manifest["recovery"]["revision"] == rehearsal.HOTFIX_RECOVERY_REVISION
+    assert manifest["recovery"]["image_id"] == rehearsal.HOTFIX_RECOVERY_IMAGE_ID
+    assert manifest["recovery"]["prior_pair_manifest_sha256"] == (
+        rehearsal.HOTFIX_PRIOR_PAIR_MANIFEST_SHA256
+    )
+    assert manifest["recovery_overlay"] == {
+        "kind": "none",
+        "sha256": rehearsal.HOTFIX_EMPTY_OVERLAY_SHA256,
+    }
+    assert manifest["transition"] == {
+        "from_schema": 13,
+        "to_schema": 13,
+        "migrations": [],
+        "restore": False,
+    }
+    assert result["migration_commands"] == 0
+    assert result["restore_commands"] == 0
+
+
+def test_prepare_schema13_dual_head_pair_binds_reviewed_pr9_and_fixed_68c_image(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper_head = "a" * 40
+    reviewed_pr9_head = rehearsal.HOTFIX_V3_REVIEWED_PR_HEAD_SHA
+    artifact_directory = tmp_path / "private-v3-pair"
+    artifact_directory.mkdir(mode=0o700)
+    artifact_directory.chmod(0o700)
+    recovery_archive = b"pinned original 5ad image"
+    recovery_path = artifact_directory / (
+        f"signal-ledger-image-{rehearsal.HOTFIX_RECOVERY_REVISION}.tar.gz"
+    )
+    recovery_path.write_bytes(recovery_archive)
+    recovery_path.chmod(0o600)
+    candidate_archive = b"pinned immutable 68c image"
+    build_receipt_path = tmp_path / "build-receipt.json"
+    verified_prs: list[tuple[str, int]] = []
+    lineage: list[tuple[str, str, str]] = []
+    monkeypatch.setattr(rehearsal, "_verify_local_pr_head", lambda _root, _sha: None)
+
+    def verify_reviewed_pr(_root: Path, sha: str, number: int = 2) -> None:
+        verified_prs.append((sha, number))
+
+    monkeypatch.setattr(rehearsal, "_verify_reviewed_pr", verify_reviewed_pr)
+    monkeypatch.setattr(
+        rehearsal,
+        "_verify_v3_pr_head",
+        lambda _root, pr9, helper: lineage.append(("lineage", pr9, helper)),
+    )
+
+    def read_build_receipt(path: Path, **kwargs: object) -> dict[str, str]:
+        assert kwargs["receipt_profile"] == "managed-v3"
+        lineage.append(("build", str(path), str(kwargs["image_revision"])))
+        return {"image_id": rehearsal.HOTFIX_V3_IMAGE_ID}
+
+    monkeypatch.setattr(rehearsal, "_read_fixed_hotfix_build_receipt", read_build_receipt)
+    monkeypatch.setattr(rehearsal, "_docker_environment", lambda _path: {})
+
+    def verify_image(
+        image_id: str,
+        context: str,
+        _env: dict[str, str],
+        *,
+        expected_revision_label: str | None = None,
+    ) -> dict[str, str]:
+        assert expected_revision_label in {
+            rehearsal.HOTFIX_V3_IMAGE_SOURCE_REVISION,
+            rehearsal.HOTFIX_RECOVERY_REVISION,
+        }
+        return {
+            "id": image_id,
+            "architecture": "linux/amd64",
+            "source_context_sha256": context,
+            "revision_label": expected_revision_label or "",
+        }
+
+    monkeypatch.setattr(rehearsal, "_verify_candidate_image", verify_image)
+    monkeypatch.setattr(rehearsal, "_image_platform", lambda *_args: "linux/amd64")
+
+    def save_archive(image_id: str, path: Path, _env: dict[str, str]) -> tuple[str, int]:
+        assert image_id == rehearsal.HOTFIX_V3_IMAGE_ID
+        path.write_bytes(candidate_archive)
+        path.chmod(0o600)
+        return hashlib.sha256(candidate_archive).hexdigest(), len(candidate_archive)
+
+    monkeypatch.setattr(rehearsal, "_save_image_archive", save_archive)
+    monkeypatch.setattr(
+        rehearsal,
+        "HOTFIX_RECOVERY_ARCHIVE_SHA256",
+        hashlib.sha256(recovery_archive).hexdigest(),
+    )
+    monkeypatch.setattr(rehearsal, "HOTFIX_RECOVERY_ARCHIVE_SIZE", len(recovery_archive))
+
+    with pytest.raises(rehearsal.RehearsalError, match="dual-head hotfix requires"):
+        rehearsal.prepare_schema13_hotfix_pair(
+            REPOSITORY_ROOT,
+            helper_head,
+            artifact_directory,
+            reviewed_pr_head_sha=reviewed_pr9_head,
+        )
+    result = rehearsal.prepare_schema13_hotfix_pair(
+        REPOSITORY_ROOT,
+        helper_head,
+        artifact_directory,
+        reviewed_pr_head_sha=reviewed_pr9_head,
+        build_receipt_path=build_receipt_path,
+    )
+
+    manifest = json.loads((artifact_directory / result["manifest_name"]).read_bytes())
+    assert result["contract"] == rehearsal.HOTFIX_V3_CONTRACT
+    assert result["reviewed_pr_head_sha"] == reviewed_pr9_head
+    assert manifest["revision"] == helper_head
+    assert manifest["reviewed_pr_head_sha"] == reviewed_pr9_head
+    assert manifest["image_source_revision"] == rehearsal.HOTFIX_V3_IMAGE_SOURCE_REVISION
+    assert manifest["candidate"]["revision"] == rehearsal.HOTFIX_V3_IMAGE_SOURCE_REVISION
+    assert manifest["candidate"]["image_id"] == rehearsal.HOTFIX_V3_IMAGE_ID
+    assert verified_prs == [
+        (helper_head, rehearsal.HELPER_SOURCE_PR_NUMBER),
+        (reviewed_pr9_head, 9),
+    ]
+    assert lineage == [
+        ("lineage", reviewed_pr9_head, helper_head),
+        (
+            "build",
+            str(build_receipt_path),
+            rehearsal.HOTFIX_V3_IMAGE_SOURCE_REVISION,
+        ),
+    ]
+    assert result["migration_commands"] == result["restore_commands"] == 0
+
+
+@pytest.mark.parametrize(
+    ("reviewed_pr_head_sha", "helper_sha", "error_message"),
+    [
+        ("not-a-commit", "b" * 40, "reviewed PR #9 head"),
+        ("A" * 40, "b" * 40, "reviewed PR #9 head"),
+        ("a" * 40, "b" * 40, "pinned reviewed test commit"),
+        (rehearsal.HOTFIX_V3_REVIEWED_PR_HEAD_SHA, "not-a-commit", "helper PR #11 head"),
+        (rehearsal.HOTFIX_V3_REVIEWED_PR_HEAD_SHA, "B" * 40, "helper PR #11 head"),
+    ],
+)
+def test_verify_v3_pr_head_rejects_malformed_shas_before_git(
+    monkeypatch: pytest.MonkeyPatch,
+    reviewed_pr_head_sha: str,
+    helper_sha: str,
+    error_message: str,
+) -> None:
+    def reject_git_execution(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("Git must not run with malformed commit SHAs")
+
+    monkeypatch.setattr(rehearsal.subprocess, "run", reject_git_execution)
+
+    with pytest.raises(rehearsal.RehearsalError, match=error_message):
+        rehearsal._verify_v3_pr_head(REPOSITORY_ROOT, reviewed_pr_head_sha, helper_sha)
+
+
+def _schema13_v3_delta_bytes(mutation: str | None = None) -> tuple[bytes, bytes]:
+    """Build deterministic Git raw-diff and numstat fixtures from the frozen map."""
+
+    raw_records: list[bytes] = []
+    stat_records: list[bytes] = []
+    target = "tests/test_assistant_final_boundary_coverage.py"
+    for (
+        filename,
+        base_blob,
+        head_blob,
+        additions,
+        deletions,
+    ) in rehearsal.HOTFIX_V3_REVIEWED_PR9_FILE_DELTA:
+        old_mode, new_mode = "100644", "100644"
+        if mutation == "base_mode" and filename == target:
+            old_mode = "120000"
+        elif mutation == "head_mode" and filename == target:
+            new_mode = "100755"
+        elif mutation == "same_blob" and filename == target:
+            head_blob = base_blob
+        elif mutation == "wrong_blob" and filename == target:
+            head_blob = "3" * 40
+        raw_records.append(
+            f":{old_mode} {new_mode} {base_blob} {head_blob} M\0{filename}\0".encode("ascii")
+        )
+        if mutation == "wrong_numstat" and filename == target:
+            additions += 1
+        stat_records.append(f"{additions}\t{deletions}\t{filename}\0".encode("ascii"))
+    raw_diff = b"".join(raw_records)
+    numstat = b"".join(stat_records)
+    if mutation == "extra_file":
+        raw_diff += (f":100644 100644 {'1' * 40} {'2' * 40} M\0unexpected.py\0").encode("ascii")
+        numstat += b"1\t0\tunexpected.py\0"
+    elif mutation == "truncated_raw":
+        raw_diff = raw_diff[:-1]
+    return raw_diff, numstat
+
+
+@pytest.mark.parametrize(
+    ("mutation", "commit_mismatch", "error_message"),
+    [
+        (None, False, None),
+        (None, False, "patch_comment"),
+        (None, False, "patch_extra"),
+        ("extra_file", False, "unapproved source changes"),
+        ("base_mode", False, "unapproved source changes"),
+        ("head_mode", False, "unapproved source changes"),
+        ("same_blob", False, "unapproved source changes"),
+        ("wrong_blob", False, "unapproved source changes"),
+        ("wrong_numstat", False, "unapproved source changes"),
+        ("truncated_raw", False, "unapproved source changes"),
+        (None, True, "reviewed image/helper lineage"),
+    ],
+)
+def test_verify_v3_pr_head_binds_exact_delta_and_commit_chain(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str | None,
+    commit_mismatch: bool,
+    error_message: str | None,
+) -> None:
+    path = "tests/test_assistant_final_boundary_coverage.py"
+    old_line = '    assert captured["url"] == "https://opencode.ai/zen/v1/chat/completions"'
+    new_line = (
+        '    assert captured["url"] == "https://opencode.ai/inference/openai/v1/chat/completions"'
+    )
+    patch_lines = [f"-{old_line}", f"+{new_line}"]
+    if error_message == "patch_comment":
+        patch_lines[1] += " # accepted?"
+    elif error_message == "patch_extra":
+        patch_lines.append("+assert unrelated is True")
+    patch = (
+        f"diff --git a/{path} b/{path}\n@@ -12 +12 @@\n" + "\n".join(patch_lines) + "\n"
+    ).encode()
+    raw_diff, numstat = _schema13_v3_delta_bytes(mutation)
+    commits = rehearsal.HOTFIX_V3_REVIEWED_PR9_COMMITS
+    if commit_mismatch:
+        commits = (*commits[:-1], "9" * 40)
+    outputs = [
+        b"",
+        b"",
+        ("\n".join(commits) + "\n").encode(),
+        raw_diff,
+        numstat,
+        patch,
+    ]
+    calls = 0
+
+    def run(command: list[str], **kwargs: object) -> CompletedProcess[bytes]:
+        nonlocal calls
+        assert kwargs["timeout"] == 10
+        assert kwargs["check"] is False and kwargs["shell"] is False
+        result = CompletedProcess(command, 0, stdout=outputs[calls], stderr=b"")
+        calls += 1
+        return result
+
+    monkeypatch.setattr(rehearsal.subprocess, "run", run)
+    if error_message is None:
+        rehearsal._verify_v3_pr_head(
+            REPOSITORY_ROOT,
+            rehearsal.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+            "d" * 40,
+        )
+    else:
+        expected_error = (
+            "reviewed image/helper lineage"
+            if error_message == "reviewed image/helper lineage"
+            else "unapproved source changes"
+        )
+        with pytest.raises(rehearsal.RehearsalError, match=expected_error):
+            rehearsal._verify_v3_pr_head(
+                REPOSITORY_ROOT,
+                rehearsal.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
+                "d" * 40,
+            )
+    assert calls == (3 if commit_mismatch else 6)

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import grp
 import hashlib
 import http.client
@@ -12,16 +13,346 @@ import pwd
 import re
 import stat
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
 REPOSITORY = "eddiesoz/stock_probs"
 PULL_NUMBER = 2
+HELPER_SOURCE_PR_NUMBER = 11
+HELPER_SOURCE_CONTRACT = "schema13_same_schema_hotfix_v1"
 HOST = "raw.githubusercontent.com"
 INCOMING = Path("/var/lib/signal-ledger-pr-rehearsal/incoming")
 INSTALL_ROOT = Path("/usr/local/libexec/signal-ledger-pr-rehearsal")
 STATE_ROOT = Path("/var/lib/signal-ledger-pr-rehearsal")
 INSTALLED_MANIFEST = INSTALL_ROOT / "installed.json"
+DEPLOY_STATE_ROOT = Path("/var/lib/signal-ledger")
+DEPLOY_LOCK = DEPLOY_STATE_ROOT / "deploy.lock"
+REHEARSAL_LOCK = STATE_ROOT / "rehearsal.lock"
+PRODUCTION_HELPER = Path("/usr/local/libexec/signal-ledger-deploy-helper")
+PREVIOUS_PRODUCTION_HELPER = STATE_ROOT / "previous-production-deploy-helper.py"
+PRODUCTION_HELPER_MAX_BYTES = 512 * 1024
+PREVIOUS_PRODUCTION_HELPER_SIZE = 108_471
+PREVIOUS_PRODUCTION_HELPER_SHA256 = (
+    "57b88adc91b13689d83c0d56a2dd9f756000624e847f0c7a107dff7cb382a915"
+)
+KNOWN_INTERMEDIATE_PRODUCTION_HELPER_SHA256 = (
+    "0d65ad8f1fa9825b1e4a964fa112f49b87a08ed415a8e5ce67802549045f6cd8"
+)
+KNOWN_INTERMEDIATE_REVIEWED_HEAD_SHA = "cebe3870a62d3d433baaeba45845cf59ebb1e9bc"
+KNOWN_INTERMEDIATE_PAIR_MANIFEST_SHA256 = (
+    "6346e9d8d1f0ecb64e7ec1fa81a6b8cf56ee8e752ded7199219ae1a204bdf90c"
+)
+KNOWN_INTERMEDIATE_INSTALLED_FILES = {
+    "host_helper.py": "c2929e6d129cc56eeb21d3dcec7be484345e9d39ff1ed910dcb16901d62faf76",
+    "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+    "production-deploy-helper.py": KNOWN_INTERMEDIATE_PRODUCTION_HELPER_SHA256,
+}
+KNOWN_INTERMEDIATE_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": KNOWN_INTERMEDIATE_REVIEWED_HEAD_SHA,
+    "reviewed_pair_manifest_sha256": KNOWN_INTERMEDIATE_PAIR_MANIFEST_SHA256,
+    "files": KNOWN_INTERMEDIATE_INSTALLED_FILES,
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
+# Exact helper installation observed on PR11 head 67723d36 before the source-only
+# helper refresh. Keep this state separate from the older cebe intermediate above:
+# both receipts are valid rollback inputs, but they identify different source bundles.
+KNOWN_INSTALLED_67723_PRODUCTION_HELPER_SHA256 = (
+    "85ea6568514188b37c6b6f7b93dc902cf7003836b60983255e4a0337fc575371"
+)
+KNOWN_INSTALLED_67723_REVIEWED_HEAD_SHA = "67723d36ea03b0628e59007af20c2910a64d06fb"
+KNOWN_INSTALLED_67723_PAIR_MANIFEST_SHA256 = (
+    "60f1288183685f104452b1fc1f51a823a31a09501f3807fe7023d988f950335e"
+)
+KNOWN_INSTALLED_67723_INSTALLED_FILES = {
+    "host_helper.py": "c2929e6d129cc56eeb21d3dcec7be484345e9d39ff1ed910dcb16901d62faf76",
+    "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+    "production-deploy-helper.py": KNOWN_INSTALLED_67723_PRODUCTION_HELPER_SHA256,
+}
+KNOWN_INSTALLED_67723_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": KNOWN_INSTALLED_67723_REVIEWED_HEAD_SHA,
+    "reviewed_pair_manifest_sha256": KNOWN_INSTALLED_67723_PAIR_MANIFEST_SHA256,
+    "files": KNOWN_INSTALLED_67723_INSTALLED_FILES,
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
+# The c408e914 PR11 source refresh retained the same production-helper bytes as
+# 67723, but its installed receipt binds a newer reviewed bundle and sidecars.
+KNOWN_INSTALLED_C408_PRODUCTION_HELPER_SHA256 = (
+    "85ea6568514188b37c6b6f7b93dc902cf7003836b60983255e4a0337fc575371"
+)
+KNOWN_INSTALLED_C408_REVIEWED_HEAD_SHA = "c408e9143143c4d71d0bb3a363e6f05f2c8dc221"
+KNOWN_INSTALLED_C408_PAIR_MANIFEST_SHA256 = (
+    "73bb45b1f03f59eccde7972aa9550ea97882f61d0810a21fdba65c3c676f74ee"
+)
+KNOWN_INSTALLED_C408_INSTALLED_FILES = {
+    "host_helper.py": "383719bfd2700adcc76e662b15774ca3e32dd87f61b77a9fe65ff2458f6f6a8c",
+    "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+    "production-deploy-helper.py": KNOWN_INSTALLED_C408_PRODUCTION_HELPER_SHA256,
+}
+KNOWN_INSTALLED_C408_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": KNOWN_INSTALLED_C408_REVIEWED_HEAD_SHA,
+    "reviewed_pair_manifest_sha256": KNOWN_INSTALLED_C408_PAIR_MANIFEST_SHA256,
+    "files": KNOWN_INSTALLED_C408_INSTALLED_FILES,
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
+# Exact DD7 helper installation observed before the source-only profile-query repair.
+KNOWN_INSTALLED_DD7_PRODUCTION_HELPER_SHA256 = (
+    "0d99260dfdc09f2e49a486932bd3b820ea62d4eec614f26899350d640b0ab76d"
+)
+KNOWN_INSTALLED_DD7_REVIEWED_HEAD_SHA = "dd7f327202358c244253e36e4a0b0f52185a0f1c"
+KNOWN_INSTALLED_DD7_PAIR_MANIFEST_SHA256 = (
+    "f35dedd6ba9d49c9cb53aa036f1912b3082b7af144204dbae10378b341a08095"
+)
+KNOWN_INSTALLED_DD7_INSTALLED_FILES = {
+    "host_helper.py": "383719bfd2700adcc76e662b15774ca3e32dd87f61b77a9fe65ff2458f6f6a8c",
+    "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+    "production-deploy-helper.py": KNOWN_INSTALLED_DD7_PRODUCTION_HELPER_SHA256,
+}
+KNOWN_INSTALLED_DD7_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": KNOWN_INSTALLED_DD7_REVIEWED_HEAD_SHA,
+    "reviewed_pair_manifest_sha256": KNOWN_INSTALLED_DD7_PAIR_MANIFEST_SHA256,
+    "files": KNOWN_INSTALLED_DD7_INSTALLED_FILES,
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
+# Exact PR11 helper installation verified before the e1c6b17 source refresh.
+KNOWN_INSTALLED_E1C6B17_PRODUCTION_HELPER_SHA256 = (
+    "4411def05a0cf757eef859b257d403d1c05eeed44c5c4265b86cb9905e1de730"
+)
+KNOWN_INSTALLED_E1C6B17_REVIEWED_HEAD_SHA = "e1c6b178ace4d3501f69e32ec828e255b4c75142"
+KNOWN_INSTALLED_E1C6B17_PAIR_MANIFEST_SHA256 = (
+    "556a6dc79ba320560225838842aed5be3b1c1968f724812f52ac3d7129df2371"
+)
+KNOWN_INSTALLED_E1C6B17_INSTALLED_FILES = {
+    "host_helper.py": "383719bfd2700adcc76e662b15774ca3e32dd87f61b77a9fe65ff2458f6f6a8c",
+    "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+    "production-deploy-helper.py": KNOWN_INSTALLED_E1C6B17_PRODUCTION_HELPER_SHA256,
+}
+KNOWN_INSTALLED_E1C6B17_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": KNOWN_INSTALLED_E1C6B17_REVIEWED_HEAD_SHA,
+    "reviewed_pair_manifest_sha256": KNOWN_INSTALLED_E1C6B17_PAIR_MANIFEST_SHA256,
+    "files": KNOWN_INSTALLED_E1C6B17_INSTALLED_FILES,
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
+# Exact installed PR11 helper state captured after the 532b2a0 package was installed.
+KNOWN_INSTALLED_532B2A0_PRODUCTION_HELPER_SHA256 = (
+    "4411def05a0cf757eef859b257d403d1c05eeed44c5c4265b86cb9905e1de730"
+)
+KNOWN_INSTALLED_532B2A0_REVIEWED_HEAD_SHA = "532b2a0c96ec4eebc645ebb315a5419ae74b9251"
+KNOWN_INSTALLED_532B2A0_PAIR_MANIFEST_SHA256 = (
+    "e53b16c5670532b4167056533fc195a9f98f5bbd51dd9f2423e27f44ee001074"
+)
+KNOWN_INSTALLED_532B2A0_INSTALLED_FILES = {
+    "host_helper.py": "5bf55b2433597d9b958eeecd01933c11b41f37a513d7921f10321812be70f1f4",
+    "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+    "production-deploy-helper.py": KNOWN_INSTALLED_532B2A0_PRODUCTION_HELPER_SHA256,
+}
+KNOWN_INSTALLED_532B2A0_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": KNOWN_INSTALLED_532B2A0_REVIEWED_HEAD_SHA,
+    "reviewed_pair_manifest_sha256": KNOWN_INSTALLED_532B2A0_PAIR_MANIFEST_SHA256,
+    "files": KNOWN_INSTALLED_532B2A0_INSTALLED_FILES,
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
+# Exact installed PR11 helper state captured from the F548 host pair. It retains
+# the 4411 helper bytes but binds the F548 source bundle and pair manifest.
+KNOWN_INSTALLED_F548_PRODUCTION_HELPER_SHA256 = (
+    "4411def05a0cf757eef859b257d403d1c05eeed44c5c4265b86cb9905e1de730"
+)
+KNOWN_INSTALLED_F548_REVIEWED_HEAD_SHA = "f548fd94dad75c73b31621ee1a466ac7d41d06c2"
+KNOWN_INSTALLED_F548_PAIR_MANIFEST_SHA256 = (
+    "0718ec4b9b3ae56a252432779b3bdad2eb7cc69a974e714a18ea19ea8b94d47e"
+)
+KNOWN_INSTALLED_F548_INSTALLED_FILES = {
+    "host_helper.py": "16640749679c8ca995d2f1740d6364523e82e940fe7c8be59f5fe0b0878cf6f4",
+    "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+    "production-deploy-helper.py": KNOWN_INSTALLED_F548_PRODUCTION_HELPER_SHA256,
+}
+KNOWN_INSTALLED_F548_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": KNOWN_INSTALLED_F548_REVIEWED_HEAD_SHA,
+    "reviewed_pair_manifest_sha256": KNOWN_INSTALLED_F548_PAIR_MANIFEST_SHA256,
+    "files": KNOWN_INSTALLED_F548_INSTALLED_FILES,
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
+# Exact installed PR11 helper state read back after H was installed. Admit this
+# single prior tuple so its successor can be installed without weakening provenance.
+KNOWN_INSTALLED_E3EC8C7_PRODUCTION_HELPER_SHA256 = (
+    "e2cf980ed2c5bcbedea51746d7eaa20aa08d2b1eab949bee2f43fd0ff89439f8"
+)
+KNOWN_INSTALLED_E3EC8C7_REVIEWED_HEAD_SHA = "e3ec8c71bc1e94d0e4383c6a19f7673d8e463589"
+KNOWN_INSTALLED_E3EC8C7_PAIR_MANIFEST_SHA256 = (
+    "d8750dd9e01a6ea2f0f73c6cfc3a127edc9a99c66483a8457625e9673600f72f"
+)
+KNOWN_INSTALLED_E3EC8C7_INSTALLED_FILES = {
+    "host_helper.py": "16640749679c8ca995d2f1740d6364523e82e940fe7c8be59f5fe0b0878cf6f4",
+    "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+    "production-deploy-helper.py": KNOWN_INSTALLED_E3EC8C7_PRODUCTION_HELPER_SHA256,
+}
+KNOWN_INSTALLED_E3EC8C7_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": KNOWN_INSTALLED_E3EC8C7_REVIEWED_HEAD_SHA,
+    "reviewed_pair_manifest_sha256": KNOWN_INSTALLED_E3EC8C7_PAIR_MANIFEST_SHA256,
+    "files": KNOWN_INSTALLED_E3EC8C7_INSTALLED_FILES,
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
+# Exact installed PR11 helper state read back after the H2 package installation.
+KNOWN_INSTALLED_H2_PRODUCTION_HELPER_SHA256 = (
+    "650d80cb77edd2d9eb999296352efd18795d2437be750bc17420fa785f118480"
+)
+KNOWN_INSTALLED_H2_REVIEWED_HEAD_SHA = "d8c765c3909125604b5be0503ee14bae94970d46"
+KNOWN_INSTALLED_H2_PAIR_MANIFEST_SHA256 = (
+    "6a5faad6d2b029408fd34790dc22b350d700d0a57d6e3d9af14daaa2b5953c14"
+)
+KNOWN_INSTALLED_H2_INSTALLED_FILES = {
+    "host_helper.py": "16640749679c8ca995d2f1740d6364523e82e940fe7c8be59f5fe0b0878cf6f4",
+    "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+    "production-deploy-helper.py": KNOWN_INSTALLED_H2_PRODUCTION_HELPER_SHA256,
+}
+KNOWN_INSTALLED_H2_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": KNOWN_INSTALLED_H2_REVIEWED_HEAD_SHA,
+    "reviewed_pair_manifest_sha256": KNOWN_INSTALLED_H2_PAIR_MANIFEST_SHA256,
+    "files": KNOWN_INSTALLED_H2_INSTALLED_FILES,
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
+# Exact PR11 helper installation read back after the 0499d90 host pair.
+# This allowlist binds the helper digest to that fixed source and pair tuple.
+KNOWN_INSTALLED_0499_PRODUCTION_HELPER_SHA256 = (
+    "a6d0a3f7f755a74a7a41351aa05cb7b5b5a7a87232f5edd559d06fddf2566e45"
+)
+KNOWN_INSTALLED_0499_REVIEWED_HEAD_SHA = "0499d902784ab2f835f9ec80b1422cdfc64b8099"
+KNOWN_INSTALLED_0499_PAIR_MANIFEST_SHA256 = (
+    "f0f52b12df5ce5d52039264647927c1d15b03d25dea6094fdc8aa67915663557"
+)
+KNOWN_INSTALLED_0499_INSTALLED_FILES = {
+    "host_helper.py": "16640749679c8ca995d2f1740d6364523e82e940fe7c8be59f5fe0b0878cf6f4",
+    "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+    "production-deploy-helper.py": KNOWN_INSTALLED_0499_PRODUCTION_HELPER_SHA256,
+}
+KNOWN_INSTALLED_0499_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": KNOWN_INSTALLED_0499_REVIEWED_HEAD_SHA,
+    "reviewed_pair_manifest_sha256": KNOWN_INSTALLED_0499_PAIR_MANIFEST_SHA256,
+    "files": KNOWN_INSTALLED_0499_INSTALLED_FILES,
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
+# Exact PR11 helper installation read back from the 959fd2b source bundle.
+KNOWN_INSTALLED_959_PRODUCTION_HELPER_SHA256 = (
+    "7a2fc916425d2a0d9b9af49ad9d3bea5f5053b109f2279df05a3dab09a3c4bc3"
+)
+KNOWN_INSTALLED_959_REVIEWED_HEAD_SHA = "959fd2b327a818830c952e3a47bbb96c12cc537b"
+KNOWN_INSTALLED_959_PAIR_MANIFEST_SHA256 = (
+    "0d4f45ad262e56b969067326c95b7c352f0b25d1d2348e7e8abc5642d7ff8343"
+)
+KNOWN_INSTALLED_959_INSTALLED_FILES = {
+    "host_helper.py": "df2bc7cfab51de427909b0ef9017d636b1cd22903a97521ffdec8eef8c8dd7eb",
+    "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+    "production-deploy-helper.py": KNOWN_INSTALLED_959_PRODUCTION_HELPER_SHA256,
+}
+KNOWN_INSTALLED_959_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": KNOWN_INSTALLED_959_REVIEWED_HEAD_SHA,
+    "reviewed_pair_manifest_sha256": KNOWN_INSTALLED_959_PAIR_MANIFEST_SHA256,
+    "files": KNOWN_INSTALLED_959_INSTALLED_FILES,
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
+# Root-owned readback and all four public Git files bind this prior PR11 installation.
+# The immutable original helper backup remains separately required below.
+KNOWN_INSTALLED_40ECE_PRODUCTION_HELPER_SHA256 = (
+    "7510e96b0bf99693ce7ef2559dad91e3efa44d28f157a4511e842d0debbb80ef"
+)
+KNOWN_INSTALLED_40ECE_INSTALL_MANIFEST = {
+    "format_version": 1,
+    "repository": REPOSITORY,
+    "pull_number": HELPER_SOURCE_PR_NUMBER,
+    "reviewed_head_sha": "40ece76d70f267c9fa1058a152a86216b3e50dfb",
+    "reviewed_pair_manifest_sha256": (
+        "499da7990d8e7b47b9868c53dcc3e8cb8aa9725c8f00ba8b25de4449b6b59abc"
+    ),
+    "files": {
+        "host_helper.py": "df2bc7cfab51de427909b0ef9017d636b1cd22903a97521ffdec8eef8c8dd7eb",
+        "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+        "native_driver.py": "5e72113ddbacff3d2cc44f44671bbb6e8dc5a1a49ae3292f0d8b2f91afd33c10",
+        "production-deploy-helper.py": KNOWN_INSTALLED_40ECE_PRODUCTION_HELPER_SHA256,
+    },
+    "helper_source_contract": HELPER_SOURCE_CONTRACT,
+    "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+}
+# Exact c38 receipt and four public source digests retain the immutable original backup.
+KNOWN_INSTALLED_C38_PRODUCTION_HELPER_SHA256 = (
+    "9b2195a09a1df3ba6c72de4f897ceeae135441df21be07028a4ccc176311c6ab"
+)
+KNOWN_INSTALLED_C38_INSTALL_MANIFEST = {
+    "files": {
+        "host_helper.py": "8cb6dc8192653ef157d508a3d729582801c5a4de7505df35b6589c1e610ebd56",
+        "native_driver.py": "8c02095c26ea5713c34808cc5a607dce6260bd2691d4975338fb5d11730992ef",
+        "production-deploy-helper.py": (
+            "9b2195a09a1df3ba6c72de4f897ceeae135441df21be07028a4ccc176311c6ab"
+        ),
+        "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    },
+    "format_version": 1,
+    "helper_source_contract": "schema13_same_schema_hotfix_v1",
+    "previous_production_helper_sha256": (
+        "57b88adc91b13689d83c0d56a2dd9f756000624e847f0c7a107dff7cb382a915"
+    ),
+    "pull_number": 11,
+    "repository": "eddiesoz/stock_probs",
+    "reviewed_head_sha": "c38f6a4065a0d86f2890d9d616d8a3ef2676dae0",
+    "reviewed_pair_manifest_sha256": (
+        "9c26eb269bf72502c55c2e1dee8db96dca89560a2ec3796f64af7d25b270ebf0"
+    ),
+}
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 ASSETS = {
@@ -29,6 +360,11 @@ ASSETS = {
     "host_helper": ("scripts/pr_rehearsal_host_helper.py", "host_helper.py", 256 * 1024),
     "seed": ("scripts/pr_rehearsal_seed.py", "seed.py", 64 * 1024),
     "driver": ("tests/native_assistant_probe.py", "native_driver.py", 2 * 1024 * 1024),
+    "production_helper": (
+        "scripts/production-deploy-helper.py",
+        "production-deploy-helper.py",
+        PRODUCTION_HELPER_MAX_BYTES,
+    ),
 }
 REQUEST_LIMIT = 8 * 1024
 # The fixed public PR record is about 21 KiB. Keep a bounded 64 KiB response cap
@@ -42,6 +378,19 @@ class InstallError(Exception):
     def __init__(self, code: str) -> None:
         self.code = code
         super().__init__(code)
+
+
+class _DuplicateManifestKey(ValueError):
+    """Reject duplicate keys before interpreting a trusted install receipt."""
+
+
+def _manifest_object_without_duplicates(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise _DuplicateManifestKey
+        result[key] = value
+    return result
 
 
 def _safe_directory(path: Path, mode: int, *, create: bool, group: str | None = None) -> None:
@@ -63,6 +412,43 @@ def _safe_directory(path: Path, mode: int, *, create: bool, group: str | None = 
             if info.st_gid != expected_gid:
                 os.fchown(descriptor, 0, expected_gid)
         os.fchmod(descriptor, mode)
+    finally:
+        os.close(descriptor)
+
+
+def _check_deployment_state_directory() -> None:
+    """Verify the deployment helper's state root without changing its ownership."""
+
+    try:
+        deployment_account = pwd.getpwnam("signal-ledger-deploy")
+    except KeyError as exc:
+        raise InstallError("install_directory_unsafe") from exc
+    if (
+        type(deployment_account.pw_uid) is not int
+        or deployment_account.pw_uid <= 0
+        or type(deployment_account.pw_gid) is not int
+        or deployment_account.pw_gid <= 0
+        or deployment_account.pw_dir != str(DEPLOY_STATE_ROOT)
+    ):
+        raise InstallError("install_directory_unsafe")
+    try:
+        descriptor = os.open(
+            DEPLOY_STATE_ROOT,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+        )
+    except OSError as exc:
+        raise InstallError("install_directory_unsafe") from exc
+    try:
+        info = os.fstat(descriptor)
+        if (
+            not stat.S_ISDIR(info.st_mode)
+            or info.st_uid != 0
+            or info.st_gid != deployment_account.pw_gid
+            or stat.S_IMODE(info.st_mode) != 0o750
+        ):
+            raise InstallError("install_directory_unsafe")
+    except OSError as exc:
+        raise InstallError("install_directory_unsafe") from exc
     finally:
         os.close(descriptor)
 
@@ -117,12 +503,14 @@ def _staged_asset_path(revision: str, role: str) -> Path:
     return INCOMING / f"signal-ledger-pr1-{revision}-{staged_name}"
 
 
-def _verify_pull_request(revision: str) -> None:
+def _verify_pull_request(revision: str, *, pull_number: int = PULL_NUMBER) -> None:
+    if type(pull_number) is not int or pull_number not in {PULL_NUMBER, HELPER_SOURCE_PR_NUMBER}:
+        raise InstallError("reviewed_pr_invalid")
     connection = http.client.HTTPSConnection("api.github.com", timeout=10)
     try:
         connection.request(
             "GET",
-            f"/repos/{REPOSITORY}/pulls/{PULL_NUMBER}",
+            f"/repos/{REPOSITORY}/pulls/{pull_number}",
             headers={
                 "Accept": "application/vnd.github+json",
                 "User-Agent": "signal-ledger-r120-pr-rehearsal-bootstrap",
@@ -208,12 +596,282 @@ def _atomic_root_file(path: Path, contents: bytes, mode: int) -> None:
         raise InstallError("sidecar_install_failed") from exc
 
 
+@contextmanager
+def _install_locks() -> Iterator[None]:
+    """Serialize fixed source installation with deployment and rehearsal operations."""
+
+    descriptors: list[int] = []
+    try:
+        _check_deployment_state_directory()
+        _safe_directory(STATE_ROOT, 0o750, create=False, group="signalops")
+        for path, mode in ((DEPLOY_LOCK, 0o640), (REHEARSAL_LOCK, 0o600)):
+            try:
+                descriptor = os.open(
+                    path,
+                    os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC,
+                    mode,
+                )
+            except OSError as exc:
+                raise InstallError("install_lock_unavailable") from exc
+            descriptors.append(descriptor)
+            info = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_uid != 0
+                or stat.S_IMODE(info.st_mode) != mode
+            ):
+                raise InstallError("install_lock_unsafe")
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except (BlockingIOError, OSError) as exc:
+                raise InstallError("install_operation_busy") from exc
+        yield
+    finally:
+        for descriptor in reversed(descriptors):
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
+
+
+def _read_fixed_root_file(path: Path, maximum: int, mode: int) -> bytes:
+    """Read one root-owned, bounded file without following links."""
+
+    try:
+        before = path.lstat()
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != 0
+            or stat.S_IMODE(before.st_mode) != mode
+            or not 1 <= before.st_size <= maximum
+        ):
+            raise InstallError("production_helper_file_unsafe")
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+        )
+        with os.fdopen(descriptor, "rb") as stream:
+            opened = os.fstat(stream.fileno())
+            contents = stream.read(maximum + 1)
+            after = os.fstat(stream.fileno())
+    except InstallError:
+        raise
+    except OSError as exc:
+        raise InstallError("production_helper_file_unavailable") from exc
+    identity = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_uid",
+        "st_gid",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    )
+    if (
+        len(contents) != before.st_size
+        or len(contents) > maximum
+        or any(getattr(before, field) != getattr(opened, field) for field in identity)
+        or any(getattr(opened, field) != getattr(after, field) for field in identity)
+    ):
+        raise InstallError("production_helper_file_changed")
+    return contents
+
+
+def _valid_installed_at(value: object) -> bool:
+    if type(value) is not str or not value.endswith("Z"):
+        return False
+    try:
+        parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError:
+        return False
+    return (
+        parsed.utcoffset() == UTC.utcoffset(None)
+        and parsed.isoformat().replace("+00:00", "Z") == value
+    )
+
+
+def _require_installed_manifest(expected_fields: dict[str, object]) -> None:
+    """Require one exact root-owned install receipt apart from its generated timestamp."""
+
+    try:
+        raw = _read_fixed_root_file(INSTALLED_MANIFEST, 8192, 0o640)
+    except InstallError as exc:
+        raise InstallError("production_helper_manifest_mismatch") from exc
+    try:
+        value: object = json.loads(raw, object_pairs_hook=_manifest_object_without_duplicates)
+    except (UnicodeDecodeError, json.JSONDecodeError, _DuplicateManifestKey, RecursionError) as exc:
+        raise InstallError("production_helper_manifest_mismatch") from exc
+    if (
+        type(value) is not dict
+        or set(value) != set(expected_fields) | {"installed_at"}
+        or not _valid_installed_at(value.get("installed_at"))
+    ):
+        raise InstallError("production_helper_manifest_mismatch")
+    for key, expected in expected_fields.items():
+        actual = value[key]
+        if type(actual) is not type(expected) or actual != expected:
+            raise InstallError("production_helper_manifest_mismatch")
+        if type(expected) is dict and any(
+            type(name) is not str or type(digest) is not str for name, digest in actual.items()
+        ):
+            raise InstallError("production_helper_manifest_mismatch")
+    installed_files = value["files"]
+    for role, (_relative, installed_name, maximum) in ASSETS.items():
+        if role == "bootstrap":
+            continue
+        path = PRODUCTION_HELPER if role == "production_helper" else INSTALL_ROOT / installed_name
+        mode = 0o750 if role in {"host_helper", "production_helper"} else 0o640
+        try:
+            contents = _read_fixed_root_file(path, maximum, mode)
+        except InstallError as exc:
+            raise InstallError("production_helper_manifest_mismatch") from exc
+        if hashlib.sha256(contents).hexdigest() != installed_files[installed_name]:
+            raise InstallError("production_helper_manifest_mismatch")
+
+
+def _prepare_previous_production_helper(
+    candidate: bytes,
+    *,
+    candidate_manifest_fields: dict[str, object],
+) -> tuple[bytes, str]:
+    """Validate the prior helper state and return exact transaction rollback bytes."""
+
+    candidate_digest = hashlib.sha256(candidate).hexdigest()
+    if candidate_digest in {
+        PREVIOUS_PRODUCTION_HELPER_SHA256,
+        KNOWN_INTERMEDIATE_PRODUCTION_HELPER_SHA256,
+    }:
+        raise InstallError("production_helper_candidate_is_previous")
+    backup_exists = PREVIOUS_PRODUCTION_HELPER.exists() or PREVIOUS_PRODUCTION_HELPER.is_symlink()
+    if backup_exists:
+        immutable_backup = _read_fixed_root_file(
+            PREVIOUS_PRODUCTION_HELPER,
+            PRODUCTION_HELPER_MAX_BYTES,
+            0o600,
+        )
+        if (
+            len(immutable_backup) != PREVIOUS_PRODUCTION_HELPER_SIZE
+            or hashlib.sha256(immutable_backup).hexdigest() != PREVIOUS_PRODUCTION_HELPER_SHA256
+        ):
+            raise InstallError("production_helper_backup_mismatch")
+        current = _read_fixed_root_file(PRODUCTION_HELPER, PRODUCTION_HELPER_MAX_BYTES, 0o750)
+        current_digest = hashlib.sha256(current).hexdigest()
+        if current_digest == KNOWN_INTERMEDIATE_PRODUCTION_HELPER_SHA256:
+            _require_installed_manifest(KNOWN_INTERMEDIATE_INSTALL_MANIFEST)
+        elif current_digest == KNOWN_INSTALLED_DD7_PRODUCTION_HELPER_SHA256:
+            _require_installed_manifest(KNOWN_INSTALLED_DD7_INSTALL_MANIFEST)
+        elif current_digest == KNOWN_INSTALLED_E1C6B17_PRODUCTION_HELPER_SHA256:
+            if current_digest == candidate_digest:
+                try:
+                    _require_installed_manifest(candidate_manifest_fields)
+                except InstallError:
+                    try:
+                        _require_installed_manifest(KNOWN_INSTALLED_F548_INSTALL_MANIFEST)
+                    except InstallError:
+                        try:
+                            _require_installed_manifest(KNOWN_INSTALLED_532B2A0_INSTALL_MANIFEST)
+                        except InstallError:
+                            _require_installed_manifest(KNOWN_INSTALLED_E1C6B17_INSTALL_MANIFEST)
+            else:
+                try:
+                    _require_installed_manifest(KNOWN_INSTALLED_F548_INSTALL_MANIFEST)
+                except InstallError:
+                    try:
+                        _require_installed_manifest(KNOWN_INSTALLED_532B2A0_INSTALL_MANIFEST)
+                    except InstallError:
+                        _require_installed_manifest(KNOWN_INSTALLED_E1C6B17_INSTALL_MANIFEST)
+        elif current_digest in {
+            KNOWN_INSTALLED_67723_PRODUCTION_HELPER_SHA256,
+            KNOWN_INSTALLED_C408_PRODUCTION_HELPER_SHA256,
+        }:
+            # Source-only upgrades can retain identical helper bytes while their
+            # installed receipt still binds the previous reviewed source bundle.
+            # Accept only the exact known installed receipt or the exact candidate
+            # receipt for an already-completed retry.
+            try:
+                _require_installed_manifest(candidate_manifest_fields)
+            except InstallError:
+                try:
+                    _require_installed_manifest(KNOWN_INSTALLED_67723_INSTALL_MANIFEST)
+                except InstallError:
+                    _require_installed_manifest(KNOWN_INSTALLED_C408_INSTALL_MANIFEST)
+        elif current_digest == KNOWN_INSTALLED_E3EC8C7_PRODUCTION_HELPER_SHA256:
+            try:
+                _require_installed_manifest(candidate_manifest_fields)
+            except InstallError:
+                _require_installed_manifest(KNOWN_INSTALLED_E3EC8C7_INSTALL_MANIFEST)
+        elif current_digest == KNOWN_INSTALLED_H2_PRODUCTION_HELPER_SHA256:
+            try:
+                _require_installed_manifest(candidate_manifest_fields)
+            except InstallError:
+                _require_installed_manifest(KNOWN_INSTALLED_H2_INSTALL_MANIFEST)
+        elif current_digest == KNOWN_INSTALLED_0499_PRODUCTION_HELPER_SHA256:
+            try:
+                _require_installed_manifest(candidate_manifest_fields)
+            except InstallError:
+                _require_installed_manifest(KNOWN_INSTALLED_0499_INSTALL_MANIFEST)
+        elif current_digest == KNOWN_INSTALLED_959_PRODUCTION_HELPER_SHA256:
+            try:
+                _require_installed_manifest(candidate_manifest_fields)
+            except InstallError:
+                _require_installed_manifest(KNOWN_INSTALLED_959_INSTALL_MANIFEST)
+        elif current_digest == KNOWN_INSTALLED_40ECE_PRODUCTION_HELPER_SHA256:
+            try:
+                _require_installed_manifest(candidate_manifest_fields)
+            except InstallError:
+                _require_installed_manifest(KNOWN_INSTALLED_40ECE_INSTALL_MANIFEST)
+        elif current_digest == KNOWN_INSTALLED_C38_PRODUCTION_HELPER_SHA256:
+            try:
+                _require_installed_manifest(candidate_manifest_fields)
+            except InstallError:
+                _require_installed_manifest(KNOWN_INSTALLED_C38_INSTALL_MANIFEST)
+        elif current_digest == candidate_digest:
+            _require_installed_manifest(candidate_manifest_fields)
+        elif current_digest != PREVIOUS_PRODUCTION_HELPER_SHA256:
+            raise InstallError("production_helper_drift")
+        return current, PREVIOUS_PRODUCTION_HELPER_SHA256
+
+    previous = _read_fixed_root_file(PRODUCTION_HELPER, PRODUCTION_HELPER_MAX_BYTES, 0o750)
+    digest = hashlib.sha256(previous).hexdigest()
+    if (
+        len(previous) != PREVIOUS_PRODUCTION_HELPER_SIZE
+        or digest != PREVIOUS_PRODUCTION_HELPER_SHA256
+    ):
+        raise InstallError("production_helper_drift")
+    _atomic_root_file(PREVIOUS_PRODUCTION_HELPER, previous, 0o600)
+    stored = _read_fixed_root_file(
+        PREVIOUS_PRODUCTION_HELPER,
+        PRODUCTION_HELPER_MAX_BYTES,
+        0o600,
+    )
+    if stored != previous:
+        raise InstallError("production_helper_backup_mismatch")
+    return previous, digest
+
+
 def install(payload: object) -> dict[str, object]:
-    if not isinstance(payload, dict) or set(payload) != {
+    base_keys = {
         "reviewed_head_sha",
         "reviewed_pair_manifest_sha256",
         "asset_sha256",
-    }:
+    }
+    if not isinstance(payload, dict):
+        raise InstallError("payload_invalid")
+    if set(payload) == base_keys:
+        helper_source_contract = None
+        helper_source_pull_number = PULL_NUMBER
+        selected_assets = {
+            key: value for key, value in ASSETS.items() if key != "production_helper"
+        }
+    elif (
+        set(payload) == base_keys | {"helper_source_contract"}
+        and payload.get("helper_source_contract") == HELPER_SOURCE_CONTRACT
+    ):
+        helper_source_contract = HELPER_SOURCE_CONTRACT
+        helper_source_pull_number = HELPER_SOURCE_PR_NUMBER
+        selected_assets = ASSETS
+    else:
         raise InstallError("payload_invalid")
     revision = payload.get("reviewed_head_sha")
     pair_manifest_digest = payload.get("reviewed_pair_manifest_sha256")
@@ -225,7 +883,7 @@ def install(payload: object) -> dict[str, object]:
         or DIGEST_RE.fullmatch(pair_manifest_digest) is None
     ):
         raise InstallError("reviewed_pair_manifest_invalid")
-    if not isinstance(hashes, dict) or set(hashes) != set(ASSETS):
+    if not isinstance(hashes, dict) or set(hashes) != set(selected_assets):
         raise InstallError("asset_manifest_invalid")
     for digest in hashes.values():
         if not isinstance(digest, str) or DIGEST_RE.fullmatch(digest) is None:
@@ -238,11 +896,11 @@ def install(payload: object) -> dict[str, object]:
         _safe_directory(INSTALL_ROOT, 0o750, create=False)
     else:
         _safe_directory(INSTALL_ROOT, 0o750, create=True)
-    _verify_pull_request(revision)
+    _verify_pull_request(revision, pull_number=helper_source_pull_number)
 
     verified: dict[str, str] = {}
     contents: dict[str, bytes] = {}
-    for key, (relative_path, _staged_name, maximum) in ASSETS.items():
+    for key, (relative_path, _staged_name, maximum) in selected_assets.items():
         local = _read_staged(_staged_asset_path(revision, key), maximum)
         digest = hashlib.sha256(local).hexdigest()
         if digest != hashes[key]:
@@ -252,40 +910,129 @@ def install(payload: object) -> dict[str, object]:
             raise InstallError("asset_source_mismatch")
         contents[key] = local
         verified[key] = digest
-
-    for key, (_relative, installed_name, _maximum) in ASSETS.items():
-        if key == "bootstrap":
-            continue
-        _atomic_root_file(
-            INSTALL_ROOT / installed_name, contents[key], 0o750 if key == "host_helper" else 0o640
-        )
-
-    receipt = {
+    receipt_fields: dict[str, object] = {
         "format_version": 1,
         "repository": REPOSITORY,
-        "pull_number": PULL_NUMBER,
+        "pull_number": helper_source_pull_number,
         "reviewed_head_sha": revision,
         "reviewed_pair_manifest_sha256": pair_manifest_digest,
         "files": {
             installed_name: verified[key]
-            for key, (_relative, installed_name, _maximum) in ASSETS.items()
+            for key, (_relative, installed_name, _maximum) in selected_assets.items()
             if key != "bootstrap"
         },
-        "installed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
-    _atomic_root_file(
-        INSTALLED_MANIFEST,
-        (json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n").encode(),
-        0o640,
-    )
-    for key in ASSETS:
+    if helper_source_contract is not None:
+        receipt_fields.update(
+            {
+                "helper_source_contract": helper_source_contract,
+                "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
+            }
+        )
+
+    def installed_path(key: str) -> Path:
+        if key == "production_helper":
+            return PRODUCTION_HELPER
+        return INSTALL_ROOT / selected_assets[key][1]
+
+    def previous_file(path: Path, *, maximum: int, mode: int) -> bytes | None:
+        if not path.exists() and not path.is_symlink():
+            return None
+        return _read_fixed_root_file(path, maximum, mode)
+
+    def write_install() -> dict[str, object]:
+        previous_helper: bytes | None = None
+        previous_helper_digest: str | None = None
+        helper_replacement_started = False
+        snapshots: dict[Path, bytes | None] = {}
+        for key in selected_assets:
+            if key == "bootstrap":
+                continue
+            path = installed_path(key)
+            mode = 0o750 if key == "host_helper" or key == "production_helper" else 0o640
+            snapshots[path] = previous_file(path, maximum=selected_assets[key][2], mode=mode)
+        old_manifest = previous_file(INSTALLED_MANIFEST, maximum=8192, mode=0o640)
+        try:
+            if helper_source_contract is not None:
+                assert "production_helper" in contents
+                previous_helper, previous_helper_digest = _prepare_previous_production_helper(
+                    contents["production_helper"],
+                    candidate_manifest_fields=receipt_fields,
+                )
+            for key, (_relative, installed_name, _maximum) in selected_assets.items():
+                if key == "bootstrap" or key == "production_helper":
+                    continue
+                _atomic_root_file(
+                    INSTALL_ROOT / installed_name,
+                    contents[key],
+                    0o750 if key == "host_helper" else 0o640,
+                )
+            if helper_source_contract is not None:
+                current_helper = _read_fixed_root_file(
+                    PRODUCTION_HELPER,
+                    PRODUCTION_HELPER_MAX_BYTES,
+                    0o750,
+                )
+                if current_helper != contents["production_helper"]:
+                    helper_replacement_started = True
+                    _atomic_root_file(PRODUCTION_HELPER, contents["production_helper"], 0o750)
+
+            receipt = {
+                **receipt_fields,
+                "installed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            }
+            if helper_source_contract is not None:
+                assert previous_helper_digest is not None
+                receipt["previous_production_helper_sha256"] = previous_helper_digest
+            _atomic_root_file(
+                INSTALLED_MANIFEST,
+                (json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n").encode(),
+                0o640,
+            )
+        except (InstallError, OSError, ValueError, TypeError) as error:
+            try:
+                if helper_replacement_started and previous_helper is not None:
+                    _atomic_root_file(PRODUCTION_HELPER, previous_helper, 0o750)
+                for path, contents_before in snapshots.items():
+                    if path == PRODUCTION_HELPER:
+                        continue
+                    if contents_before is None:
+                        path.unlink(missing_ok=True)
+                    else:
+                        mode = 0o750 if path.name == "host_helper.py" else 0o640
+                        _atomic_root_file(path, contents_before, mode)
+                if old_manifest is None:
+                    INSTALLED_MANIFEST.unlink(missing_ok=True)
+                else:
+                    _atomic_root_file(INSTALLED_MANIFEST, old_manifest, 0o640)
+            except (InstallError, OSError, ValueError, TypeError) as rollback_error:
+                raise InstallError("install_rollback_unverified") from rollback_error
+            if isinstance(error, InstallError):
+                raise
+            raise InstallError("sidecar_install_failed") from error
+
+        result: dict[str, object] = {
+            "status": "installed",
+            "reviewed_head_sha": revision,
+            "reviewed_pair_manifest_sha256": pair_manifest_digest,
+            "asset_sha256": verified,
+        }
+        if helper_source_contract is not None:
+            result["pull_number"] = helper_source_pull_number
+            result["helper_source_contract"] = helper_source_contract
+            result["production_helper_sha256"] = verified["production_helper"]
+            result["previous_production_helper_sha256"] = previous_helper_digest
+        return result
+
+    _safe_directory(STATE_ROOT, 0o750, create=True, group="signalops")
+    if helper_source_contract is not None:
+        with _install_locks():
+            result = write_install()
+    else:
+        result = write_install()
+    for key in selected_assets:
         _staged_asset_path(revision, key).unlink(missing_ok=True)
-    return {
-        "status": "installed",
-        "reviewed_head_sha": revision,
-        "reviewed_pair_manifest_sha256": pair_manifest_digest,
-        "asset_sha256": verified,
-    }
+    return result
 
 
 def main() -> int:

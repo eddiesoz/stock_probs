@@ -6,6 +6,8 @@ const path = require("node:path");
 const fs = require("node:fs/promises");
 
 const root = path.resolve(__dirname, "../../..");
+const READINESS_TIMEOUT_MS = 30_000;
+const READINESS_REQUEST_TIMEOUT_MS = 1_000;
 
 async function freeLoopbackPort() {
   const server = net.createServer();
@@ -19,20 +21,122 @@ async function freeLoopbackPort() {
 }
 
 async function waitForReadiness(url, processState, label) {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + READINESS_TIMEOUT_MS;
   while (Date.now() < deadline) {
     if (processState.exit !== null) {
       throw new Error(`${label} exited early (${processState.exit}): ${processState.stderr}`);
     }
     try {
-      const response = await fetch(`${url}/api/v1/readiness`);
-      if (response.ok) return;
+      const requestTimeoutMs = Math.max(1, Math.min(READINESS_REQUEST_TIMEOUT_MS, deadline - Date.now()));
+      const response = await fetch(`${url}/api/v1/readiness`, {
+        signal: AbortSignal.timeout(requestTimeoutMs),
+      });
+      if (response.ok && processState.exit === null && Date.now() < deadline) return;
     } catch (_) {
       // A refused connection is expected while the local process binds its loopback port.
     }
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    if (processState.exit !== null) {
+      throw new Error(`${label} exited early (${processState.exit}): ${processState.stderr}`);
+    }
+    const remainingMs = deadline - Date.now();
+    if (remainingMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(50, remainingMs)));
+    }
   }
   throw new Error(`${label} did not become ready: ${processState.stderr}`);
+}
+
+const ASSISTANT_FIXTURE_DIAGNOSTIC_EVENT_LIMIT = 32;
+const ASSISTANT_FIXTURE_STAGE_NAMES = new Set([
+  "fixture_started",
+  "turn_started",
+  "workspace_summary_received",
+  "response_delay_started",
+  "runtime_completed",
+]);
+const ASSISTANT_FIXTURE_SIGNALS = new Set(["SIGTERM", "SIGKILL", "SIGINT"]);
+
+function createAssistantFixtureDiagnostics() {
+  const startedAt = performance.now();
+  const events = [];
+  let overflow = false;
+  let invalidEvent = false;
+  let attachmentFailed = false;
+  let pendingStderr = "";
+  const add = (kind, details = {}) => {
+    if (events.length >= ASSISTANT_FIXTURE_DIAGNOSTIC_EVENT_LIMIT) {
+      overflow = true;
+      return;
+    }
+    events.push({
+      kind,
+      at_utc: new Date().toISOString(),
+      elapsed_monotonic_ms: Math.max(0, Math.round(performance.now() - startedAt)),
+      ...details,
+    });
+  };
+  const captureStderrChunk = (chunk) => {
+    const lines = `${pendingStderr}${chunk.toString("utf8")}`.split(/\r?\n/);
+    pendingStderr = lines.pop() || "";
+    if (pendingStderr.length > 4_096) {
+      pendingStderr = "";
+      overflow = true;
+    }
+    for (const line of lines) {
+      if (line.length > 4_096) {
+        overflow = true;
+        continue;
+      }
+      const normalizedLine = line.trimStart();
+      if (!normalizedLine.startsWith("{") || !normalizedLine.includes('"qa_stage"')) continue;
+      try {
+        const parsed = JSON.parse(line);
+        if (!Object.hasOwn(parsed, "qa_stage")) continue;
+        const stage = parsed.qa_stage;
+        if (typeof stage !== "string" || !ASSISTANT_FIXTURE_STAGE_NAMES.has(stage)) {
+          invalidEvent = true;
+          continue;
+        }
+        add("runtime_stage", { stage });
+      } catch (_) {
+        invalidEvent = true;
+      }
+    }
+  };
+  const markAttachmentFailed = () => {
+    attachmentFailed = true;
+    add("attachment_failed", { category: "attachment_unavailable" });
+  };
+  return {
+    add,
+    captureStderrChunk,
+    markAttachmentFailed,
+    snapshot: () => ({
+      version: 1,
+      result: overflow ? "failed_overflow" : invalidEvent ? "failed_invalid_event" : pendingStderr.length > 0 ? "incomplete_pending_line" : "captured",
+      overflow,
+      invalid_event: invalidEvent,
+      attachment_failed: attachmentFailed,
+      pending_line: pendingStderr.length > 0,
+      events: events.map((event) => ({ ...event })),
+    }),
+  };
+}
+
+async function attachAssistantFixtureDiagnosticSnapshot(testInfo, name, snapshot, markFailure) {
+  if (snapshot === null || snapshot === undefined) return;
+  try {
+    await testInfo.attach(name, {
+      body: Buffer.from(JSON.stringify(snapshot)),
+      contentType: "application/json",
+    });
+  } catch (_) {
+    try {
+      markFailure?.();
+    } catch (_) {
+      // Preserve the original startup, test, or teardown result if diagnostics cannot be recorded.
+    }
+  }
 }
 
 async function launchApplication(testInfo, runtimeName, pythonArguments, label, environment = {}) {
@@ -44,10 +148,11 @@ async function launchApplication(testInfo, runtimeName, pythonArguments, label, 
   await fs.mkdir(runtime, { recursive: true });
   let child = null;
   let processState = null;
+  const diagnostics = runtimeName === "assistant-runtime" ? createAssistantFixtureDiagnostics() : null;
 
   async function start() {
     if (child) throw new Error(`${label} is already running.`);
-    processState = { exit: null, stderr: "" };
+    processState = { exit: null, signal: null, stderr: "" };
     child = spawn(path.join(root, ".dev-venv/bin/python"), pythonArguments(port), {
       cwd: root,
       env: {
@@ -61,32 +166,57 @@ async function launchApplication(testInfo, runtimeName, pythonArguments, label, 
       stdio: ["ignore", "ignore", "pipe"],
     });
     const runningChild = child;
+    runningChild.once("spawn", () => diagnostics?.add("child_started"));
     runningChild.stderr.on("data", (chunk) => {
       processState.stderr = `${processState.stderr}${chunk}`.slice(-16_384);
+      diagnostics?.captureStderrChunk(chunk);
     });
-    runningChild.once("exit", (code) => {
+    runningChild.once("exit", (code, signal) => {
       processState.exit = code;
+      processState.signal = signal;
+      diagnostics?.add("child_exit", {
+        exit_code: Number.isInteger(code) ? code : null,
+        signal: signal === null ? null : ASSISTANT_FIXTURE_SIGNALS.has(signal) ? signal : "other",
+      });
       if (child === runningChild) child = null;
     });
     await waitForReadiness(url, processState, label);
+    diagnostics?.add("readiness_succeeded");
   }
 
   async function stop() {
-    if (!child) return;
+    const childRunningAtStop = child !== null;
+    diagnostics?.add("owned_stop_started", {
+      child_running: childRunningAtStop,
+      requested_signal: "SIGTERM",
+    });
+    if (!child) {
+      diagnostics?.add("owned_stop_finished", { child_running: false, sigkill_attempted: false });
+      return;
+    }
     const stoppingChild = child;
     const exited = new Promise((resolve) => stoppingChild.once("exit", resolve));
     stoppingChild.kill("SIGTERM");
     await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 5_000))]);
+    let sigkillAttempted = false;
     if (stoppingChild.exitCode === null) {
+      sigkillAttempted = true;
       stoppingChild.kill("SIGKILL");
       await exited;
     }
     if (child === stoppingChild) child = null;
+    diagnostics?.add("owned_stop_finished", { child_running: child !== null, sigkill_attempted: sigkillAttempted });
   }
 
   try {
     await start();
   } catch (startupError) {
+    diagnostics?.add("startup_failed", {
+      category: processState?.exit !== null || processState?.signal !== null
+        ? "process_exited_before_readiness"
+        : "startup_not_ready",
+    });
+    const beforeStop = diagnostics?.snapshot();
     try {
       await stop();
     } catch (_) {
@@ -100,10 +230,32 @@ async function launchApplication(testInfo, runtimeName, pythonArguments, label, 
           // Preserve the original startup error even if it cannot be annotated.
         }
       }
+      diagnostics?.add("owned_stop_failed");
+    }
+    if (diagnostics) {
+      await attachAssistantFixtureDiagnosticSnapshot(
+        testInfo,
+        "assistant-fixture-startup-before-stop.json",
+        beforeStop,
+        () => diagnostics.markAttachmentFailed(),
+      );
+      await attachAssistantFixtureDiagnosticSnapshot(
+        testInfo,
+        "assistant-fixture-startup-after-stop.json",
+        diagnostics.snapshot(),
+        () => diagnostics.markAttachmentFailed(),
+      );
     }
     throw startupError;
   }
-  return { url, logs: () => processState.stderr, restart: async () => { await stop(); await start(); }, stop };
+  return {
+    url,
+    logs: () => processState.stderr,
+    diagnostics: () => diagnostics?.snapshot() ?? null,
+    markDiagnosticAttachmentFailed: () => diagnostics?.markAttachmentFailed(),
+    restart: async () => { await stop(); await start(); },
+    stop,
+  };
 }
 
 exports.expect = base.expect;
@@ -289,7 +441,34 @@ exports.test = base.test.extend({
     try {
       await use({ url: application.url, logs: application.logs });
     } finally {
-      await application.stop();
+      try {
+        if (testInfo.status !== testInfo.expectedStatus) {
+          await testInfo.attach("assistant-fixture-stderr", {
+            body: Buffer.from(application.logs(), "utf8"),
+            contentType: "text/plain",
+          });
+        }
+      } finally {
+        try {
+          await attachAssistantFixtureDiagnosticSnapshot(
+            testInfo,
+            "assistant-fixture-before-stop.json",
+            application.diagnostics(),
+            application.markDiagnosticAttachmentFailed,
+          );
+        } finally {
+          try {
+            await application.stop();
+          } finally {
+            await attachAssistantFixtureDiagnosticSnapshot(
+              testInfo,
+              "assistant-fixture-after-stop.json",
+              application.diagnostics(),
+              application.markDiagnosticAttachmentFailed,
+            );
+          }
+        }
+      }
     }
   },
   unexpectedFailureApplication: async ({}, use, testInfo) => {

@@ -32,6 +32,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, model_validator
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import ClientDisconnect
@@ -2080,7 +2081,8 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
                         content=_error("origin_rejected", "The browser origin is not allowed."),
                     )
                 else:
-                    auth_response = self._authenticate_request(request)
+                    # Session validation may wait on SQLite without stalling unrelated requests.
+                    auth_response = await run_in_threadpool(self._authenticate_request, request)
                     response = auth_response or await self._bounded_request(request, call_next)
             elif (
                 request.headers.get("sec-fetch-site", "").lower() == "cross-site"
@@ -2105,7 +2107,7 @@ class LocalSecurityMiddleware(BaseHTTPMiddleware):
                     ),
                 )
             else:
-                auth_response = self._authenticate_request(request)
+                auth_response = await run_in_threadpool(self._authenticate_request, request)
                 response = auth_response or await self._bounded_request(request, call_next)
             return self._secure(response, request)
 
@@ -4625,10 +4627,21 @@ def create_app(
         try:
             return cast(dict[str, Any], app.state.service.news(query.symbol, limit=query.limit))
         except DomainError as exc:
+            if exc.status_code == 503:
+                if exc.code == "provider_busy":
+                    public_error = (
+                        "provider_busy",
+                        "News retrieval capacity is busy; try again shortly.",
+                    )
+                else:
+                    public_error = (
+                        "provider_unavailable",
+                        "The news provider is temporarily unavailable.",
+                    )
+                raise DomainError(*public_error, status_code=503) from None
             public_error = {
                 422: ("validation_error", "Request validation failed."),
                 502: ("provider_unavailable", "The news provider is temporarily unavailable."),
-                503: ("provider_busy", "News retrieval capacity is busy; try again shortly."),
             }.get(exc.status_code)
             if public_error is None:
                 raise

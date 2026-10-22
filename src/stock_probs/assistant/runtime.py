@@ -113,7 +113,15 @@ _TURN_TIMING_PROVIDER_403_CONTENT_TYPE_CLASSES = frozenset(
 )
 _TURN_TIMING_PROVIDER_403_CF_MITIGATED_CLASSES = frozenset({"challenge", "absent", "other"})
 _TURN_TIMING_PROVIDER_403_ERROR_TYPE_CLASSES = frozenset(
-    {"region_error", "data_policy_error", "free_usage_limit_error", "other", "malformed", "unknown"}
+    {
+        "region_error",
+        "data_policy_error",
+        "free_usage_limit_error",
+        "free_tier_access_error",
+        "other",
+        "malformed",
+        "unknown",
+    }
 )
 _TURN_TIMING_PROVIDER_RESPONSE_FAILURE_PHASES = frozenset(
     {
@@ -3174,6 +3182,11 @@ class OpenCodeV2Runtime:
         self._search_available[context.execution_id] = search_available
         return provider_ref
 
+    def restricted_native_tools_ready(self) -> bool:
+        """Report verified managed execution guards on the current native transport."""
+
+        return self._webfetch_guard_ready is True and self._transport_verified
+
     async def _create_session(
         self,
         context: AssistantTurnContext,
@@ -3220,6 +3233,16 @@ class OpenCodeV2Runtime:
             {"action": "skill", "resource": "*", "effect": "deny"},
             {"action": "plugins", "resource": "*", "effect": "deny"},
         ]
+        if self._webfetch_guard_ready is True:
+            model = self.catalog.get_model(context.model_id)
+            if model is not None and model.provider_id == "opencode-zen":
+                # The trusted native build forbids execution before either tool body.
+                # Ask keeps genuine SDK registrations; unsupported permission events
+                # separately remain rejected by the application bridge.
+                permissions.extend(
+                    {"action": action, "resource": "*", "effect": "ask"}
+                    for action in ("read", "shell")
+                )
         response = await self._request(
             "POST",
             "/api/session",

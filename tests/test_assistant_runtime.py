@@ -3565,6 +3565,7 @@ def test_native_timeout_snapshot_caches_closed_counts_without_content_or_extra_r
     assert snapshot.text_parts == 2
     assert snapshot.text_nonempty_parts == 1
     assert snapshot.reasoning_parts == 1
+    assert private_reasoning not in json.dumps(events)
     assert snapshot.tool_parts == 4
     assert snapshot.other_parts == 1
     assert (

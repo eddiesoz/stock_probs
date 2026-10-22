@@ -43,6 +43,8 @@ from stock_probs.assistant.native_provider_adapters import (
     NativeConfiguredModel,
     NativeProviderDescriptorError,
     native_output_token_budget,
+    native_restricted_tool_declarations,
+    native_restricted_tool_matches,
     native_webfetch_schema,
     native_websearch_description_sha256,
     native_websearch_schema,
@@ -72,6 +74,7 @@ _MAX_VALIDATE_BYTES = 262_144
 _MAX_PROXY_CHUNK_BYTES = 32 * 1024
 _MODEL_POLICY_KEY = "_model_policy"
 _OPENCODE_REVIEW_KEY = "_opencode_model_reviews"
+_OPENCODE_ZEN_CHAT_BASE_URL = "https://opencode.ai/inference/openai/v1"
 _MAX_MODEL_POLICIES = 256
 _MAX_POLICY_REVISION = 2_147_483_647
 _MODEL_CACHE_SECONDS = 300.0
@@ -1151,7 +1154,7 @@ class AssistantProviderManager:
             )
             if provider_id == "custom":
                 configured = endpoint_configured and config.get("endpoint_policy_reviewed") is True
-            endpoint = config.get("base_url", definition.get("default_base_url"))
+            endpoint = _provider_base_url(provider_id, config, definition)
             selected_model = config.get("model_id")
             inventory_loaded_at = self._provider_inventory_loaded_at.get(provider_id, 0.0)
             inventory_current = (
@@ -1474,7 +1477,7 @@ class AssistantProviderManager:
         if definition["adapter_supported"] is not True and provider_id != "opencode-zen":
             raise ProviderUnavailable("provider_adapter_unsupported")
         state = self._read_metadata().get(provider_id, {})
-        base_url = state.get("base_url", definition.get("default_base_url"))
+        base_url = _provider_base_url(provider_id, state, definition)
         if provider_id == "opencode-zen":
             if self.catalog is None:
                 raise ProviderUnavailable("provider_unavailable")
@@ -2271,7 +2274,7 @@ class AssistantProviderManager:
             self._replace_provider_models(provider_id, ())
             raise ProviderUnavailable("provider_adapter_unsupported")
         state = self._read_metadata().get(provider_id, {})
-        base_url = state.get("base_url", definition.get("default_base_url"))
+        base_url = _provider_base_url(provider_id, state, definition)
         secret = self._read_credential(provider_id)
         if not isinstance(base_url, str):
             self._replace_provider_models(provider_id, ())
@@ -2370,7 +2373,7 @@ class AssistantProviderManager:
             policy = _custom_model_policy(state)
         else:
             policy = definition
-        configured_endpoint = provider_state.get("base_url", definition.get("default_base_url"))
+        configured_endpoint = _provider_base_url(provider_id, provider_state, definition)
         endpoint_base = (
             _validate_public_https_url(configured_endpoint)
             if isinstance(configured_endpoint, str)
@@ -2839,7 +2842,11 @@ class AssistantProviderManager:
         if app_tools is not None or provider_id == "opencode-zen":
             if not isinstance(app_tools, list) or not 1 <= len(app_tools) <= 11:
                 raise ProviderUnavailable("provider_request_invalid")
-            allowed_tools = _native_application_tools(app_tools, protocol="openai-compatible-chat")
+            allowed_tools = _native_application_tools(
+                app_tools,
+                protocol="openai-compatible-chat",
+                include_restricted=provider_id == "opencode-zen",
+            )
             clean_tools, declared_tool_names = _validate_native_compatible_tools(
                 body.get("tools"), allowed_tools
             )
@@ -2854,7 +2861,7 @@ class AssistantProviderManager:
             raise ProviderUnavailable("provider_request_invalid")
 
         config = self._read_metadata().get(provider_id, {})
-        base_url = config.get("base_url", definition.get("default_base_url"))
+        base_url = _provider_base_url(provider_id, config, definition)
         if not isinstance(base_url, str):
             raise ProviderUnavailable("endpoint_not_configured")
         canonical_base = _validate_public_https_url(base_url)
@@ -2886,6 +2893,9 @@ class AssistantProviderManager:
             if parameter_name in body:
                 upstream[parameter_name] = body[parameter_name]
         upstream["max_tokens"] = validated_max_tokens
+        if provider_id == "opencode-zen" and native_model_id == "minimax-m3.1-flash-free":
+            # This model defaults to max thinking; keep app turns at interactive depth.
+            upstream["reasoning_effort"] = "low"
         if clean_tools is not None:
             upstream["tools"] = clean_tools
         encoded = json.dumps(
@@ -3329,7 +3339,7 @@ class AssistantProviderManager:
             canonical_base = "https://chatgpt.com/backend-api/codex"
         else:
             state = self._read_metadata().get(provider_id, {})
-            base_url = state.get("base_url", definition.get("default_base_url"))
+            base_url = _provider_base_url(provider_id, state, definition)
             if not isinstance(base_url, str):
                 raise ProviderUnavailable("endpoint_not_configured")
             canonical_base = _validate_public_https_url(base_url).rstrip("/")
@@ -3536,7 +3546,7 @@ class AssistantProviderManager:
         definition = self._definitions.get(provider_id)
         provider_state = self._read_metadata().get(provider_id, {})
         endpoint = (
-            provider_state.get("base_url", definition.get("default_base_url"))
+            _provider_base_url(provider_id, provider_state, definition)
             if definition is not None
             else None
         )
@@ -3601,7 +3611,7 @@ class AssistantProviderManager:
         definition = self._definitions.get(provider_id) if isinstance(provider_id, str) else None
         if definition is not None:
             provider_state = self._read_metadata().get(provider_id, {})
-            endpoint = provider_state.get("base_url", definition.get("default_base_url"))
+            endpoint = _provider_base_url(provider_id, provider_state, definition)
             canonical_endpoint = (
                 _validate_public_https_url(endpoint) if isinstance(endpoint, str) else None
             )
@@ -3707,7 +3717,7 @@ class AssistantProviderManager:
         provider_state = state.get(provider_id, {})
         if not isinstance(provider_state, Mapping):
             raise ProviderUnavailable("provider_config_invalid")
-        endpoint = provider_state.get("base_url", definition.get("default_base_url"))
+        endpoint = _provider_base_url(provider_id, provider_state, definition)
         if not isinstance(endpoint, str):
             return None
         canonical_endpoint = _validate_public_https_url(endpoint)
@@ -4178,6 +4188,13 @@ class AssistantProviderManager:
         zen_policy = self._definitions.get("opencode-zen")
         if not isinstance(zen_policy, Mapping):
             raise ProviderUnavailable("model_policy_unavailable")
+        if isinstance(endpoint_url, str):
+            try:
+                canonical_endpoint = _validate_public_https_url(endpoint_url)
+            except ProviderUnavailable:
+                canonical_endpoint = None
+            if canonical_endpoint == _OPENCODE_ZEN_CHAT_BASE_URL:
+                provider_id = zen_policy.get("provider_id")
         try:
             return known_model_exclusion_reason(
                 zen_policy,
@@ -4200,7 +4217,7 @@ class AssistantProviderManager:
             "models_url": zen["models_url"],
             "excluded_models": zen["excluded_models"],
             "auth_methods": ["free_no_key"],
-            "default_base_url": "https://opencode.ai/zen/v1",
+            "default_base_url": _OPENCODE_ZEN_CHAT_BASE_URL,
             "terms_url": zen["terms_url"],
             "runtime_provider_id": zen["provider_id"],
             "credential_required": False,
@@ -4556,18 +4573,34 @@ def _validated_messages(
         has_calls = "tool_calls" in message
         if role not in {"system", "user", "assistant"}:
             raise ProviderUnavailable("provider_request_invalid")
+        reasoning_fields: set[str] = set()
+        if "reasoning_content" in message:
+            reasoning = message["reasoning_content"]
+            if role != "assistant" or not isinstance(reasoning, str) or "\x00" in reasoning:
+                raise ProviderUnavailable("provider_request_invalid")
+            reasoning_bytes = _utf8_length(reasoning)
+            if reasoning_bytes is None:
+                raise ProviderUnavailable("provider_request_invalid")
+            text_size += reasoning_bytes
+            if text_size > 65_536:
+                raise ProviderUnavailable("provider_request_invalid")
+            reasoning_fields.add("reasoning_content")
         if has_calls:
             raw_calls = message.get("tool_calls")
             if (
                 role != "assistant"
-                or set(message) != {"role", "content", "tool_calls"}
+                or set(message) != {"role", "content", "tool_calls"} | reasoning_fields
                 or (content is not None and not isinstance(content, str))
                 or not isinstance(raw_calls, list)
                 or not 1 <= len(raw_calls) <= 8
                 or pending_calls
             ):
                 raise ProviderUnavailable("provider_request_invalid")
-        elif set(message) != {"role", "content"} or not isinstance(content, str) or pending_calls:
+        elif (
+            set(message) != {"role", "content"} | reasoning_fields
+            or not isinstance(content, str)
+            or pending_calls
+        ):
             raise ProviderUnavailable("provider_request_invalid")
         if content is not None:
             if not isinstance(content, str) or "\x00" in content:
@@ -4580,6 +4613,8 @@ def _validated_messages(
                 raise ProviderUnavailable("provider_request_invalid")
 
         normalized: dict[str, object] = {"role": role, "content": content}
+        if reasoning_fields:
+            normalized["reasoning_content"] = message["reasoning_content"]
         if has_calls:
             normalized_calls: list[dict[str, object]] = []
             for raw_call in raw_calls:
@@ -4633,6 +4668,18 @@ def _validated_messages(
     if pending_calls:
         raise ProviderUnavailable("provider_request_invalid")
     return messages
+
+
+def _provider_base_url(
+    provider_id: str,
+    state: Mapping[str, object],
+    definition: Mapping[str, object],
+) -> object:
+    """Pin Zen to its reviewed route and resolve other providers from stored defaults."""
+
+    if provider_id == "opencode-zen":
+        return _OPENCODE_ZEN_CHAT_BASE_URL
+    return state.get("base_url", definition.get("default_base_url"))
 
 
 def _validate_public_https_url(value: str) -> str:
@@ -5577,6 +5624,7 @@ def _event_text_channels(frame: bytes, protocol: str) -> dict[str, str]:
                 if not isinstance(delta, Mapping):
                     continue
                 add(("chat-content", choice_index), delta.get("content"))
+                add(("chat-reasoning", choice_index), delta.get("reasoning_content"))
                 calls = delta.get("tool_calls")
                 if isinstance(calls, list):
                     for call in calls[:8]:
@@ -5772,6 +5820,7 @@ def _native_application_tools(
     app_tools: list[dict[str, object]],
     *,
     protocol: str,
+    include_restricted: bool = False,
 ) -> dict[str, tuple[str | None, Mapping[str, object] | None]]:
     if not isinstance(app_tools, list) or not 1 <= len(app_tools) <= 32:
         raise ProviderUnavailable("provider_request_invalid")
@@ -5811,6 +5860,11 @@ def _native_application_tools(
         raise ProviderUnavailable("provider_request_invalid") from exc
     output["websearch"] = (None, search_schema)
     output["webfetch"] = (None, webfetch_schema)
+    if include_restricted and protocol == "openai-compatible-chat":
+        try:
+            output.update(native_restricted_tool_declarations())
+        except ValueError as exc:
+            raise ProviderUnavailable("provider_request_invalid") from exc
     return output
 
 
@@ -5822,7 +5876,7 @@ def _validate_native_compatible_tools(
 
     if raw_tools is None:
         return None, set()
-    if not isinstance(raw_tools, list) or not 1 <= len(raw_tools) <= 13:
+    if not isinstance(raw_tools, list) or not 1 <= len(raw_tools) <= 15:
         raise ProviderUnavailable("provider_request_invalid")
     try:
         encoded_size = len(
@@ -5907,6 +5961,8 @@ def _native_tool_schema_matches(
             != NATIVE_WEBFETCH_DESCRIPTION_SHA256
         ):
             return False
+    elif name in {"read", "shell"}:
+        return native_restricted_tool_matches(name, description, schema)
     elif description != expected_description:
         return False
     if expected_schema is None:
@@ -6542,6 +6598,15 @@ def _sanitize_openai_sse_data(
             if not isinstance(content, str) or len(content.encode("utf-8")) > 16_384:
                 raise ProviderUnavailable("provider_response_invalid")
             safe_delta["content"] = content
+        reasoning = delta.get("reasoning_content")
+        if reasoning is not None:
+            if not isinstance(reasoning, str) or "\x00" in reasoning:
+                raise ProviderUnavailable("provider_response_invalid")
+            reasoning_bytes = _utf8_length(reasoning)
+            if reasoning_bytes is None or reasoning_bytes > 16_384:
+                raise ProviderUnavailable("provider_response_invalid")
+            # Native MiniMax tool continuations must replay their original reasoning.
+            safe_delta["reasoning_content"] = reasoning
         calls = delta.get("tool_calls")
         if calls is not None:
             if not isinstance(calls, list) or len(calls) > 8:

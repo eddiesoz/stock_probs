@@ -8,6 +8,7 @@ import json
 import multiprocessing
 import os
 import signal
+import subprocess
 import sys
 import time
 from datetime import UTC, datetime, timedelta
@@ -22,6 +23,14 @@ SPEC = importlib.util.spec_from_file_location("bounded_docker_build", MODULE_PAT
 assert SPEC is not None and SPEC.loader is not None
 bounded = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(bounded)
+FRONTEND_CHECKS_VERTEX = (
+    "[frontend-builder 4/8] RUN npm run typecheck && npm run build "
+    "&& npm run test -- --test-concurrency=1"
+)
+NATIVE_BUILDER_VERTEX = (
+    "[opencode-patched-builder 8/8] RUN python /patch/build_native.py "
+    '--target-arch "$TARGETARCH" --build-arch "$BUILDARCH" --output /out'
+)
 
 
 def _ledger_slot_worker(
@@ -1591,6 +1600,591 @@ def test_local_buildx_command_uses_fixed_builder_load_and_native_platform(
     assert command[command.index("--tag") + 1].startswith("stock-probs:local-")
 
 
+def test_local_buildx_progress_observation_is_opt_in_and_does_not_change_arm_command(
+    tmp_path: Path,
+) -> None:
+    args = (
+        "stock-probs:local-" + "a" * 12 + "-" + "b" * 12 + "-" + "c" * 12,
+        "a" * 40,
+        "linux/amd64",
+        tmp_path / "context",
+        tmp_path / "image.iid",
+    )
+
+    legacy = bounded._local_buildx_argv(*args)
+    observed = bounded._local_buildx_argv(*args, True)
+    assert "--progress=rawjson" not in legacy
+    assert observed == [
+        *legacy[: legacy.index("--load")],
+        "--progress=rawjson",
+        *legacy[legacy.index("--load") :],
+    ]
+    assert bounded._arm64_compose_argv(
+        "stock-probs-r-astra-120-arm64-1000", tmp_path / "compose.yml"
+    ) == [
+        bounded.DOCKER,
+        "compose",
+        "--project-directory",
+        str(bounded.ROOT),
+        "--project-name",
+        "stock-probs-r-astra-120-arm64-1000",
+        "--file",
+        str(tmp_path / "compose.yml"),
+        "build",
+        "--builder",
+        bounded.BUILDER,
+        "--pull",
+        "arm64-frontend-builder",
+        "arm64-app",
+    ]
+
+
+def _phase_vertex(
+    name: str,
+    digest_number: int = 1,
+    *,
+    started: str | None = "2026-10-15T12:00:00.000000000Z",
+    completed: str | None = "2026-10-15T12:00:05Z",
+    cached: bool = False,
+    error: str | None = None,
+) -> dict[str, object]:
+    return {
+        "digest": "sha256:" + f"{digest_number:064x}",
+        "name": name,
+        "started": started,
+        "completed": completed,
+        "cached": cached,
+        "error": error,
+    }
+
+
+def _observe_phase_bytes(
+    payload: bytes, observer: Any | None = None, *, chunk_size: int = 4096
+) -> tuple[Any, dict[str, object]]:
+    read_fd, write_fd = os.pipe()
+    stream = os.fdopen(read_fd, "rb", buffering=0)
+    phase_observer = bounded._LocalBuildPhaseObserver() if observer is None else observer
+    phase_observer.attach(stream)
+    try:
+        for offset in range(0, len(payload), chunk_size):
+            os.write(write_fd, payload[offset : offset + chunk_size])
+    finally:
+        os.close(write_fd)
+    phase_observer.finish()
+    projection = phase_observer.snapshot()
+    assert isinstance(projection, dict)
+    return phase_observer, projection
+
+
+def test_local_phase_observer_keeps_only_coarse_redacted_vertex_facts() -> None:
+    digest = "sha256:" + "d" * 64
+    private_name = FRONTEND_CHECKS_VERTEX
+    payload = (
+        json.dumps(
+            {
+                "vertexes": [
+                    _phase_vertex(
+                        private_name,
+                        started="2026-10-15T12:00:00.123456789Z",
+                        error="private-error-detail",
+                    )
+                ],
+                "statuses": [
+                    {"vertex": digest, "name": "private-status-name", "current": 2, "total": 3}
+                ],
+                "logs": [
+                    {
+                        "vertex": digest,
+                        "stream": 2,
+                        "data": "cHJpdmF0ZS1sb2ctY29udGVudA==",
+                    }
+                ],
+                "warnings": [
+                    {
+                        "vertex": digest,
+                        "level": 1,
+                        "short": "cHJpdmF0ZS13YXJuaW5n",
+                        "detail": ["cHJpdmF0ZS1kZXRhaWw="],
+                        "url": "https://private.example/path",
+                        "sourceInfo": {"filename": "private-file"},
+                        "range": [{"start": 7}],
+                    }
+                ],
+            }
+        ).encode()
+        + b"\n"
+    )
+    observer, projection = _observe_phase_bytes(payload)
+
+    assert projection["status"] == "available"
+    assert projection["reason_code"] is None
+    assert projection["phases"] == [
+        {
+            "phase": "frontend_checks_run",
+            "ordinal": 1,
+            "started": True,
+            "completed": True,
+            "cached": False,
+            "error": True,
+            "elapsed_ms": 4876,
+        }
+    ]
+    serialized = json.dumps(projection)
+    for private_value in (
+        digest,
+        private_name,
+        "private-error-detail",
+        "private-status-name",
+        "cHJpdmF0ZS1sb2ctY29udGVudA==",
+        "cHJpdmF0ZS13YXJuaW5n",
+        "cHJpdmF0ZS1kZXRhaWw=",
+        "private-file",
+        "https://private.example/path",
+    ):
+        assert private_value not in serialized
+    assert observer._thread is not None and not observer._thread.is_alive()
+    assert observer._stream is not None and observer._stream.closed
+    before_late_frame = json.dumps(observer.snapshot(), sort_keys=True)
+    observer._consume_frame(
+        json.dumps({"vertexes": [_phase_vertex(NATIVE_BUILDER_VERTEX)]}).encode()
+    )
+    assert json.dumps(observer.snapshot(), sort_keys=True) == before_late_frame
+
+
+@pytest.mark.parametrize(
+    ("frame", "reason"),
+    [
+        ({"future_field": "private"}, "unknown_or_invalid_frame"),
+        (
+            {
+                "vertexes": [
+                    {
+                        **_phase_vertex(FRONTEND_CHECKS_VERTEX),
+                        "future": "private",
+                    }
+                ]
+            },
+            "unknown_or_invalid_vertex",
+        ),
+        (
+            {
+                "vertexes": [
+                    _phase_vertex(
+                        FRONTEND_CHECKS_VERTEX,
+                        started="2026-10-15T12:00:06Z",
+                    )
+                ]
+            },
+            "invalid_vertex_clock",
+        ),
+        (
+            {
+                "vertexes": [
+                    {
+                        **_phase_vertex(FRONTEND_CHECKS_VERTEX),
+                        "progressGroup": {"id": "private-id", "weak": "true"},
+                    }
+                ]
+            },
+            "invalid_vertex_progress_group",
+        ),
+    ],
+)
+def test_local_phase_observer_fails_closed_on_unknown_or_invalid_late_frames(
+    frame: dict[str, object], reason: str
+) -> None:
+    valid = {"vertexes": [_phase_vertex(NATIVE_BUILDER_VERTEX)]}
+    payload = (json.dumps(valid) + "\n" + json.dumps(frame) + "\nprivate-late-output\n").encode()
+    observer, projection = _observe_phase_bytes(payload)
+
+    assert projection["status"] == "unavailable"
+    assert projection["reason_code"] == reason
+    assert "private-late-output" not in json.dumps(projection)
+    assert observer._thread is not None and not observer._thread.is_alive()
+
+
+@pytest.mark.parametrize("weak", [False, True])
+def test_local_phase_observer_accepts_optional_boolean_progress_group_weak(weak: bool) -> None:
+    frame = {
+        "vertexes": [
+            {
+                **_phase_vertex(FRONTEND_CHECKS_VERTEX),
+                "progressGroup": {
+                    "id": "private-progress-id",
+                    "name": "private-name",
+                    "weak": weak,
+                },
+            }
+        ]
+    }
+    _observer, projection = _observe_phase_bytes((json.dumps(frame) + "\n").encode())
+
+    assert projection["status"] == "available"
+    assert projection["reason_code"] is None
+    assert [phase["phase"] for phase in projection["phases"]] == ["frontend_checks_run"]
+    serialized = json.dumps(projection)
+    assert "private-progress-id" not in serialized
+    assert "private-name" not in serialized
+    assert "progressGroup" not in serialized
+    assert '"weak"' not in serialized
+
+
+def test_local_phase_observer_skips_routine_unknown_vertex_and_keeps_later_known_phase() -> None:
+    routine_auth = "[auth] library/base:pull token for registry.example"
+    payload = (
+        json.dumps({"vertexes": [_phase_vertex(routine_auth, 1)]})
+        + "\n"
+        + json.dumps({"vertexes": [_phase_vertex(NATIVE_BUILDER_VERTEX, 2)]})
+        + "\n"
+    ).encode()
+    observer, projection = _observe_phase_bytes(payload)
+
+    assert projection["status"] == "partial"
+    assert projection["reason_code"] == "unknown_vertices_skipped"
+    assert projection["unknown_vertices_skipped"] == 1
+    assert projection["unknown_vertices_truncated"] is False
+    assert projection["phases"] == [
+        {
+            "phase": "native_builder_run",
+            "ordinal": 1,
+            "started": True,
+            "completed": True,
+            "cached": False,
+            "error": False,
+            "elapsed_ms": 5000,
+        }
+    ]
+    assert routine_auth not in json.dumps(projection)
+    assert observer._thread is not None and not observer._thread.is_alive()
+
+
+def test_local_phase_observer_with_only_unknown_vertices_is_unavailable_without_names() -> None:
+    unknown_name = "[internal] resolve image config for docker-image://private/base:latest"
+    _observer, projection = _observe_phase_bytes(
+        (json.dumps({"vertexes": [_phase_vertex(unknown_name)]}) + "\n").encode()
+    )
+
+    assert projection["status"] == "unavailable"
+    assert projection["reason_code"] == "unknown_vertices_skipped"
+    assert projection["unknown_vertices_skipped"] == 1
+    assert projection["vertices_observed"] == 0
+    assert projection["phases"] == []
+    assert unknown_name not in json.dumps(projection)
+
+
+def test_local_phase_observer_caps_unknown_vertex_count_without_losing_known_phase(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(bounded, "LOCAL_BUILD_PHASE_MAX_SKIPPED_VERTICES", 1)
+    unknown = "[auth] library/base:pull token for registry.example"
+    payload = (
+        json.dumps({"vertexes": [_phase_vertex(unknown, 1)]})
+        + "\n"
+        + json.dumps({"vertexes": [_phase_vertex(unknown, 2)]})
+        + "\n"
+        + json.dumps({"vertexes": [_phase_vertex(NATIVE_BUILDER_VERTEX, 3)]})
+        + "\n"
+    ).encode()
+    _observer, projection = _observe_phase_bytes(payload)
+
+    assert projection["status"] == "partial"
+    assert projection["unknown_vertices_skipped"] == 1
+    assert projection["unknown_vertices_truncated"] is True
+    assert [phase["phase"] for phase in projection["phases"]] == ["native_builder_run"]
+    assert unknown not in json.dumps(projection)
+
+
+@pytest.mark.parametrize(
+    ("limits", "payload", "reason"),
+    [
+        (
+            {"LOCAL_BUILD_PHASE_MAX_RAW_BYTES": 100},
+            ((json.dumps({"statuses": [{"name": "x" * 64}]}) + "\n") * 3).encode(),
+            "raw_byte_limit",
+        ),
+        (
+            {"LOCAL_BUILD_PHASE_MAX_LINE_BYTES": 32},
+            b"x" * 33 + b"\n",
+            "line_byte_limit",
+        ),
+        (
+            {"LOCAL_BUILD_PHASE_MAX_FRAMES": 1},
+            (json.dumps({"statuses": []}) + "\n") * 2,
+            "frame_limit",
+        ),
+        (
+            {"LOCAL_BUILD_PHASE_MAX_VERTICES": 1},
+            json.dumps(
+                {
+                    "vertexes": [
+                        _phase_vertex(
+                            FRONTEND_CHECKS_VERTEX,
+                            1,
+                        ),
+                        _phase_vertex("[opencode-assets 2/3] RUN mkdir -p /assets/amd64/lib", 2),
+                    ]
+                }
+            ).encode()
+            + b"\n",
+            "vertex_limit",
+        ),
+        (
+            {"LOCAL_BUILD_PHASE_MAX_ARTIFACT_BYTES": 256},
+            (json.dumps({"vertexes": [_phase_vertex(FRONTEND_CHECKS_VERTEX)]}) + "\n").encode(),
+            "artifact_size_limit",
+        ),
+    ],
+)
+def test_local_phase_observer_enforces_fixed_projection_caps(
+    monkeypatch: pytest.MonkeyPatch,
+    limits: dict[str, int],
+    payload: bytes | str,
+    reason: str,
+) -> None:
+    for name, value in limits.items():
+        monkeypatch.setattr(bounded, name, value)
+    raw = payload.encode() if isinstance(payload, str) else payload
+    _observer, projection = _observe_phase_bytes(raw)
+
+    assert projection["status"] == "unavailable"
+    assert projection["reason_code"] == reason
+    assert projection["raw_bytes_read"] <= bounded.LOCAL_BUILD_PHASE_MAX_RAW_BYTES
+    assert projection["vertices_observed"] <= bounded.LOCAL_BUILD_PHASE_MAX_VERTICES
+    assert projection["unknown_vertices_skipped"] <= bounded.LOCAL_BUILD_PHASE_MAX_SKIPPED_VERTICES
+    assert (
+        len(json.dumps(projection, sort_keys=True, separators=(",", ":")).encode())
+        <= bounded.LOCAL_BUILD_PHASE_MAX_ARTIFACT_BYTES
+    )
+
+
+def test_bounded_build_drains_noisy_child_beyond_pipe_capacity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(bounded, "verify_build_mount", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(bounded, "check_space", lambda *_args, **_kwargs: bounded.MIN_FREE)
+    monkeypatch.setattr(
+        bounded,
+        "data_root",
+        lambda *_args, **_kwargs: (tmp_path, bounded.MIN_FREE),
+    )
+    observer = bounded._LocalBuildPhaseObserver()
+    command = [
+        sys.executable,
+        "-c",
+        "import os; chunk=b'x'*8192; [os.write(2, chunk) for _ in range(1024)]",
+    ]
+
+    bounded._run_bounded_build(
+        command,
+        expected_uuid="12345678-1234-1234-1234-123456789abc",
+        docker_root=tmp_path,
+        space_paths=(tmp_path,),
+        env={"PYTHONDONTWRITEBYTECODE": "1"},
+        timeout=10,
+        phase_observer=observer,
+    )
+
+    projection = observer.snapshot()
+    assert projection is not None
+    assert projection["status"] == "unavailable"
+    assert projection["reason_code"] == "line_byte_limit"
+    assert projection["raw_bytes_read"] <= bounded.LOCAL_BUILD_PHASE_MAX_RAW_BYTES
+    assert observer._thread is not None and not observer._thread.is_alive()
+    assert observer._stream is not None and observer._stream.closed
+
+
+def test_bounded_build_without_observer_keeps_legacy_devnull_popen_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(bounded, "verify_build_mount", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(bounded, "check_space", lambda *_args, **_kwargs: bounded.MIN_FREE)
+    monkeypatch.setattr(
+        bounded,
+        "data_root",
+        lambda *_args, **_kwargs: (tmp_path, bounded.MIN_FREE),
+    )
+    real_popen = bounded.subprocess.Popen
+    observed_kwargs: list[dict[str, object]] = []
+
+    def tracked_popen(argv: list[str], **kwargs: object) -> bounded.subprocess.Popen[bytes]:
+        observed_kwargs.append(dict(kwargs))
+        return real_popen(argv, **kwargs)
+
+    monkeypatch.setattr(bounded.subprocess, "Popen", tracked_popen)
+    bounded._run_bounded_build(
+        [sys.executable, "-c", "import os; os.write(2, b'discarded')"],
+        expected_uuid="12345678-1234-1234-1234-123456789abc",
+        docker_root=tmp_path,
+        space_paths=(tmp_path,),
+        env={"PYTHONDONTWRITEBYTECODE": "1"},
+        timeout=5,
+    )
+
+    assert observed_kwargs == [
+        {
+            "cwd": bounded.ROOT,
+            "env": {"PYTHONDONTWRITEBYTECODE": "1"},
+            "stdin": bounded.subprocess.DEVNULL,
+            "stdout": bounded.subprocess.DEVNULL,
+            "stderr": bounded.subprocess.DEVNULL,
+            "shell": False,
+            "start_new_session": True,
+        }
+    ]
+
+
+def test_bounded_build_timeout_cancels_noisy_child_and_bounds_reader_cleanup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(bounded, "verify_build_mount", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(bounded, "check_space", lambda *_args, **_kwargs: bounded.MIN_FREE)
+    real_popen = bounded.subprocess.Popen
+    processes: list[bounded.subprocess.Popen[bytes]] = []
+
+    def tracked_popen(argv: list[str], **kwargs: object) -> bounded.subprocess.Popen[bytes]:
+        process = real_popen(argv, **kwargs)
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(bounded.subprocess, "Popen", tracked_popen)
+    observer = bounded._LocalBuildPhaseObserver()
+    command = [
+        sys.executable,
+        "-c",
+        "import os; chunk=b'x'*8192\nwhile True: os.write(2, chunk)",
+    ]
+
+    with pytest.raises(bounded.BuildError, match="bounded_build_timeout"):
+        bounded._run_bounded_build(
+            command,
+            expected_uuid="12345678-1234-1234-1234-123456789abc",
+            docker_root=tmp_path,
+            space_paths=(tmp_path,),
+            env={"PYTHONDONTWRITEBYTECODE": "1"},
+            timeout=1,
+            phase_observer=observer,
+        )
+
+    assert len(processes) == 1 and processes[0].poll() is not None
+    projection = observer.snapshot()
+    assert projection is not None
+    assert projection["status"] == "unavailable"
+    assert observer._finalized
+    assert observer._thread is not None and not observer._thread.is_alive()
+    assert observer._stream is not None and observer._stream.closed
+
+
+@pytest.mark.parametrize("cancel_verified", [True, False])
+def test_bounded_build_timeout_during_observer_attach_finalizes_reader(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    cancel_verified: bool,
+) -> None:
+    monkeypatch.setattr(bounded, "verify_build_mount", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(bounded, "check_space", lambda *_args, **_kwargs: bounded.MIN_FREE)
+    real_popen = bounded.subprocess.Popen
+    processes: list[subprocess.Popen[bytes]] = []
+
+    def tracked_popen(argv: list[str], **kwargs: object) -> subprocess.Popen[bytes]:
+        process = real_popen(argv, **kwargs)
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(bounded.subprocess, "Popen", tracked_popen)
+    observer = bounded._LocalBuildPhaseObserver()
+    real_attach = observer.attach
+    attach_completed_at: list[float] = []
+
+    def delayed_attach(stream: object) -> None:
+        real_attach(stream)
+        time.sleep(0.15)
+        attach_completed_at.append(time.monotonic())
+
+    monkeypatch.setattr(observer, "attach", delayed_attach)
+    real_cancel = bounded.cancel
+    cancellation_results: list[bool] = []
+
+    def cancel_child(process: subprocess.Popen[bytes]) -> bool:
+        verified = real_cancel(process) if cancel_verified else False
+        cancellation_results.append(verified)
+        return verified
+
+    monkeypatch.setattr(bounded, "cancel", cancel_child)
+    expected_error = (
+        "bounded_build_timeout" if cancel_verified else "bounded_build_timeout_cancel_unverified"
+    )
+    command = [sys.executable, "-c", "import time; time.sleep(30)"]
+    invocation_started_at = time.monotonic()
+
+    try:
+        with pytest.raises(bounded.BuildError, match=expected_error):
+            bounded._run_bounded_build(
+                command,
+                expected_uuid="12345678-1234-1234-1234-123456789abc",
+                docker_root=tmp_path,
+                space_paths=(tmp_path,),
+                env={"PYTHONDONTWRITEBYTECODE": "1"},
+                timeout=0.05,
+                phase_observer=observer,
+            )
+        assert len(processes) == 1
+        assert (processes[0].poll() is not None) is cancel_verified
+        assert attach_completed_at[0] - invocation_started_at > 0.05
+        assert cancellation_results == [cancel_verified]
+        assert observer._finalized
+        assert observer._thread is not None and not observer._thread.is_alive()
+        assert observer._stream is not None and observer._stream.closed
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                real_cancel(process)
+
+    assert len(processes) == 1 and processes[0].poll() is not None
+
+
+def test_phase_reader_failure_drains_pipe_and_preserves_primary_build_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(bounded, "verify_build_mount", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(bounded, "check_space", lambda *_args, **_kwargs: bounded.MIN_FREE)
+    observer = bounded._LocalBuildPhaseObserver()
+
+    def fail_parse(_line: bytes) -> None:
+        raise RuntimeError("private observer exception")
+
+    monkeypatch.setattr(observer, "_consume_frame", fail_parse)
+    command = [
+        sys.executable,
+        "-c",
+        "import os, sys\n"
+        "data = b'{\"vertexes\": []}\\n' + b'x' * 262144\n"
+        "view = memoryview(data)\n"
+        "while view:\n"
+        "    count = os.write(2, view)\n"
+        "    view = view[count:]\n"
+        "sys.exit(7)\n",
+    ]
+
+    with pytest.raises(bounded.BuildError, match="bounded_build_exit_nonzero") as caught:
+        bounded._run_bounded_build(
+            command,
+            expected_uuid="12345678-1234-1234-1234-123456789abc",
+            docker_root=tmp_path,
+            space_paths=(tmp_path,),
+            env={"PYTHONDONTWRITEBYTECODE": "1"},
+            timeout=5,
+            phase_observer=observer,
+        )
+
+    assert caught.value.code == "bounded_build_exit_nonzero"
+    projection = observer.snapshot()
+    assert projection is not None
+    assert projection["status"] == "unavailable"
+    assert projection["reason_code"] == "reader_failed"
+    assert observer._thread is not None and not observer._thread.is_alive()
+    assert observer._stream is not None and observer._stream.closed
+
+
 def test_build_mount_monitor_checks_only_the_bound_mount_uuid(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1654,6 +2248,287 @@ def test_build_mount_monitor_reports_lookup_failure_without_command_output(
             str(tmp_path.resolve()),
             deadline=time.monotonic() + 10,
         )
+
+
+def test_builder_preflight_checks_managed_roots_without_sd_context_dependency(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    docker_root = tmp_path / "docker-root"
+    docker_root.mkdir()
+    context_root = tmp_path / "r12r"
+    context_root.mkdir(mode=0o700)
+    expected_uuid = "12345678-1234-1234-1234-123456789abc"
+    setup = {"expected_docker_root_uuid": expected_uuid, "docker_root": str(docker_root)}
+    mount_calls: list[tuple[str, str, float]] = []
+    space_calls: list[tuple[tuple[Path, ...], int]] = []
+
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_ROOT", context_root)
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_UUID", expected_uuid)
+    monkeypatch.setattr(bounded, "setup_receipt", lambda: setup)
+    monkeypatch.setattr(bounded, "inspect_builder", lambda _setup: None)
+    monkeypatch.setattr(bounded, "data_root", lambda *_args: (docker_root, bounded.MIN_FREE))
+    monkeypatch.setattr(
+        bounded,
+        "verify_build_mount",
+        lambda uuid, path, *, deadline: mount_calls.append((uuid, path, deadline)),
+    )
+    monkeypatch.setattr(
+        bounded,
+        "check_space",
+        lambda paths, minimum: space_calls.append((paths, minimum)) or {},
+    )
+
+    result = bounded._builder_preflight()
+
+    assert result == (setup, docker_root, expected_uuid)
+    assert mount_calls == []
+    assert len(space_calls) == 1
+    assert space_calls[0][0] == (docker_root, bounded.ROOT, bounded.STATE)
+    assert space_calls[0][1] == 4 * 1024**3
+
+
+@pytest.mark.parametrize(
+    ("root_kind", "expected_error"),
+    [
+        ("missing", "build_mount_path_unavailable"),
+        ("wrong_uuid", "build_mount_uuid_mismatch"),
+        ("symlink", "build_mount_path_changed"),
+        ("not_directory", "build_mount_path_invalid"),
+    ],
+)
+def test_local_builder_rejects_invalid_sd_context_before_temp_creation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    root_kind: str,
+    expected_error: str,
+) -> None:
+    context_root = tmp_path / "r12r"
+    expected_uuid = "12345678-1234-1234-1234-123456789abc"
+    if root_kind == "wrong_uuid":
+        context_root.mkdir()
+    elif root_kind == "symlink":
+        target = tmp_path / "mounted-target"
+        target.mkdir()
+        context_root.symlink_to(target, target_is_directory=True)
+    elif root_kind == "not_directory":
+        context_root.write_text("not a directory", encoding="utf-8")
+
+    def checked(argv: list[str], **_kwargs: object) -> bytes:
+        if argv[0] == bounded.GIT:
+            return b"a" * 40
+        if argv[0] == bounded.FINDMNT:
+            return b"different-uuid\n"
+        raise AssertionError("unexpected fixed command")
+
+    temporary_calls: list[tuple[object, ...]] = []
+
+    def unexpected_tempdir(*args: object, **_kwargs: object) -> None:
+        temporary_calls.append(args)
+        pytest.fail("invalid SD context path reached temporary-directory creation")
+
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_ROOT", context_root)
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_UUID", expected_uuid)
+    monkeypatch.setattr(bounded, "_builder_preflight", lambda: ({}, tmp_path, "0" * 36))
+    monkeypatch.setattr(bounded, "checked", checked)
+    monkeypatch.setattr(bounded.tempfile, "TemporaryDirectory", unexpected_tempdir)
+
+    with pytest.raises(bounded.BuildError) as caught:
+        bounded.build_local_image()
+
+    assert caught.value.code == expected_error
+    assert temporary_calls == []
+
+
+def test_local_builder_rejects_low_sd_space_before_temp_creation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    context_root = tmp_path / "r12r"
+    context_root.mkdir(mode=0o700)
+    expected_uuid = "12345678-1234-1234-1234-123456789abc"
+    events: list[str] = []
+    space_calls: list[tuple[tuple[Path, ...], int]] = []
+    temporary_calls: list[tuple[object, ...]] = []
+
+    def check_space(paths: tuple[Path, ...], minimum: int) -> dict[str, int]:
+        events.append("space")
+        space_calls.append((paths, minimum))
+        raise bounded.BuildError("build_disk_floor_breached")
+
+    def verify_mount(*_args: object, **_kwargs: object) -> None:
+        events.append("mount")
+
+    def unexpected_tempdir(*args: object, **_kwargs: object) -> None:
+        temporary_calls.append(args)
+        pytest.fail("low SD free space reached temporary-directory creation")
+
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_ROOT", context_root)
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_UUID", expected_uuid)
+    monkeypatch.setattr(bounded, "_builder_preflight", lambda: ({}, tmp_path, "0" * 36))
+    monkeypatch.setattr(bounded, "checked", lambda *_args, **_kwargs: b"a" * 40)
+    monkeypatch.setattr(bounded, "verify_build_mount", verify_mount)
+    monkeypatch.setattr(bounded, "check_space", check_space)
+    monkeypatch.setattr(bounded.tempfile, "TemporaryDirectory", unexpected_tempdir)
+
+    with pytest.raises(bounded.BuildError, match="build_disk_floor_breached"):
+        bounded.build_local_image()
+
+    assert len(space_calls) == 1
+    assert events == ["mount", "space"]
+    assert context_root in space_calls[0][0]
+    assert space_calls[0][1] == bounded.MIN_FREE
+    assert temporary_calls == []
+
+
+def test_local_builder_rejects_sd_change_after_context_copy_before_reservation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    context_root = tmp_path / "r12r"
+    context_root.mkdir(mode=0o700)
+    docker_root = tmp_path / "docker-root"
+    docker_root.mkdir()
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    ledger_path = state / "candidate-ledger.json"
+    ledger_bytes = (
+        json.dumps({"schema": bounded.LEDGER_SCHEMA, "entries": []}, sort_keys=True) + "\n"
+    ).encode()
+    ledger_path.write_bytes(ledger_bytes)
+    ledger_path.chmod(0o600)
+    context_uuid = "12345678-1234-1234-1234-123456789abc"
+    docker_uuid = "abcdefab-cdef-abcd-efab-cdefabcdefab"
+    context_hash = "c" * 64
+    mount_checks: list[tuple[str, str]] = []
+    space_checks: list[tuple[tuple[Path, ...], int]] = []
+    context_directories: list[Path] = []
+    reservation_calls: list[tuple[object, ...]] = []
+    popen_calls: list[tuple[object, ...]] = []
+
+    monkeypatch.setattr(bounded, "USER", SimpleNamespace(pw_uid=os.getuid(), pw_dir=str(tmp_path)))
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_ROOT", context_root)
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_UUID", context_uuid)
+    monkeypatch.setattr(bounded, "STATE", state)
+    monkeypatch.setattr(bounded, "LEDGER_FILE", ledger_path)
+    monkeypatch.setattr(bounded, "LEDGER_LOCK_FILE", state / "candidate-ledger.lock")
+    monkeypatch.setattr(
+        bounded,
+        "_builder_preflight",
+        lambda: ({"legacy_task_image_inventory": {}}, docker_root, docker_uuid),
+    )
+    monkeypatch.setattr(bounded, "checked", lambda *_args, **_kwargs: b"d" * 40)
+
+    def verify_mount(expected_uuid: str, path: str, *, deadline: float) -> None:
+        assert deadline > time.monotonic()
+        mount_checks.append((expected_uuid, path))
+        if path == str(context_root) and sum(item[1] == path for item in mount_checks) == 3:
+            raise bounded.BuildError("build_mount_uuid_mismatch")
+
+    def check_space(paths: tuple[Path, ...], minimum: int) -> dict[str, int]:
+        space_checks.append((paths, minimum))
+        return {str(context_root): 10 * 1024**3}
+
+    def build_context(destination: Path) -> str:
+        context_directories.append(destination.parent)
+        destination.mkdir(mode=0o700)
+        return context_hash
+
+    def reserve(*args: object, **_kwargs: object) -> None:
+        reservation_calls.append(args)
+        pytest.fail("SD mismatch after context copy reached ledger reservation")
+
+    def popen(*args: object, **_kwargs: object) -> None:
+        popen_calls.append(args)
+        pytest.fail("SD mismatch after context copy reached build child dispatch")
+
+    monkeypatch.setattr(bounded, "verify_build_mount", verify_mount)
+    monkeypatch.setattr(bounded, "check_space", check_space)
+    monkeypatch.setattr(bounded, "_build_context", build_context)
+    monkeypatch.setattr(bounded, "_context_sha256", lambda *_args: context_hash)
+    monkeypatch.setattr(bounded, "_native_platform", lambda: "linux/amd64")
+    monkeypatch.setattr(bounded, "_reserve_managed_tags", reserve)
+    monkeypatch.setattr(bounded.subprocess, "Popen", popen)
+
+    with pytest.raises(bounded.BuildError, match="build_mount_uuid_mismatch"):
+        bounded.build_local_image()
+
+    assert mount_checks == [(context_uuid, str(context_root))] * 3
+    assert len(space_checks) == 1
+    assert context_root in space_checks[0][0]
+    assert space_checks[0][1] == bounded.MIN_FREE
+    assert reservation_calls == []
+    assert popen_calls == []
+    assert ledger_path.read_bytes() == ledger_bytes
+    assert len(context_directories) == 1 and not context_directories[0].exists()
+
+
+def test_bounded_build_cancels_when_required_context_mount_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    docker_root = tmp_path / "docker-root"
+    docker_root.mkdir()
+    context_root = tmp_path / "sd-context"
+    context_root.mkdir()
+    context_uuid = "abcdefab-cdef-abcd-efab-cdefabcdefab"
+    mount_calls: list[tuple[str, str]] = []
+    processes: list[subprocess.Popen[bytes]] = []
+    context_checks = 0
+    failure_phase = "preflight"
+
+    def verify_mount(uuid: str, path: str, *, deadline: float | None = None) -> None:
+        nonlocal context_checks
+        mount_calls.append((uuid, path))
+        if path == str(context_root):
+            context_checks += 1
+            if failure_phase == "preflight" or context_checks == 2:
+                raise bounded.BuildError("build_mount_uuid_mismatch")
+
+    real_popen = bounded.subprocess.Popen
+
+    def tracked_popen(argv: list[str], **kwargs: object) -> subprocess.Popen[bytes]:
+        process = real_popen(argv, **kwargs)
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(bounded, "verify_build_mount", verify_mount)
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_UUID", context_uuid)
+    monkeypatch.setattr(bounded, "check_space", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(bounded.subprocess, "Popen", tracked_popen)
+
+    with pytest.raises(bounded.BuildError) as caught:
+        bounded._run_bounded_build(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            expected_uuid="12345678-1234-1234-1234-123456789abc",
+            docker_root=docker_root,
+            space_paths=(docker_root, context_root),
+            context_mount_path=str(context_root),
+            env={"PYTHONDONTWRITEBYTECODE": "1"},
+            timeout=10,
+        )
+
+    assert caught.value.code == "bounded_build_context_mount_uuid_mismatch"
+    assert mount_calls == [(context_uuid, str(context_root))]
+    assert processes == []
+
+    failure_phase = "monitor"
+    context_checks = 0
+    mount_calls.clear()
+    with pytest.raises(bounded.BuildError) as caught:
+        bounded._run_bounded_build(
+            [sys.executable, "-c", "import time; time.sleep(30)"],
+            expected_uuid="12345678-1234-1234-1234-123456789abc",
+            docker_root=docker_root,
+            space_paths=(docker_root, context_root),
+            context_mount_path=str(context_root),
+            env={"PYTHONDONTWRITEBYTECODE": "1"},
+            timeout=10,
+        )
+
+    assert caught.value.code == "bounded_build_context_mount_uuid_mismatch"
+    assert mount_calls == [
+        (context_uuid, str(context_root)),
+        ("12345678-1234-1234-1234-123456789abc", str(docker_root)),
+        (context_uuid, str(context_root)),
+    ]
+    assert len(processes) == 1 and processes[0].poll() is not None
 
 
 def test_arm64_compose_command_selects_only_the_bounded_builder_and_fixed_services(
@@ -3206,3 +4081,1773 @@ def test_legacy_image_baseline_is_held_outside_three_managed_slots() -> None:
     conflicting[_entry(700)["tag"]] = "sha256:" + "f" * 64
     with pytest.raises(bounded.BuildError, match="conflicts_with_held_baseline"):
         bounded._expected_managed_inventory(ledger, conflicting)
+
+
+def _local_transition_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    state, _ = _test_ledger_paths(tmp_path, monkeypatch)
+    pointer = state / "local-current.json"
+    monkeypatch.setattr(bounded, "LOCAL_CURRENT_FILE", pointer)
+    rows = [_entry(1), _entry(2)]
+    monkeypatch.setattr(bounded, "setup_receipt", lambda: {})
+    monkeypatch.setattr(bounded, "_ledger_read", lambda: {"entries": rows})
+    monkeypatch.setattr(bounded, "_verify_ledger_inventory", lambda *_: None)
+    monkeypatch.setattr(bounded, "_native_platform", lambda: "linux/amd64")
+    monkeypatch.setattr(
+        bounded,
+        "checked",
+        lambda *_: f"{rows[0]['image_id']}|linux/amd64|{rows[0]['revision']}".encode(),
+    )
+    checks: list[str] = []
+    monkeypatch.setattr(
+        bounded, "_managed_build_receipt", lambda row: checks.append(str(row["image_id"]))
+    )
+    monkeypatch.setattr(bounded, "_schema13_rehearsal_image_facts", lambda *_: None)
+    bounded._write_local_current(
+        rows[0]["tag"], rows[0]["image_id"], rows[0]["revision"], rows[0]["context_sha256"]
+    )
+    return {"rows": rows, "pointer": pointer, "checks": checks, "before": pointer.read_bytes()}
+
+
+def test_local_current_transition_checks_both_receipts_and_preserves_ledger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _local_transition_fixture(tmp_path, monkeypatch)
+    original = json.dumps(state["rows"], sort_keys=True)
+    first, second = state["rows"]
+    result = bounded.select_local_current(first["image_id"], second["image_id"])
+    assert result["images_removed"] == [] and result["ledger_changed"] is False
+    assert state["checks"] == [first["image_id"], second["image_id"]]
+    assert json.loads(state["pointer"].read_text())["image_id"] == second["image_id"]
+    assert json.dumps(state["rows"], sort_keys=True) == original
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "stale",
+        "same",
+        "malformed",
+        "missing",
+        "duplicate",
+        "recovery",
+        "reserved",
+        "receipt",
+        "metadata",
+        "write",
+    ],
+)
+def test_local_current_transition_fails_without_pointer_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    state = _local_transition_fixture(tmp_path, monkeypatch)
+    first, second = state["rows"]
+    expected, replacement = first["image_id"], second["image_id"]
+    if failure == "stale":
+        expected = "sha256:" + "3" * 64
+    elif failure == "same":
+        replacement = expected
+    elif failure == "malformed":
+        replacement = "short-id"
+    elif failure == "missing":
+        state["rows"].pop()
+    elif failure == "duplicate":
+        state["rows"].append(dict(second))
+    elif failure == "recovery":
+        second["role"] = "recovery"
+    elif failure == "reserved":
+        second["status"] = "reserved"
+    else:
+        name = {
+            "receipt": "_managed_build_receipt",
+            "metadata": "_schema13_rehearsal_image_facts",
+            "write": "_write_local_current",
+        }[failure]
+
+        def fail(*_: object) -> None:
+            raise bounded.BuildError("injected_failure")
+
+        monkeypatch.setattr(bounded, name, fail)
+    with pytest.raises(bounded.BuildError):
+        bounded.select_local_current(expected, replacement)
+    assert state["pointer"].read_bytes() == state["before"]
+
+
+def _local_generation(
+    *, running: bool = True, container_id: str | None = None
+) -> dict[str, object]:
+    return {
+        "container_id": container_id or "a" * 64,
+        "name": bounded.CONTAINER_NAME,
+        "image_id": "sha256:" + "b" * 64,
+        "created": "2026-10-15T16:00:00Z",
+        "started": "2026-10-15T16:01:00Z",
+        "restart_count": 0,
+        "running": running,
+        "pid": 321 if running else 0,
+    }
+
+
+@pytest.mark.parametrize("stop_error_code", [None, "fixed_command_failed"])
+def test_local_failure_stops_only_the_pinned_builder_after_cli_process_group_is_gone(
+    monkeypatch: pytest.MonkeyPatch, stop_error_code: str | None
+) -> None:
+    setup = {"builder_container_id": "a" * 64, "buildkit_image_id": "sha256:" + "b" * 64}
+    before = _local_generation()
+    stopped = _local_generation(running=False)
+    generations = iter((before, before, stopped))
+    commands: list[tuple[list[str], float]] = []
+    target_checks: list[tuple[dict[str, object], dict[str, object]]] = []
+
+    def checked(argv: list[str], timeout: float = 30) -> bytes:
+        commands.append((argv, timeout))
+        if stop_error_code is not None:
+            raise bounded.BuildError(stop_error_code)
+        return b"stopped"
+
+    monkeypatch.setattr(bounded, "_builder_generation", lambda _setup, **_kwargs: next(generations))
+    monkeypatch.setattr(
+        bounded,
+        "_verify_builder_stop_target",
+        lambda received_setup, received_generation, _deadline: target_checks.append(
+            (received_setup, received_generation)
+        ),
+    )
+    monkeypatch.setattr(
+        bounded,
+        "_local_buildkit_cgroup_proof",
+        lambda container_id: {
+            "status": "empty",
+            "scope_path": f"/sys/fs/cgroup/system.slice/docker-{container_id}.scope",
+            "directories_scanned": 1,
+            "entries_scanned": 2,
+            "process_ids_observed": 0,
+        },
+    )
+    monkeypatch.setattr(
+        bounded, "inspect_builder", lambda _setup: pytest.fail("cleanup must not bootstrap")
+    )
+    monkeypatch.setattr(bounded, "checked", checked)
+
+    result = bounded._stop_owned_builder_after_local_failure(setup, before)
+
+    assert result["status"] == "verified_stopped_same_generation"
+    assert result.get("stop_error_code") == stop_error_code
+    assert result["stop_command_result"] == (
+        "unavailable_but_state_verified" if stop_error_code is not None else "completed"
+    )
+    assert result["worker_cgroup"]["status"] == "empty"
+    assert target_checks == [(setup, before)]
+    assert len(commands) == 1
+    stop_argv, stop_timeout = commands[0]
+    assert stop_argv == [
+        bounded.DOCKER,
+        "container",
+        "stop",
+        "--time",
+        str(bounded.LOCAL_BUILDKIT_STOP_GRACE_SECONDS),
+        "a" * 64,
+    ]
+    assert 0 < stop_timeout <= bounded.LOCAL_BUILDKIT_STOP_TIMEOUT_SECONDS
+
+
+def test_local_failure_refuses_rebound_builder_generation_before_stop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    setup = {"builder_container_id": "a" * 64, "buildkit_image_id": "sha256:" + "b" * 64}
+    before = _local_generation()
+    rebound = _local_generation(container_id="c" * 64)
+    commands: list[list[str]] = []
+    monkeypatch.setattr(bounded, "_builder_generation", lambda _setup, **_kwargs: rebound)
+    monkeypatch.setattr(
+        bounded,
+        "_verify_builder_stop_target",
+        lambda *_args: pytest.fail("rebound generation must fail before profile checks"),
+    )
+    monkeypatch.setattr(bounded, "inspect_builder", lambda _setup: pytest.fail("must not inspect"))
+    monkeypatch.setattr(bounded, "checked", lambda argv, **_kwargs: commands.append(argv))
+
+    with pytest.raises(bounded.BuildError, match="local_builder_generation_changed"):
+        bounded._stop_owned_builder_after_local_failure(setup, before)
+
+    assert commands == []
+
+
+def _local_reconciliation_fixture_path(state: dict[str, object], key: str) -> Path:
+    value = state.get(key)
+    if isinstance(value, Path):
+        return value
+    if isinstance(value, str):
+        return Path(value)
+    raise AssertionError(f"fixture path {key!r} must be a Path or text")
+
+
+def test_local_reconciliation_stop_proof_rejects_builder_id_rebind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    setup = {"builder_container_id": "a" * 64, "buildkit_image_id": "sha256:" + "b" * 64}
+    original = _local_generation(running=False)
+    rebound = _local_generation(running=False, container_id="c" * 64)
+    monkeypatch.setattr(bounded, "_builder_generation", lambda _setup, **_kwargs: rebound)
+    monkeypatch.setattr(
+        bounded,
+        "_verify_builder_stop_target",
+        lambda *_args: pytest.fail("rebound generation must fail before profile proof"),
+    )
+
+    with pytest.raises(
+        bounded.BuildError, match="local_reconciliation_builder_generation_unverified"
+    ):
+        bounded._verify_local_stopped_builder(setup, original)
+
+
+def test_local_reconciliation_stop_proof_reads_same_stopped_generation_twice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stopped = _local_generation(running=False)
+    setup = {
+        "builder_container_id": stopped["container_id"],
+        "buildkit_image_id": stopped["image_id"],
+    }
+    generations = iter((stopped, stopped))
+    profile_checks: list[dict[str, object]] = []
+    monkeypatch.setattr(bounded, "_builder_generation", lambda _setup, **_kwargs: next(generations))
+    monkeypatch.setattr(
+        bounded,
+        "_verify_builder_stop_target",
+        lambda _setup, observed, _deadline: profile_checks.append(observed),
+    )
+    monkeypatch.setattr(
+        bounded,
+        "_local_buildkit_cgroup_proof",
+        lambda container_id: {
+            "status": "absent",
+            "scope_path": f"/sys/fs/cgroup/docker-{container_id}.scope",
+        },
+    )
+
+    proof = bounded._verify_local_stopped_builder(setup, stopped)
+
+    assert proof["status"] == "verified_stopped_same_generation"
+    assert proof["current_generation"] == stopped
+    assert proof["worker_cgroup"]["status"] == "absent"
+    assert profile_checks == [stopped]
+
+
+def test_builder_stop_preflight_checks_exact_profile_and_pinned_inputs_without_exec(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    generation = _local_generation()
+    container_id = str(generation["container_id"])
+    setup = {
+        "builder_container_id": container_id,
+        "buildkit_image_id": generation["image_id"],
+        "buildkit_config_sha256": bounded.CONFIG_SHA,
+        "active_buildkit_config_sha256": "c" * 64,
+        "active_buildkit_config_semantically_verified": True,
+    }
+    fields = (
+        container_id,
+        bounded.CONTAINER_NAME,
+        str(generation["image_id"]),
+        str(bounded.MEMORY),
+        str(bounded.SWAP),
+        str(bounded.CPU_QUOTA),
+        str(bounded.CPU_PERIOD),
+        str(bounded.PIDS_LIMIT),
+        "true",
+        str(generation["pid"]),
+        str(generation["created"]),
+        str(generation["started"]),
+        str(generation["restart_count"]),
+    )
+    commands: list[list[str]] = []
+    config_path = tmp_path / "buildkitd.toml"
+    config_path.write_bytes(b"pinned config")
+
+    def checked(argv: list[str], timeout: float = 30) -> bytes:
+        assert 0 < timeout <= bounded.LOCAL_BUILDKIT_STOP_QUERY_TIMEOUT_SECONDS
+        commands.append(argv)
+        return ("|".join(fields) + "\n").encode()
+
+    def verify_network(
+        received_setup: dict[str, object], received_id: str, *, check: object = None
+    ) -> None:
+        assert received_setup is setup
+        assert received_id == container_id
+        assert callable(check)
+
+    def verify_cache(
+        received_setup: dict[str, object], received_id: str, *, check: object = None
+    ) -> None:
+        assert received_setup is setup
+        assert received_id == container_id
+        assert callable(check)
+
+    monkeypatch.setattr(bounded, "checked", checked)
+    monkeypatch.setattr(bounded, "CONFIG_FILE", config_path)
+    monkeypatch.setattr(bounded, "sha", lambda _path: bounded.CONFIG_SHA)
+    monkeypatch.setattr(bounded, "verify_installed_config", lambda: bounded.CONFIG_SHA)
+    monkeypatch.setattr(bounded, "verify_active_buildkit_config", lambda *_args: "c" * 64)
+    monkeypatch.setattr(bounded, "verify_builder_network", verify_network)
+    monkeypatch.setattr(bounded, "verify_cache_volume", verify_cache)
+
+    bounded._verify_builder_stop_target(setup, generation, time.monotonic() + 5)
+
+    assert commands == [
+        [
+            bounded.DOCKER,
+            "container",
+            "inspect",
+            "--format",
+            "|".join(
+                (
+                    "{{.Id}}",
+                    "{{.Name}}",
+                    "{{.Image}}",
+                    "{{.HostConfig.Memory}}",
+                    "{{.HostConfig.MemorySwap}}",
+                    "{{.HostConfig.CpuQuota}}",
+                    "{{.HostConfig.CpuPeriod}}",
+                    "{{.HostConfig.PidsLimit}}",
+                    "{{.State.Running}}",
+                    "{{.State.Pid}}",
+                    "{{.Created}}",
+                    "{{.State.StartedAt}}",
+                    "{{.RestartCount}}",
+                )
+            ),
+            container_id,
+        ]
+    ]
+
+
+def test_builder_stop_preflight_rejects_changed_resource_profile(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    generation = _local_generation()
+    container_id = str(generation["container_id"])
+    fields = (
+        container_id,
+        bounded.CONTAINER_NAME,
+        str(generation["image_id"]),
+        str(bounded.MEMORY - 1),
+        str(bounded.SWAP),
+        str(bounded.CPU_QUOTA),
+        str(bounded.CPU_PERIOD),
+        str(bounded.PIDS_LIMIT),
+        "true",
+        str(generation["pid"]),
+        str(generation["created"]),
+        str(generation["started"]),
+        str(generation["restart_count"]),
+    )
+    config_path = tmp_path / "buildkitd.toml"
+    config_path.write_bytes(b"pinned config")
+    network_checked = False
+
+    def checked(argv: list[str], **_kwargs: object) -> bytes:
+        assert argv[:3] == [bounded.DOCKER, "container", "inspect"]
+        return ("|".join(fields) + "\n").encode()
+
+    def verify_network(*_args: object, **_kwargs: object) -> None:
+        nonlocal network_checked
+        network_checked = True
+
+    monkeypatch.setattr(bounded, "checked", checked)
+    monkeypatch.setattr(bounded, "CONFIG_FILE", config_path)
+    monkeypatch.setattr(bounded, "verify_builder_network", verify_network)
+    monkeypatch.setattr(
+        bounded, "verify_cache_volume", lambda *_args, **_kwargs: pytest.fail("must fail first")
+    )
+
+    with pytest.raises(bounded.BuildError, match="local_builder_profile_changed"):
+        bounded._verify_builder_stop_target(
+            {"buildkit_image_id": generation["image_id"]},
+            generation,
+            time.monotonic() + 5,
+        )
+
+    assert network_checked is False
+
+
+def _empty_cgroup_tree(scope: Path) -> None:
+    scope.mkdir(parents=True)
+    (scope / "cgroup.procs").write_bytes(b"")
+    (scope / "cgroup.threads").write_bytes(b"")
+
+
+def test_local_builder_cgroup_proof_accepts_only_empty_or_absent_exact_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    system_slice = tmp_path / "sys/fs/cgroup/system.slice"
+    system_slice.mkdir(parents=True)
+    monkeypatch.setattr(bounded, "LOCAL_BUILDKIT_CGROUP_SYSTEM_SLICE", system_slice)
+    container_id = "a" * 64
+
+    absent = bounded._local_buildkit_cgroup_proof(container_id)
+    assert absent["status"] == "absent"
+    assert absent["scope_path"] == str(system_slice / f"docker-{container_id}.scope")
+
+    scope = system_slice / f"docker-{container_id}.scope"
+    _empty_cgroup_tree(scope)
+    buildkit = scope / "buildkit"
+    _empty_cgroup_tree(buildkit)
+    child = buildkit / "worker"
+    _empty_cgroup_tree(child)
+    proof = bounded._local_buildkit_cgroup_proof(container_id)
+    assert proof["status"] == "empty"
+    assert proof["directories_scanned"] == 3
+    assert proof["process_ids_observed"] == 0
+
+
+@pytest.mark.parametrize(
+    "bad_tree", ["active_pid", "symlink", "missing_task_file", "deep", "entries", "too_many_pids"]
+)
+def test_local_builder_cgroup_proof_fails_closed_on_live_or_unknown_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad_tree: str
+) -> None:
+    system_slice = tmp_path / "sys/fs/cgroup/system.slice"
+    system_slice.mkdir(parents=True)
+    monkeypatch.setattr(bounded, "LOCAL_BUILDKIT_CGROUP_SYSTEM_SLICE", system_slice)
+    container_id = "b" * 64
+    scope = system_slice / f"docker-{container_id}.scope"
+    _empty_cgroup_tree(scope)
+    if bad_tree == "active_pid":
+        (scope / "cgroup.threads").write_bytes(b"321\n")
+    elif bad_tree == "symlink":
+        outside = tmp_path / "outside"
+        _empty_cgroup_tree(outside)
+        (scope / "worker").symlink_to(outside, target_is_directory=True)
+    elif bad_tree == "missing_task_file":
+        (scope / "cgroup.procs").unlink()
+    elif bad_tree == "deep":
+        nested = scope / "nested"
+        _empty_cgroup_tree(nested)
+        monkeypatch.setattr(bounded, "LOCAL_BUILDKIT_CGROUP_MAX_DEPTH", 0)
+    elif bad_tree == "entries":
+        monkeypatch.setattr(bounded, "LOCAL_BUILDKIT_CGROUP_MAX_ENTRIES", 1)
+    else:
+        monkeypatch.setattr(bounded, "LOCAL_BUILDKIT_CGROUP_MAX_PIDS", 1)
+        (scope / "cgroup.procs").write_bytes(b"321\n322\n")
+
+    expected = (
+        "local_reconciliation_buildkit_worker_active"
+        if bad_tree == "active_pid"
+        else "local_reconciliation_cgroup_entries_exceeded"
+        if bad_tree in {"entries", "too_many_pids"}
+        else "local_reconciliation_cgroup_depth_exceeded"
+        if bad_tree == "deep"
+        else "local_reconciliation_cgroup_metadata_invalid"
+        if bad_tree == "symlink"
+        else "local_reconciliation_cgroup_metadata_unavailable"
+    )
+    with pytest.raises(bounded.BuildError, match=expected):
+        bounded._local_buildkit_cgroup_proof(container_id)
+
+
+def test_local_failure_refuses_a_second_inflight_reservation() -> None:
+    revision = "1" * 40
+    context_hash = "2" * 64
+    tag = f"stock-probs:local-{revision[:12]}-{context_hash[:12]}-{'3' * 12}"
+    first = {
+        "image_id": bounded._reservation_image_id(tag),
+        "tag": tag,
+        "revision": revision,
+        "context_sha256": context_hash,
+        "role": "current",
+        "status": "inflight",
+    }
+    second_tag = f"stock-probs:local-{'4' * 12}-{'5' * 12}-{'6' * 12}"
+    second = {
+        "image_id": bounded._reservation_image_id(second_tag),
+        "tag": second_tag,
+        "revision": "4" * 40,
+        "context_sha256": "5" * 64,
+        "role": "current",
+        "status": "inflight",
+    }
+
+    with pytest.raises(bounded.BuildError, match="local_inflight_ledger_binding_mismatch"):
+        bounded._validate_local_inflight_identity(
+            {"entries": [first, second]},
+            tag=tag,
+            revision=revision,
+            context_hash=context_hash,
+        )
+
+
+@pytest.mark.parametrize(
+    ("stop_result", "expected_secondary", "failure_mode"),
+    [
+        (None, "local_builder_stop_unverified", "backend_stop_failure"),
+        (
+            {
+                "status": "verified_stopped_same_generation",
+                "stop_error_code": "fixed_command_failed",
+            },
+            "fixed_command_failed",
+            "backend_stop_failure",
+        ),
+        ({"status": "verified_stopped_same_generation"}, None, "context_cancel_unverified"),
+    ],
+)
+def test_local_failure_retains_reservation_and_primary_error_when_backend_stop_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stop_result: dict[str, object] | None,
+    expected_secondary: str | None,
+    failure_mode: str,
+) -> None:
+    context_root = tmp_path / "r12r"
+    context_root.mkdir(mode=0o700)
+    context_uuid = "12345678-1234-1234-1234-123456789abc"
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    state.chmod(0o700)
+    runs = state / "build-runs"
+    runs.mkdir(mode=0o700)
+    runs.chmod(0o700)
+    ledger_path = state / "candidate-ledger.json"
+    ledger_path.write_text(json.dumps({"schema": bounded.LEDGER_SCHEMA, "entries": []}))
+    ledger_path.chmod(0o600)
+    lock_path = state / "candidate-ledger.lock"
+    setup = {
+        "legacy_task_image_inventory": {},
+        "builder_container_id": "a" * 64,
+        "buildkit_image_id": "sha256:" + "b" * 64,
+    }
+    setup_sha = hashlib.sha256(b"pinned setup receipt").hexdigest()
+    context_hash = "c" * 64
+    revision = "d" * 40
+    generation = _local_generation()
+    flags = {"process_group_reaped": False, "backend_stop_attempted": False}
+    context_directories: list[Path] = []
+    mount_checks: list[tuple[str, str]] = []
+    space_checks: list[tuple[tuple[Path, ...], int]] = []
+    cancel_calls: list[object] = []
+
+    monkeypatch.setattr(bounded, "USER", SimpleNamespace(pw_uid=os.getuid(), pw_dir=str(tmp_path)))
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_ROOT", context_root)
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_UUID", context_uuid)
+    monkeypatch.setattr(bounded, "STATE", state)
+    monkeypatch.setattr(bounded, "RUNS", runs)
+    monkeypatch.setattr(bounded, "LEDGER_FILE", ledger_path)
+    monkeypatch.setattr(bounded, "LEDGER_LOCK_FILE", lock_path)
+    monkeypatch.setattr(bounded, "_builder_preflight", lambda: (setup, tmp_path, "0" * 36))
+
+    def verify_mount(uuid: str, path: str, **_kwargs: object) -> None:
+        mount_checks.append((uuid, path))
+        if (
+            failure_mode == "context_cancel_unverified"
+            and path == str(context_root)
+            and sum(item[1] == path for item in mount_checks) == 5
+        ):
+            raise bounded.BuildError("build_mount_uuid_mismatch")
+
+    monkeypatch.setattr(bounded, "verify_build_mount", verify_mount)
+
+    def check_space(paths: tuple[Path, ...], minimum: int) -> dict[str, int]:
+        space_checks.append((paths, minimum))
+        return {str(context_root): 10 * 1024**3}
+
+    monkeypatch.setattr(bounded, "check_space", check_space)
+    monkeypatch.setattr(bounded, "checked", lambda _argv, **_kwargs: revision.encode())
+
+    def build_context(destination: Path) -> str:
+        context_directories.append(destination.parent)
+        assert destination.parent.parent == context_root
+        assert destination.parent.stat().st_mode & 0o777 == 0o700
+        destination.mkdir(mode=0o700)
+        return context_hash
+
+    monkeypatch.setattr(bounded, "_build_context", build_context)
+    monkeypatch.setattr(bounded, "_context_sha256", lambda *_args: context_hash)
+    monkeypatch.setattr(bounded, "_native_platform", lambda: "linux/amd64")
+    monkeypatch.setattr(bounded, "_verify_ledger_inventory", lambda *_args: None)
+    monkeypatch.setattr(bounded, "_image_inventory", lambda: {})
+    monkeypatch.setattr(bounded, "_all_image_ids", lambda: set())
+    monkeypatch.setattr(bounded, "setup_receipt", lambda: setup)
+    monkeypatch.setattr(bounded, "_current_setup_receipt_sha256", lambda: (setup, setup_sha))
+    monkeypatch.setattr(bounded, "inspect_builder", lambda _setup: None)
+    monkeypatch.setattr(bounded, "_builder_generation", lambda _setup: generation)
+    monkeypatch.setattr(bounded, "_local_buildx_argv", lambda *_args: [bounded.DOCKER, "buildx"])
+
+    def cli_build(*_args: object, **_kwargs: object) -> None:
+        assert _kwargs["context_mount_path"] == str(context_root)
+        assert context_root in _kwargs["space_paths"]
+        flags["process_group_reaped"] = True
+        observer = _kwargs.get("phase_observer")
+        assert isinstance(observer, bounded._LocalBuildPhaseObserver)
+        safe_frame = {
+            "vertexes": [
+                _phase_vertex(
+                    FRONTEND_CHECKS_VERTEX,
+                    error="private-buildkit-error",
+                )
+            ]
+        }
+        read_fd, write_fd = os.pipe()
+        observer.attach(os.fdopen(read_fd, "rb", buffering=0))
+        os.write(write_fd, (json.dumps(safe_frame) + "\n").encode())
+        os.close(write_fd)
+        observer.finish()
+        raise bounded.BuildError("fixed_command_unavailable_or_timeout")
+
+    def stop(*_args: object) -> dict[str, object]:
+        flags["backend_stop_attempted"] = True
+        if stop_result is None:
+            raise bounded.BuildError("local_builder_stop_unverified")
+        return stop_result
+
+    if failure_mode == "context_cancel_unverified":
+
+        class PendingProcess:
+            pid = 504
+
+            def __init__(self) -> None:
+                read_fd, write_fd = os.pipe()
+                os.close(write_fd)
+                self.stderr = os.fdopen(read_fd, "rb", buffering=0)
+
+            def poll(self) -> None:
+                return None
+
+        def pending_child(*_args: object, **_kwargs: object) -> PendingProcess:
+            return PendingProcess()
+
+        def unverified_cancel(process: object) -> bool:
+            cancel_calls.append(process)
+            return False
+
+        monkeypatch.setattr(bounded.subprocess, "Popen", pending_child)
+        monkeypatch.setattr(bounded, "cancel", unverified_cancel)
+    else:
+        monkeypatch.setattr(bounded, "_run_bounded_build", cli_build)
+    monkeypatch.setattr(bounded, "_stop_owned_builder_after_local_failure", stop)
+
+    expected_primary = (
+        "bounded_build_context_mount_cancel_unverified_uuid_mismatch"
+        if failure_mode == "context_cancel_unverified"
+        else "fixed_command_unavailable_or_timeout"
+    )
+    with pytest.raises(bounded.BuildError, match=expected_primary) as caught:
+        bounded.build_local_image()
+
+    assert flags == {
+        "process_group_reaped": failure_mode != "context_cancel_unverified",
+        "backend_stop_attempted": True,
+    }
+    assert len(context_directories) == 1 and not context_directories[0].exists()
+    if failure_mode == "context_cancel_unverified":
+        assert sum(item[1] == str(context_root) for item in mount_checks) == 5
+        assert ("0" * 36, str(tmp_path)) in mount_checks
+        assert len(cancel_calls) == 1
+    else:
+        assert mount_checks == [(context_uuid, str(context_root))] * 3
+        assert cancel_calls == []
+    assert len(space_checks) == 3
+    assert all(
+        context_root in paths and minimum == bounded.MIN_FREE for paths, minimum in space_checks
+    )
+    assert caught.value.code == expected_primary
+    assert caught.value.secondary_errors == (
+        [expected_secondary] if expected_secondary is not None else []
+    )
+    ledger = json.loads(ledger_path.read_bytes())
+    assert len(ledger["entries"]) == 1
+    assert ledger["entries"][0]["status"] == "inflight"
+    failure_path = Path(caught.value.local_failure_receipt_path)
+    failure = json.loads(failure_path.read_bytes())
+    assert failure["primary_error_code"] == expected_primary
+    assert failure["secondary_error_codes"] == (
+        [expected_secondary] if expected_secondary is not None else []
+    )
+    assert failure["ledger_reservation_retained"] is True
+    assert failure["failure_cause"] == "unproven"
+    if failure_mode == "backend_stop_failure":
+        phase_observation = failure["build_phase_observation"]
+        assert phase_observation["status"] == "available"
+        assert phase_observation["phases"][0]["phase"] == "frontend_checks_run"
+        assert phase_observation["phases"][0]["error"] is True
+    assert "private-buildkit-error" not in json.dumps(failure)
+
+
+def test_local_failure_receipt_write_error_does_not_mask_build_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    context_root = tmp_path / "r12r"
+    context_root.mkdir(mode=0o700)
+    context_uuid = "12345678-1234-1234-1234-123456789abc"
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    state.chmod(0o700)
+    runs = state / "build-runs"
+    runs.mkdir(mode=0o700)
+    runs.chmod(0o700)
+    ledger_path = state / "candidate-ledger.json"
+    ledger_path.write_text(json.dumps({"schema": bounded.LEDGER_SCHEMA, "entries": []}))
+    ledger_path.chmod(0o600)
+    setup = {"legacy_task_image_inventory": {}}
+    revision = "e" * 40
+    context_hash = "f" * 64
+
+    context_directories: list[Path] = []
+    monkeypatch.setattr(bounded, "USER", SimpleNamespace(pw_uid=os.getuid(), pw_dir=str(tmp_path)))
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_ROOT", context_root)
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_UUID", context_uuid)
+    monkeypatch.setattr(bounded, "STATE", state)
+    monkeypatch.setattr(bounded, "RUNS", runs)
+    monkeypatch.setattr(bounded, "LEDGER_FILE", ledger_path)
+    monkeypatch.setattr(bounded, "LEDGER_LOCK_FILE", state / "candidate-ledger.lock")
+    monkeypatch.setattr(bounded, "_builder_preflight", lambda: (setup, tmp_path, "0" * 36))
+    monkeypatch.setattr(bounded, "verify_build_mount", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(bounded, "checked", lambda _argv, **_kwargs: revision.encode())
+
+    def build_context(destination: Path) -> str:
+        context_directories.append(destination.parent)
+        assert destination.parent.parent == context_root
+        assert destination.parent.stat().st_mode & 0o777 == 0o700
+        destination.mkdir(mode=0o700)
+        return context_hash
+
+    monkeypatch.setattr(bounded, "_build_context", build_context)
+    monkeypatch.setattr(bounded, "_context_sha256", lambda *_args: context_hash)
+    monkeypatch.setattr(bounded, "check_space", lambda *_args, **_kwargs: 10 * 1024**3)
+    monkeypatch.setattr(bounded, "_native_platform", lambda: "linux/amd64")
+    monkeypatch.setattr(bounded, "_verify_ledger_inventory", lambda *_args: None)
+    monkeypatch.setattr(bounded, "_image_inventory", lambda: {})
+    monkeypatch.setattr(bounded, "_all_image_ids", lambda: set())
+    monkeypatch.setattr(bounded, "_current_setup_receipt_sha256", lambda: (setup, "a" * 64))
+    monkeypatch.setattr(bounded, "inspect_builder", lambda _setup: None)
+    monkeypatch.setattr(bounded, "_builder_generation", lambda _setup: _local_generation())
+    monkeypatch.setattr(bounded, "_local_buildx_argv", lambda *_args: [bounded.DOCKER, "buildx"])
+    monkeypatch.setattr(
+        bounded,
+        "_stop_owned_builder_after_local_failure",
+        lambda *_args: {"status": "verified_stopped_same_generation"},
+    )
+
+    def reserve(
+        received_setup: dict[str, object], tags: tuple[str, ...], rev: str, ctx: str, role: str
+    ) -> dict[str, object]:
+        assert received_setup is setup
+        assert role == "current"
+        entries = [
+            {
+                "image_id": bounded._reservation_image_id(tags[0]),
+                "tag": tags[0],
+                "revision": rev,
+                "context_sha256": ctx,
+                "role": role,
+                "status": "inflight",
+            }
+        ]
+        ledger = {"schema": bounded.LEDGER_SCHEMA, "entries": entries}
+        bounded._atomic_json(ledger_path, ledger)
+        return ledger
+
+    monkeypatch.setattr(bounded, "_reserve_managed_tags", reserve)
+    monkeypatch.setattr(
+        bounded,
+        "_run_bounded_build",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(bounded.BuildError("buildx_exit_nonzero")),
+    )
+    monkeypatch.setattr(
+        bounded,
+        "_record_local_build_failure",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            bounded.BuildError("local_failure_receipt_write_failed")
+        ),
+    )
+
+    with pytest.raises(bounded.BuildError, match="buildx_exit_nonzero") as caught:
+        bounded.build_local_image()
+
+    assert len(context_directories) == 1 and not context_directories[0].exists()
+    assert caught.value.code == "buildx_exit_nonzero"
+    assert caught.value.secondary_errors == ["local_failure_receipt_write_failed"]
+    assert json.loads(ledger_path.read_bytes())["entries"][0]["status"] == "inflight"
+
+
+def _write_private_json(path: Path, document: dict[str, object]) -> str:
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path.parent.chmod(0o700)
+    raw = (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    path.write_bytes(raw)
+    path.chmod(0o600)
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _local_reconciliation_fixture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> dict[str, object]:
+    state = tmp_path / "state"
+    runs = state / "build-runs"
+    revision = "a" * 40
+    context_hash = "b" * 64
+    tag = f"stock-probs:local-{revision[:12]}-{context_hash[:12]}-{'c' * 12}"
+    run_key = hashlib.sha256((tag + "\0" + context_hash).encode()).hexdigest()
+    run_dir = runs / revision / run_key
+    for directory in (state, runs, runs / revision, run_dir):
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        directory.chmod(0o700)
+    ledger_path = state / "candidate-ledger.json"
+    inflight = {
+        "image_id": bounded._reservation_image_id(tag),
+        "tag": tag,
+        "revision": revision,
+        "context_sha256": context_hash,
+        "role": "current",
+        "status": "inflight",
+    }
+    ledger = {"schema": bounded.LEDGER_SCHEMA, "entries": [inflight]}
+    ledger_path.write_text(json.dumps(ledger, sort_keys=True, indent=2) + "\n")
+    ledger_path.chmod(0o600)
+    ledger_raw = ledger_path.read_bytes()
+    setup = {
+        "legacy_task_image_inventory": {},
+        "builder_container_id": "a" * 64,
+        "buildkit_image_id": "sha256:" + "b" * 64,
+    }
+    setup_sha = "f" * 64
+    observations_root = tmp_path / "observations"
+    observations_root.mkdir(mode=0o700)
+    observations_root.chmod(0o700)
+    monkeypatch.setattr(bounded, "USER", SimpleNamespace(pw_uid=os.getuid(), pw_dir=str(tmp_path)))
+    monkeypatch.setattr(bounded, "STATE", state)
+    monkeypatch.setattr(bounded, "RUNS", runs)
+    monkeypatch.setattr(bounded, "LEDGER_FILE", ledger_path)
+    monkeypatch.setattr(bounded, "LEDGER_LOCK_FILE", state / "candidate-ledger.lock")
+    monkeypatch.setattr(bounded, "LOCAL_OBSERVATION_ROOT", observations_root)
+    monkeypatch.setattr(bounded, "_current_setup_receipt_sha256", lambda: (setup, setup_sha))
+    monkeypatch.setattr(bounded, "_builder_generation", lambda _setup: _local_generation())
+    monkeypatch.setattr(bounded, "_verify_local_observation_mount", lambda _root: None)
+    monkeypatch.setattr(
+        bounded,
+        "_assert_no_running_buildkit_history",
+        lambda: {"row_count": 1, "sha256": "1" * 64},
+    )
+    monkeypatch.setattr(bounded, "_image_inventory", lambda: {})
+    monkeypatch.setattr(bounded, "_all_image_ids", lambda: set())
+
+    started = datetime.now(UTC) - timedelta(minutes=5)
+    finished = started + timedelta(seconds=4)
+    preflight_at = finished + timedelta(seconds=1)
+    cancellation_at = preflight_at + timedelta(seconds=1)
+    cancellation_finished = cancellation_at + timedelta(seconds=2)
+    settled_at = cancellation_finished + timedelta(minutes=1)
+    builder_started = "2026-10-15T15:00:00Z"
+    builder_id = str(setup["builder_container_id"])
+    builder_image = str(setup["buildkit_image_id"])
+    worker_pid = 4321
+    terminal = {
+        "command": ["./scripts/local-compose.sh", "build"],
+        "started": started.isoformat(),
+        "finished": finished.isoformat(),
+        "exit_code": 1,
+        "source_unchanged": True,
+        "reason": None,
+        "log_sha256": "2" * 64,
+        "log_bytes": 70,
+        "source_after": {"context_sha256": context_hash, "files": {"Dockerfile": "3" * 64}},
+    }
+    terminal_path = observations_root / "terminal.json"
+    terminal_sha = _write_private_json(terminal_path, terminal)
+    preflight = {
+        "kind": "read_only_failed_build_worker_preflight",
+        "mutation": "none",
+        "build_terminal_sha256": terminal_sha,
+        "source_context_sha256": context_hash,
+        "source_inputs": 1,
+        "recorded_at": preflight_at.isoformat(),
+        "build_result": {
+            key: terminal[key]
+            for key in (
+                "started",
+                "finished",
+                "exit_code",
+                "source_unchanged",
+                "log_sha256",
+                "log_bytes",
+            )
+        },
+        "ledger_sha256": hashlib.sha256(ledger_raw).hexdigest(),
+        "ledger": ledger,
+        "builder_inspect": {
+            "exit_code": 0,
+            "stdout": f"{builder_id}|running|123|false|0|{builder_started}\n",
+        },
+        "processes": [
+            {
+                "pid": worker_pid,
+                "status": {"Name": "next-build"},
+                "cgroup": f"0::/system.slice/docker-{builder_id}.scope/buildkit/worker",
+            }
+        ],
+    }
+    preflight_path = observations_root / "preflight.json"
+    preflight_sha = _write_private_json(preflight_path, preflight)
+    cancellation = {
+        "kind": "exact_owned_failed_build_cancellation",
+        "started": cancellation_at.isoformat(),
+        "finished": cancellation_finished.isoformat(),
+        "preflight_sha256": preflight_sha,
+        "builder_id": builder_id,
+        f"owned_worker_{worker_pid}_absent": True,
+        "unrelated_app_unchanged": True,
+        "ledger_unchanged": True,
+        "no_image_cache_or_ledger_mutation": True,
+        "unrelated_app_before": {"id": "app"},
+        "unrelated_app_after": {"id": "app"},
+        "builder_before": {
+            "exit_code": 0,
+            "stdout": (f"{builder_id}|running|123|false|0|{builder_started}|{builder_image}\n"),
+        },
+        "builder_after": {
+            "exit_code": 0,
+            "stdout": (f"{builder_id}|exited|0|false|0|{builder_started}|{builder_image}\n"),
+        },
+        "stop_result": {"exit_code": 0},
+    }
+    cancellation_path = observations_root / "cancellation.json"
+    cancellation_sha = _write_private_json(cancellation_path, cancellation)
+    history = {
+        "cached_steps": 0,
+        "completed_at": (started - timedelta(days=1) + timedelta(seconds=1)).isoformat(),
+        "completed_steps": 1,
+        "created_at": (started - timedelta(days=1)).isoformat(),
+        "name": "older-build",
+        "ref": f"r120-bounded/r120-bounded0/{'a' * 25}",
+        "status": "completed",
+        "total_steps": 1,
+    }
+    history_path = observations_root / "history.jsonl"
+    history_raw = _encode_buildkit_history_jsonl([history])
+    history_path.write_bytes(history_raw)
+    history_path.chmod(0o600)
+    settled = {
+        "kind": "post_cancellation_read_only_history_and_exact_tag",
+        "mutation": "none",
+        "recorded_at": settled_at.isoformat(),
+        "ledger_sha256": hashlib.sha256(ledger_raw).hexdigest(),
+        "ledger_entries": 1,
+        "history": {
+            "path": str(history_path),
+            "sha256": hashlib.sha256(history_raw).hexdigest(),
+            "bytes": len(history_raw),
+            "row_count": 1,
+            "current_window_rows": [],
+            "running_rows": [],
+        },
+        "exact_tag_inventory": {"tag": tag, "stdout": "", "absent": True},
+    }
+    settled_path = observations_root / "settled.json"
+    settled_sha = _write_private_json(settled_path, settled)
+    return {
+        "state": state,
+        "runs": runs,
+        "run_dir": run_dir,
+        "ledger_path": ledger_path,
+        "ledger_bytes": ledger_raw,
+        "setup": setup,
+        "tag": tag,
+        "revision": revision,
+        "context_hash": context_hash,
+        "paths": (terminal_path, preflight_path, cancellation_path, settled_path),
+        "hashes": (terminal_sha, preflight_sha, cancellation_sha, settled_sha),
+        "documents": (terminal, preflight, cancellation, settled),
+        "observations_root": observations_root,
+    }
+
+
+def test_typed_local_reconciliation_releases_only_the_proven_inflight_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _local_reconciliation_fixture(tmp_path, monkeypatch)
+    terminal_path, preflight_path, cancellation_path, settled_path = state["paths"]
+    terminal_sha, preflight_sha, cancellation_sha, settled_sha = state["hashes"]
+
+    result = bounded._reconcile_local_inflight_reservation(
+        tag=str(state["tag"]),
+        revision=str(state["revision"]),
+        context_hash=str(state["context_hash"]),
+        role="current",
+        terminal_observation=terminal_path,
+        terminal_sha256=terminal_sha,
+        preflight_observation=preflight_path,
+        preflight_sha256=preflight_sha,
+        cancellation_observation=cancellation_path,
+        cancellation_sha256=cancellation_sha,
+        settled_observation=settled_path,
+        settled_sha256=settled_sha,
+    )
+
+    assert result["status"] == "local_inflight_reconciled"
+    assert (
+        json.loads(_local_reconciliation_fixture_path(state, "ledger_path").read_bytes())["entries"]
+        == []
+    )
+    receipt = json.loads(Path(result["reconciliation_receipt"]).read_bytes())
+    assert receipt["cause"] == "unproven"
+    assert receipt["external_evidence"]["mode"] == "external_terminal_and_readback"
+
+
+def test_typed_local_reconciliation_accepts_only_a_verified_local_failure_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _local_reconciliation_fixture(tmp_path, monkeypatch)
+    generation = _local_generation()
+    failure = {
+        "schema": bounded.LOCAL_FAILURE_SCHEMA,
+        "status": "failed",
+        "tag": state["tag"],
+        "revision": state["revision"],
+        "context_sha256": state["context_hash"],
+        "role": "current",
+        "builder": bounded.BUILDER,
+        "setup_receipt_sha256": "f" * 64,
+        "reservation_ledger_sha256": hashlib.sha256(state["ledger_bytes"]).hexdigest(),
+        "failure_ledger_sha256": hashlib.sha256(state["ledger_bytes"]).hexdigest(),
+        "ledger_reservation_retained": True,
+        "local_tag_and_placeholder_absent": True,
+        "remaining_inventory_matches": True,
+        "build_completed": False,
+        "finished_utc": datetime.now(UTC).isoformat(),
+        "primary_error_code": "fixed_command_unavailable_or_timeout",
+        "builder_generation_before": generation,
+        "backend_cancellation": {
+            "status": "verified_stopped_same_generation",
+            "builder_container_id": generation["container_id"],
+            "generation": {key: generation[key] for key in ("created", "started", "restart_count")},
+            "stop_grace_seconds": bounded.LOCAL_BUILDKIT_STOP_GRACE_SECONDS,
+        },
+        "failure_cause": "unproven",
+    }
+    failure_path = _local_reconciliation_fixture_path(state, "run_dir") / "local-failure.json"
+    failure_sha = _write_private_json(failure_path, failure)
+    stopped_generation = _local_generation(running=False)
+    monkeypatch.setattr(
+        bounded,
+        "_verify_local_stopped_builder",
+        lambda _setup, expected: {
+            "status": "verified_stopped_same_generation",
+            "builder_container_id": expected["container_id"],
+            "current_generation": stopped_generation,
+            "worker_cgroup": {"status": "empty", "process_ids_observed": 0},
+        },
+    )
+    monkeypatch.setattr(
+        bounded,
+        "_assert_no_running_buildkit_history",
+        lambda: pytest.fail("a stopped backend cannot provide historical BuildKit status"),
+    )
+
+    result = bounded._reconcile_local_inflight_reservation(
+        tag=str(state["tag"]),
+        revision=str(state["revision"]),
+        context_hash=str(state["context_hash"]),
+        role="current",
+        local_failure_receipt_sha256=failure_sha,
+    )
+
+    assert result["status"] == "local_inflight_reconciled"
+    assert (
+        json.loads(_local_reconciliation_fixture_path(state, "ledger_path").read_bytes())["entries"]
+        == []
+    )
+    receipt = json.loads(Path(result["reconciliation_receipt"]).read_bytes())
+    evidence = receipt["external_evidence"]
+    assert evidence["historical_buildkit_terminal"] == "unavailable"
+    assert evidence["fresh_stopped_backend"]["worker_cgroup"]["status"] == "empty"
+    assert receipt["current_buildkit_history"]["status"] == "unavailable_backend_stopped"
+
+
+def _local_unverified_failure_fixture(
+    state: dict[str, object], **updates: object
+) -> tuple[dict[str, object], str]:
+    ledger_bytes = state["ledger_bytes"]
+    assert isinstance(ledger_bytes, bytes)
+    generation = _local_generation()
+    failure: dict[str, object] = {
+        "schema": bounded.LOCAL_FAILURE_SCHEMA,
+        "status": "failed",
+        "tag": state["tag"],
+        "revision": state["revision"],
+        "context_sha256": state["context_hash"],
+        "role": "current",
+        "builder": bounded.BUILDER,
+        "setup_receipt_sha256": "f" * 64,
+        "reservation_ledger_sha256": hashlib.sha256(ledger_bytes).hexdigest(),
+        "failure_ledger_sha256": hashlib.sha256(ledger_bytes).hexdigest(),
+        "ledger_reservation_retained": True,
+        "reservation_verification_error": "fixed_command_unavailable_or_timeout",
+        "local_tag_and_placeholder_absent": None,
+        "remaining_inventory_matches": None,
+        "build_completed": False,
+        "finished_utc": datetime.now(UTC).isoformat(),
+        "primary_error_code": "bounded_build_timeout_cancel_unverified",
+        "secondary_error_codes": [
+            "fixed_command_unavailable_or_timeout",
+            "fixed_command_unavailable_or_timeout",
+        ],
+        "builder_generation_before": generation,
+        "backend_cancellation": {
+            "status": "unverified",
+            "error_code": "fixed_command_unavailable_or_timeout",
+        },
+        "failure_cause": "unproven",
+    }
+    failure.update(updates)
+    failure_path = _local_reconciliation_fixture_path(state, "run_dir") / "local-failure.json"
+    failure_sha = _write_private_json(failure_path, failure)
+    return failure, failure_sha
+
+
+def _local_timeout_stop_failure_fixture(state: dict[str, object]) -> tuple[dict[str, object], str]:
+    return _local_unverified_failure_fixture(
+        state,
+        reservation_verification_error=None,
+        local_tag_and_placeholder_absent=True,
+        remaining_inventory_matches=True,
+        primary_error_code="bounded_build_timeout",
+        secondary_error_codes=["fixed_command_unavailable_or_timeout"],
+    )
+
+
+def test_typed_local_reconciliation_uses_fresh_stop_for_unverified_timeout_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _local_reconciliation_fixture(tmp_path, monkeypatch)
+    failure, failure_sha = _local_unverified_failure_fixture(state)
+    stopped_generation = _local_generation(running=False)
+    observed: list[dict[str, object]] = []
+
+    def verify_stopped(
+        received_setup: dict[str, object], original: dict[str, object]
+    ) -> dict[str, object]:
+        assert received_setup is state["setup"]
+        assert original == failure["builder_generation_before"]
+        observed.append(original)
+        scope_path = f"/sys/fs/cgroup/system.slice/docker-{original['container_id']}.scope"
+        return {
+            "status": "verified_stopped_same_generation",
+            "builder_container_id": original["container_id"],
+            "current_generation": stopped_generation,
+            "worker_cgroup": {
+                "status": "absent",
+                "scope_path": scope_path,
+                "process_ids_observed": 0,
+            },
+        }
+
+    monkeypatch.setattr(bounded, "_verify_local_stopped_builder", verify_stopped)
+    monkeypatch.setattr(
+        bounded,
+        "_assert_no_running_buildkit_history",
+        lambda: pytest.fail("unverified historical terminal must not invoke Buildx"),
+    )
+
+    result = bounded._reconcile_local_inflight_reservation(
+        tag=str(state["tag"]),
+        revision=str(state["revision"]),
+        context_hash=str(state["context_hash"]),
+        role="current",
+        local_failure_receipt_sha256=failure_sha,
+    )
+
+    assert result["status"] == "local_inflight_reconciled"
+    assert observed == [failure["builder_generation_before"]]
+    receipt = json.loads(Path(result["reconciliation_receipt"]).read_bytes())
+    evidence = receipt["external_evidence"]
+    assert evidence["backend_cancellation"]["status"] == "unverified"
+    assert evidence["historical_buildkit_terminal"] == "unavailable"
+    assert evidence["historical_tag_absence"] == "unavailable"
+    assert evidence["historical_inventory_match"] == "unavailable"
+    assert evidence["fresh_inventory"]["exact_tag_absent"] is True
+    assert evidence["fresh_inventory"]["placeholder_image_id_absent"] is True
+    assert receipt["current_buildkit_history"]["status"] == "unavailable_backend_stopped"
+    assert (
+        json.loads(_local_reconciliation_fixture_path(state, "ledger_path").read_bytes())["entries"]
+        == []
+    )
+
+
+def test_typed_local_reconciliation_accepts_bounded_timeout_after_fresh_builder_stop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _local_reconciliation_fixture(tmp_path, monkeypatch)
+    failure, failure_sha = _local_timeout_stop_failure_fixture(state)
+    stopped_generation = _local_generation(running=False)
+    observed: list[dict[str, object]] = []
+
+    def verify_stopped(
+        received_setup: dict[str, object], original: dict[str, object]
+    ) -> dict[str, object]:
+        assert received_setup is state["setup"]
+        assert original == failure["builder_generation_before"]
+        observed.append(original)
+        return {
+            "status": "verified_stopped_same_generation",
+            "builder_container_id": original["container_id"],
+            "current_generation": stopped_generation,
+            "worker_cgroup": {
+                "status": "absent",
+                "scope_path": (
+                    f"/sys/fs/cgroup/system.slice/docker-{original['container_id']}.scope"
+                ),
+                "process_ids_observed": 0,
+            },
+        }
+
+    monkeypatch.setattr(bounded, "_verify_local_stopped_builder", verify_stopped)
+    monkeypatch.setattr(
+        bounded,
+        "_assert_no_running_buildkit_history",
+        lambda: pytest.fail("stopped backend history is unavailable in local-failure mode"),
+    )
+
+    result = bounded._reconcile_local_inflight_reservation(
+        tag=str(state["tag"]),
+        revision=str(state["revision"]),
+        context_hash=str(state["context_hash"]),
+        role="current",
+        local_failure_receipt_sha256=failure_sha,
+    )
+
+    assert result["status"] == "local_inflight_reconciled"
+    assert observed == [failure["builder_generation_before"]]
+    receipt = json.loads(Path(result["reconciliation_receipt"]).read_bytes())
+    evidence = receipt["external_evidence"]
+    assert evidence["primary_error_code"] == "bounded_build_timeout"
+    assert evidence["backend_cancellation"] == failure["backend_cancellation"]
+    assert evidence["fresh_stopped_backend"]["worker_cgroup"]["process_ids_observed"] == 0
+    assert evidence["fresh_inventory"]["exact_tag_absent"] is True
+    assert evidence["fresh_inventory"]["placeholder_image_id_absent"] is True
+    assert receipt["cause"] == "unproven"
+    assert (
+        json.loads(_local_reconciliation_fixture_path(state, "ledger_path").read_bytes())["entries"]
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"primary_error_code": "bounded_build_timeout_cancel_unverified"},
+        {"reservation_verification_error": "fixed_command_unavailable_or_timeout"},
+        {"local_tag_and_placeholder_absent": None},
+        {"remaining_inventory_matches": None},
+        {"secondary_error_codes": []},
+        {
+            "secondary_error_codes": [
+                "fixed_command_unavailable_or_timeout",
+                "fixed_command_unavailable_or_timeout",
+            ]
+        },
+        {
+            "backend_cancellation": {
+                "status": "unverified",
+                "error_code": "different_fixed_command_error",
+            }
+        },
+        {
+            "backend_cancellation": {
+                "status": "unverified",
+                "error_code": "fixed_command_unavailable_or_timeout",
+                "unexpected": True,
+            }
+        },
+    ],
+)
+def test_typed_local_reconciliation_rejects_unmatched_bounded_timeout_shape(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    updates: dict[str, object],
+) -> None:
+    state = _local_reconciliation_fixture(tmp_path, monkeypatch)
+    failure, failure_sha = _local_timeout_stop_failure_fixture(state)
+    failure.update(updates)
+    failure_sha = _write_private_json(
+        _local_reconciliation_fixture_path(state, "run_dir") / "local-failure.json", failure
+    )
+    monkeypatch.setattr(
+        bounded,
+        "_verify_local_stopped_builder",
+        lambda *_args: pytest.fail("an unmatched timeout tuple must fail before fresh stop"),
+    )
+
+    with pytest.raises(
+        bounded.BuildError, match="local_reconciliation_failure_receipt_contract_mismatch"
+    ):
+        bounded._reconcile_local_inflight_reservation(
+            tag=str(state["tag"]),
+            revision=str(state["revision"]),
+            context_hash=str(state["context_hash"]),
+            role="current",
+            local_failure_receipt_sha256=failure_sha,
+        )
+
+    assert (
+        _local_reconciliation_fixture_path(state, "ledger_path").read_bytes()
+        == state["ledger_bytes"]
+    )
+
+
+def test_typed_local_reconciliation_rejects_missing_reservation_error_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _local_reconciliation_fixture(tmp_path, monkeypatch)
+    failure, _failure_sha = _local_timeout_stop_failure_fixture(state)
+    failure.pop("reservation_verification_error")
+    failure_sha = _write_private_json(
+        _local_reconciliation_fixture_path(state, "run_dir") / "local-failure.json", failure
+    )
+    monkeypatch.setattr(
+        bounded,
+        "_verify_local_stopped_builder",
+        lambda *_args: pytest.fail("missing tuple field must fail before fresh stop"),
+    )
+
+    with pytest.raises(
+        bounded.BuildError, match="local_reconciliation_failure_receipt_contract_mismatch"
+    ):
+        bounded._reconcile_local_inflight_reservation(
+            tag=str(state["tag"]),
+            revision=str(state["revision"]),
+            context_hash=str(state["context_hash"]),
+            role="current",
+            local_failure_receipt_sha256=failure_sha,
+        )
+
+    assert (
+        _local_reconciliation_fixture_path(state, "ledger_path").read_bytes()
+        == state["ledger_bytes"]
+    )
+
+
+def test_typed_local_reconciliation_keeps_reservation_when_bounded_timeout_stop_unverified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _local_reconciliation_fixture(tmp_path, monkeypatch)
+    _failure, failure_sha = _local_timeout_stop_failure_fixture(state)
+    monkeypatch.setattr(
+        bounded,
+        "_verify_local_stopped_builder",
+        lambda *_args: (_ for _ in ()).throw(
+            bounded.BuildError("local_reconciliation_builder_generation_unverified")
+        ),
+    )
+
+    with pytest.raises(
+        bounded.BuildError, match="local_reconciliation_builder_generation_unverified"
+    ):
+        bounded._reconcile_local_inflight_reservation(
+            tag=str(state["tag"]),
+            revision=str(state["revision"]),
+            context_hash=str(state["context_hash"]),
+            role="current",
+            local_failure_receipt_sha256=failure_sha,
+        )
+
+    assert (
+        _local_reconciliation_fixture_path(state, "ledger_path").read_bytes()
+        == state["ledger_bytes"]
+    )
+    assert not list(
+        _local_reconciliation_fixture_path(state, "run_dir").glob(
+            "local-inflight-reconciliation-*.json"
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"local_tag_and_placeholder_absent": False},
+        {"remaining_inventory_matches": False},
+        {"reservation_verification_error": "candidate_ledger_inventory_mismatch"},
+        {
+            "backend_cancellation": {
+                "status": "unverified",
+                "error_code": "candidate_ledger_inventory_mismatch",
+            }
+        },
+        {"secondary_error_codes": ["local_reconciliation_inventory_mismatch"]},
+    ],
+)
+def test_typed_local_reconciliation_rejects_historical_negative_or_unknown_error_facts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    updates: dict[str, object],
+) -> None:
+    state = _local_reconciliation_fixture(tmp_path, monkeypatch)
+    _failure, failure_sha = _local_unverified_failure_fixture(state, **updates)
+    monkeypatch.setattr(
+        bounded,
+        "_verify_local_stopped_builder",
+        lambda *_args: pytest.fail("historical negative facts must fail before fresh proof"),
+    )
+
+    with pytest.raises(
+        bounded.BuildError, match="local_reconciliation_failure_receipt_contract_mismatch"
+    ):
+        bounded._reconcile_local_inflight_reservation(
+            tag=str(state["tag"]),
+            revision=str(state["revision"]),
+            context_hash=str(state["context_hash"]),
+            role="current",
+            local_failure_receipt_sha256=failure_sha,
+        )
+
+    assert (
+        _local_reconciliation_fixture_path(state, "ledger_path").read_bytes()
+        == state["ledger_bytes"]
+    )
+
+
+def test_typed_local_reconciliation_keeps_reservation_when_fresh_tag_is_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _local_reconciliation_fixture(tmp_path, monkeypatch)
+    _failure, failure_sha = _local_unverified_failure_fixture(state)
+    monkeypatch.setattr(
+        bounded,
+        "_verify_local_stopped_builder",
+        lambda _setup, expected: {
+            "status": "verified_stopped_same_generation",
+            "builder_container_id": expected["container_id"],
+            "current_generation": _local_generation(running=False),
+            "worker_cgroup": {"status": "empty", "process_ids_observed": 0},
+        },
+    )
+    monkeypatch.setattr(
+        bounded, "_image_inventory", lambda: {str(state["tag"]): "sha256:" + "9" * 64}
+    )
+
+    with pytest.raises(
+        bounded.BuildError, match="local_reconciliation_candidate_image_still_present"
+    ):
+        bounded._reconcile_local_inflight_reservation(
+            tag=str(state["tag"]),
+            revision=str(state["revision"]),
+            context_hash=str(state["context_hash"]),
+            role="current",
+            local_failure_receipt_sha256=failure_sha,
+        )
+
+    assert (
+        _local_reconciliation_fixture_path(state, "ledger_path").read_bytes()
+        == state["ledger_bytes"]
+    )
+
+
+def test_typed_local_reconciliation_rolls_back_if_recovery_receipt_publication_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _local_reconciliation_fixture(tmp_path, monkeypatch)
+    _failure, failure_sha = _local_unverified_failure_fixture(state)
+    monkeypatch.setattr(
+        bounded,
+        "_verify_local_stopped_builder",
+        lambda _setup, expected: {
+            "status": "verified_stopped_same_generation",
+            "builder_container_id": expected["container_id"],
+            "current_generation": _local_generation(running=False),
+            "worker_cgroup": {"status": "absent", "process_ids_observed": 0},
+        },
+    )
+    monkeypatch.setattr(
+        bounded,
+        "_publish_receipt_no_replace",
+        lambda *_args: (_ for _ in ()).throw(OSError("fixture publication failure")),
+    )
+
+    with pytest.raises(bounded.BuildError, match="local_reconciliation_receipt_publish_failed"):
+        bounded._reconcile_local_inflight_reservation(
+            tag=str(state["tag"]),
+            revision=str(state["revision"]),
+            context_hash=str(state["context_hash"]),
+            role="current",
+            local_failure_receipt_sha256=failure_sha,
+        )
+
+    assert (
+        _local_reconciliation_fixture_path(state, "ledger_path").read_bytes()
+        == state["ledger_bytes"]
+    )
+    assert not list(
+        _local_reconciliation_fixture_path(state, "run_dir").glob(
+            "local-inflight-reconciliation-*.json"
+        )
+    )
+
+
+def test_typed_local_reconciliation_rejects_unverified_local_stop_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _local_reconciliation_fixture(tmp_path, monkeypatch)
+    failure = {
+        "schema": bounded.LOCAL_FAILURE_SCHEMA,
+        "status": "failed",
+        "tag": state["tag"],
+        "revision": state["revision"],
+        "context_sha256": state["context_hash"],
+        "role": "current",
+        "builder": bounded.BUILDER,
+        "setup_receipt_sha256": "f" * 64,
+        "reservation_ledger_sha256": hashlib.sha256(state["ledger_bytes"]).hexdigest(),
+        "failure_ledger_sha256": hashlib.sha256(state["ledger_bytes"]).hexdigest(),
+        "ledger_reservation_retained": True,
+        "local_tag_and_placeholder_absent": True,
+        "remaining_inventory_matches": True,
+        "finished_utc": datetime.now(UTC).isoformat(),
+        "builder_generation_before": _local_generation(),
+        "backend_cancellation": {"status": "unverified"},
+        "failure_cause": "unproven",
+    }
+    failure_sha = _write_private_json(
+        _local_reconciliation_fixture_path(state, "run_dir") / "local-failure.json", failure
+    )
+    with pytest.raises(
+        bounded.BuildError, match="local_reconciliation_failure_receipt_contract_mismatch"
+    ):
+        bounded._reconcile_local_inflight_reservation(
+            tag=str(state["tag"]),
+            revision=str(state["revision"]),
+            context_hash=str(state["context_hash"]),
+            role="current",
+            local_failure_receipt_sha256=failure_sha,
+        )
+
+    assert (
+        _local_reconciliation_fixture_path(state, "ledger_path").read_bytes()
+        == state["ledger_bytes"]
+    )
+
+
+def test_typed_local_reconciliation_restores_ledger_if_receipt_publication_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _local_reconciliation_fixture(tmp_path, monkeypatch)
+    terminal_path, preflight_path, cancellation_path, settled_path = state["paths"]
+    terminal_sha, preflight_sha, cancellation_sha, settled_sha = state["hashes"]
+    monkeypatch.setattr(
+        bounded,
+        "_publish_receipt_no_replace",
+        lambda *_args: (_ for _ in ()).throw(OSError("fixture publication failure")),
+    )
+
+    with pytest.raises(bounded.BuildError, match="local_reconciliation_receipt_publish_failed"):
+        bounded._reconcile_local_inflight_reservation(
+            tag=str(state["tag"]),
+            revision=str(state["revision"]),
+            context_hash=str(state["context_hash"]),
+            role="current",
+            terminal_observation=terminal_path,
+            terminal_sha256=terminal_sha,
+            preflight_observation=preflight_path,
+            preflight_sha256=preflight_sha,
+            cancellation_observation=cancellation_path,
+            cancellation_sha256=cancellation_sha,
+            settled_observation=settled_path,
+            settled_sha256=settled_sha,
+        )
+
+    assert (
+        _local_reconciliation_fixture_path(state, "ledger_path").read_bytes()
+        == state["ledger_bytes"]
+    )
+    assert not list(
+        _local_reconciliation_fixture_path(state, "run_dir").glob(
+            "local-inflight-reconciliation-*.json"
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "bad_evidence", ["wrong_hash", "active_history", "builder_rebound", "tag_present"]
+)
+def test_typed_local_reconciliation_fails_closed_on_drifted_observations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad_evidence: str
+) -> None:
+    state = _local_reconciliation_fixture(tmp_path, monkeypatch)
+    terminal_path, preflight_path, cancellation_path, settled_path = state["paths"]
+    terminal_sha, preflight_sha, cancellation_sha, settled_sha = state["hashes"]
+    kwargs: dict[str, object] = {}
+    if bad_evidence == "wrong_hash":
+        terminal_sha = "0" * 64
+    elif bad_evidence == "active_history":
+        settled = state["documents"][3]
+        history_path = Path(settled["history"]["path"])
+        active = {
+            "cached_steps": 0,
+            "completed_at": datetime.now(UTC).isoformat(),
+            "completed_steps": 0,
+            "created_at": datetime.now(UTC).isoformat(),
+            "name": "active-build",
+            "ref": f"r120-bounded/r120-bounded0/{'b' * 25}",
+            "status": "running",
+            "total_steps": 1,
+        }
+        history_raw = _encode_buildkit_history_jsonl([active])
+        history_path.write_bytes(history_raw)
+        history_path.chmod(0o600)
+        settled["history"].update(
+            {
+                "sha256": hashlib.sha256(history_raw).hexdigest(),
+                "bytes": len(history_raw),
+                "row_count": 1,
+            }
+        )
+        settled_sha = _write_private_json(settled_path, settled)
+    elif bad_evidence == "builder_rebound":
+        monkeypatch.setattr(
+            bounded,
+            "_builder_generation",
+            lambda _setup: _local_generation(container_id="9" * 64),
+        )
+    elif bad_evidence == "tag_present":
+        monkeypatch.setattr(
+            bounded, "_image_inventory", lambda: {str(state["tag"]): "sha256:" + "1" * 64}
+        )
+    kwargs.update(
+        terminal_observation=terminal_path,
+        terminal_sha256=terminal_sha,
+        preflight_observation=preflight_path,
+        preflight_sha256=preflight_sha,
+        cancellation_observation=cancellation_path,
+        cancellation_sha256=cancellation_sha,
+        settled_observation=settled_path,
+        settled_sha256=settled_sha,
+    )
+
+    with pytest.raises(bounded.BuildError):
+        bounded._reconcile_local_inflight_reservation(
+            tag=str(state["tag"]),
+            revision=str(state["revision"]),
+            context_hash=str(state["context_hash"]),
+            role="current",
+            **kwargs,
+        )
+
+    assert (
+        _local_reconciliation_fixture_path(state, "ledger_path").read_bytes()
+        == state["ledger_bytes"]
+    )
+
+
+def test_typed_local_reconciliation_rejects_missing_evidence_before_observation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _local_reconciliation_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        bounded,
+        "_current_setup_receipt_sha256",
+        lambda: pytest.fail("missing evidence must fail before state reads"),
+    )
+
+    with pytest.raises(bounded.BuildError, match="local_reconciliation_evidence_mode_invalid"):
+        bounded._reconcile_local_inflight_reservation(
+            tag=str(state["tag"]),
+            revision=str(state["revision"]),
+            context_hash=str(state["context_hash"]),
+            role="current",
+        )
+
+    assert (
+        _local_reconciliation_fixture_path(state, "ledger_path").read_bytes()
+        == state["ledger_bytes"]
+    )
+
+
+def test_local_observation_reader_requires_the_pinned_sd_uuid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        bounded,
+        "checked",
+        lambda argv, **_kwargs: calls.append(argv) or b"wrong-uuid\n",
+    )
+
+    with pytest.raises(bounded.BuildError, match="local_reconciliation_observation_mount_mismatch"):
+        bounded._verify_local_observation_mount(Path("/var") / "tmp" / "r12r")
+
+    assert calls == [
+        [
+            bounded.FINDMNT,
+            "-n",
+            "-o",
+            "UUID",
+            "--target",
+            str(Path("/var") / "tmp" / "r12r"),
+        ]
+    ]
+
+
+def test_local_reconciliation_cli_passes_only_exact_external_evidence_bindings(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tag = f"stock-probs:local-{'a' * 12}-{'b' * 12}-{'c' * 12}"
+    revision, context_hash = "a" * 40, "b" * 64
+    observation_root = Path("/var") / "tmp" / "r12r" / "task"
+    paths = tuple(
+        observation_root / f"{name}.json" for name in ("terminal", "preflight", "cancel", "settled")
+    )
+    hashes = tuple(f"{index:x}" * 64 for index in range(1, 5))
+    result = {"status": "local_inflight_reconciled", "tag": tag}
+    calls: list[dict[str, object]] = []
+
+    def reconcile(**kwargs: object) -> dict[str, object]:
+        calls.append(kwargs)
+        return result
+
+    monkeypatch.setattr(bounded.os, "geteuid", lambda: bounded.USER.pw_uid)
+    monkeypatch.setattr(bounded, "validate_user_state", lambda: None)
+    monkeypatch.setattr(bounded.os, "access", lambda *_args: True)
+    monkeypatch.setattr(bounded, "_reconcile_local_inflight_reservation", reconcile)
+    argv = [
+        "bounded_docker_build.py",
+        "--reconcile-local-inflight-reservation",
+        "--tag",
+        tag,
+        "--revision",
+        revision,
+        "--context-sha256",
+        context_hash,
+        "--role",
+        "current",
+    ]
+    for flag, path, digest in zip(
+        (
+            "--terminal-observation",
+            "--preflight-observation",
+            "--cancellation-observation",
+            "--settled-observation",
+        ),
+        paths,
+        hashes,
+        strict=True,
+    ):
+        argv.extend((flag, str(path), f"{flag}-sha256", digest))
+    monkeypatch.setattr(sys, "argv", argv)
+
+    assert bounded.main() == 0
+    assert json.loads(capsys.readouterr().out) == result
+    assert calls == [
+        {
+            "tag": tag,
+            "revision": revision,
+            "context_hash": context_hash,
+            "role": "current",
+            "local_failure_receipt_sha256": None,
+            "terminal_observation": paths[0],
+            "terminal_sha256": hashes[0],
+            "preflight_observation": paths[1],
+            "preflight_sha256": hashes[1],
+            "cancellation_observation": paths[2],
+            "cancellation_sha256": hashes[2],
+            "settled_observation": paths[3],
+            "settled_sha256": hashes[3],
+        }
+    ]

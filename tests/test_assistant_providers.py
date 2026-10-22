@@ -18,7 +18,7 @@ from urllib.parse import urlencode
 import pytest
 
 from stock_probs.assistant import model_catalog, providers
-from stock_probs.assistant.api import _native_websearch_declaration
+from stock_probs.assistant.api import _native_websearch_declaration, _validated_provider_request
 from stock_probs.assistant.model_catalog import (
     AssistantModelCatalog,
     ModelCatalogAuthorizationError,
@@ -209,8 +209,9 @@ def _native_compatible_declarations(
     return declarations
 
 
+@pytest.mark.parametrize("reasoning", [None, "Retain the synthetic tool-call reasoning."])
 def test_provider_proxy_preserves_valid_native_tool_continuation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reasoning: str | None
 ) -> None:
     """Forward only app-validated assistant tool calls and their matching MCP results."""
 
@@ -221,6 +222,8 @@ def test_provider_proxy_preserves_valid_native_tool_continuation(
     manager = _chat_compat_manager(settings, tmp_path / "assistant-vault")
     manager.set_credential("openai", "synthetic-provider-key")
     tools, messages = _message_fixture()
+    if reasoning is not None:
+        messages[2]["reasoning_content"] = reasoning
     captured: dict[str, object] = {}
 
     async def fake_stream(
@@ -236,6 +239,11 @@ def test_provider_proxy_preserves_valid_native_tool_continuation(
         captured["body"] = json.loads(body)
         captured["timeout_seconds"] = timeout_seconds
         captured["max_response_bytes"] = max_response_bytes
+        if reasoning is not None:
+            yield (
+                b'data: {"choices":[{"index":0,"delta":'
+                b'{"reasoning_content":"Check the returned summary."}}]}\n\n'
+            )
         yield (
             b'data: {"choices":[{"index":0,"delta":{"content":"done"},"finish_reason":"stop"}]}\n\n'
         )
@@ -260,10 +268,17 @@ def test_provider_proxy_preserves_valid_native_tool_continuation(
 
     chunks = asyncio.run(exercise())
 
-    assert chunks == [
+    expected_chunks = [
         b'data: {"choices":[{"index":0,"delta":{"content":"done"},"finish_reason":"stop"}]}\n\n',
         b"data: [DONE]\n\n",
     ]
+    if reasoning is not None:
+        expected_chunks.insert(
+            0,
+            b'data: {"choices":[{"index":0,"delta":'
+            b'{"reasoning_content":"Check the returned summary."}}]}\n\n',
+        )
+    assert chunks == expected_chunks
     assert captured["url"] == "https://api.openai.com/v1/chat/completions"
     request = captured["body"]
     assert isinstance(request, dict)
@@ -273,6 +288,118 @@ def test_provider_proxy_preserves_valid_native_tool_continuation(
     assert request["model"] == _TEST_MODEL_ID.removeprefix("openai/")
     assert request["store"] is False
     assert request["max_tokens"] == native_output_token_budget()
+
+
+def test_compatible_stream_preserves_reasoning_without_provider_metadata() -> None:
+    """Keep native continuation state while dropping unrelated provider metadata."""
+    value = {
+        "id": "discard-provider-metadata",
+        "choices": [
+            {
+                "index": 0,
+                "delta": {
+                    "role": "assistant",
+                    "reasoning_content": "Check the synthetic summary.",
+                    "provider_metadata": "discard-this-too",
+                },
+            }
+        ],
+    }
+    sanitized = providers._sanitize_openai_sse_data(json.dumps(value))
+    assert sanitized is not None
+    assert json.loads(sanitized) == {
+        "choices": [
+            {
+                "index": 0,
+                "delta": {
+                    "role": "assistant",
+                    "reasoning_content": "Check the synthetic summary.",
+                },
+            }
+        ]
+    }
+
+
+@pytest.mark.parametrize("other_choice", [0, 1])
+def test_compatible_reasoning_secret_fragments_stay_channel_bound(other_choice: int) -> None:
+    """A different visible channel must not release a hidden credential prefix."""
+    guard = providers._SecretStreamGuard(
+        "synthetic-provider-secret", protocol="openai-compatible-chat"
+    )
+
+    def frame(choice: int, field: str, text: str) -> bytes:
+        payload = {"choices": [{"index": choice, "delta": {field: text}}]}
+        return ("data: " + json.dumps(payload, separators=(",", ":")) + "\n\n").encode()
+
+    assert guard.push(frame(0, "reasoning_content", "prefixsynthetic-provider-")) == ()
+    field = "content" if other_choice == 0 else "reasoning_content"
+    assert (
+        guard.push(frame(other_choice, field, "Unrelated filler longer than the credential.")) == ()
+    )
+    with pytest.raises(ProviderUnavailable, match="provider_response_secret_rejected"):
+        guard.push(frame(0, "reasoning_content", "secretsuffix"))
+
+
+@pytest.mark.parametrize(
+    "reasoning",
+    [None, True, 1, {}, [], "bad\x00text", "\ud800"],
+    ids=["null", "boolean", "integer", "mapping", "list", "nul", "surrogate"],
+)
+def test_compatible_reasoning_history_rejects_malformed_values(reasoning: object) -> None:
+    """Reject malformed hidden history at both internal request boundaries."""
+    messages = [{"role": "assistant", "content": "Answer.", "reasoning_content": reasoning}]
+    with pytest.raises(ProviderUnavailable, match="provider_request_invalid"):
+        providers._validated_messages(messages, set())
+    assert (
+        _validated_provider_request(
+            {"model": "assistant-selected", "stream": True, "messages": messages}, []
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("role", ["system", "user"])
+def test_compatible_reasoning_history_is_assistant_only(role: str) -> None:
+    """System and user messages cannot supply an assistant's reasoning state."""
+    messages = [{"role": role, "content": "Input.", "reasoning_content": "Hidden input."}]
+    with pytest.raises(ProviderUnavailable, match="provider_request_invalid"):
+        providers._validated_messages(messages, set())
+    assert (
+        _validated_provider_request(
+            {"model": "assistant-selected", "stream": True, "messages": messages}, []
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("reasoning_bytes", [65_535, 65_536])
+def test_compatible_reasoning_shares_existing_history_byte_budget(reasoning_bytes: int) -> None:
+    """Reasoning consumes the original shared UTF-8 history budget."""
+    messages = [{"role": "assistant", "content": "a", "reasoning_content": "x" * reasoning_bytes}]
+    body = {"model": "assistant-selected", "stream": True, "messages": messages}
+    if reasoning_bytes == 65_535:
+        assert providers._validated_messages(messages, set()) == messages
+        normalized = _validated_provider_request(body, [])
+        assert normalized is not None
+        assert normalized["messages"] == messages
+    else:
+        with pytest.raises(ProviderUnavailable, match="provider_request_invalid"):
+            providers._validated_messages(messages, set())
+        assert _validated_provider_request(body, []) is None
+
+
+@pytest.mark.parametrize(
+    "reasoning",
+    [True, 1, {}, [], "bad\x00text", "\ud800", "x" * 16_385],
+    ids=["boolean", "integer", "mapping", "list", "nul", "surrogate", "oversized"],
+)
+def test_compatible_reasoning_delta_rejects_malformed_or_oversized_values(
+    reasoning: object,
+) -> None:
+    """Keep the existing per-delta size and safe-text boundaries for hidden output."""
+    payload = {"choices": [{"index": 0, "delta": {"reasoning_content": reasoning}}]}
+    with pytest.raises(ProviderUnavailable, match="provider_response_invalid"):
+        providers._sanitize_openai_sse_data(json.dumps(payload))
 
 
 def test_openai_compatible_proxy_rejects_unbounded_output_counts(tmp_path: Path) -> None:
@@ -390,15 +517,27 @@ def test_native_gateway_thirteen_tools_dispatch_and_validate_webfetch_continuati
     assert request["max_tokens"] == native_output_token_budget()
 
 
-def test_zen_proxy_uses_native_public_bearer_without_changing_other_auth_headers(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    "stale_base_url",
+    (
+        "https://opencode.ai/zen/v1",
+        "https://unreviewed.example.test/v1",
+    ),
+)
+def test_zen_proxy_uses_fixed_route_and_native_public_bearer_without_changing_other_auth_headers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stale_base_url: str
 ) -> None:
-    """Send OpenCode's fixed public marker only for Zen through the real proxy requester."""
+    """Ignore stale Zen endpoints and preserve the native public marker and other auth."""
 
     zen_model_id, _suffix = _reviewed_zen_model_ids()
     zen_manager = _policy_manager(
         tmp_path / "zen", _policy_model(zen_model_id, provider_id="opencode-zen")
     )
+    zen_manager._write_metadata({"opencode-zen": {"base_url": stale_base_url}})
+    zen_summary = next(
+        item for item in zen_manager.list_providers() if item.provider_id == "opencode-zen"
+    )
+    assert zen_summary.selected_base_url == "https://opencode.ai/inference/openai/v1"
     openai_manager, openai_model_id = _native_gateway_proxy_manager(tmp_path / "openai", "openai")
     calls: list[dict[str, object]] = []
 
@@ -442,7 +581,7 @@ def test_zen_proxy_uses_native_public_bearer_without_changing_other_auth_headers
 
     assert len(calls) == 2
     zen_request, openai_request = calls
-    assert zen_request["url"] == "https://opencode.ai/zen/v1/chat/completions"
+    assert zen_request["url"] == ("https://opencode.ai/inference/openai/v1/chat/completions")
     assert zen_request["headers"] == {
         "accept": "text/event-stream",
         "authorization": "Bearer public",
@@ -464,6 +603,130 @@ def test_zen_proxy_uses_native_public_bearer_without_changing_other_auth_headers
     assert providers._provider_headers("custom", None) == {}
     assert providers._provider_headers("google", None) == {}
     assert providers._provider_headers("anthropic", None) == {}
+
+
+@pytest.mark.parametrize(
+    ("provider_id", "suffix", "expected_effort"),
+    [
+        ("opencode-zen", "minimax-m3.1-flash-free", "low"),
+        ("opencode-zen", "longcat-flash-chat", None),
+        ("opencode-zen", "minimax-m3.1-flash", None),
+        ("opencode-zen", "other-minimax-m3.1-flash-free", None),
+        ("openai", "minimax-m3.1-flash-free", None),
+    ],
+)
+def test_zen_minimax_interactive_reasoning_effort_is_model_scoped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    provider_id: str,
+    suffix: str,
+    expected_effort: str | None,
+) -> None:
+    """Avoid the free model's max-effort default without changing other routes or budgets."""
+
+    model_id = f"{provider_id}/{suffix}"
+    manager = _policy_manager(tmp_path, _policy_model(model_id, provider_id=provider_id))
+    if provider_id == "openai":
+        manager._definitions[provider_id]["protocol"] = "openai-compatible-chat"
+        manager.set_credential(provider_id, "synthetic-provider-key")
+    captured: dict[str, object] = {}
+
+    async def fake_stream(
+        url: str,
+        *,
+        headers: object,
+        body: bytes,
+        timeout_seconds: float,
+        max_response_bytes: int,
+    ):
+        captured["body"] = json.loads(body)
+        yield (
+            b'data: {"choices":[{"index":0,"delta":{"content":"OK"},"finish_reason":"stop"}]}\n\n'
+        )
+        yield b"data: [DONE]\n\n"
+
+    monkeypatch.setattr(providers, "stream_public_https", fake_stream)
+    messages = [{"role": "user", "content": "Synthetic effort regression."}]
+
+    async def exercise() -> None:
+        stream = manager.proxy_chat_completion(
+            provider_id,
+            model_id,
+            {"model": "assistant-selected", "messages": messages, "stream": True},
+            app_tools=AssistantToolGateway.list_tools() if provider_id == "opencode-zen" else None,
+            **(_native_zen_context() if provider_id == "opencode-zen" else {}),
+            authorization_check=lambda: True,
+        )
+        assert [chunk async for chunk in stream][-1] == b"data: [DONE]\n\n"
+
+    asyncio.run(exercise())
+    request = captured["body"]
+    assert isinstance(request, dict)
+    assert request.get("reasoning_effort") == expected_effort
+    if expected_effort is None:
+        assert "reasoning_effort" not in request
+    assert request["model"] == suffix
+    assert request["messages"] == messages
+    assert request["max_tokens"] == native_output_token_budget()
+    assert request["store"] is False
+
+
+def test_zen_route_keeps_authorization_revalidation_and_stream_cancellation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Keep the fixed route behind live authorization and close its stream on cancellation."""
+
+    manager, model_id = _native_gateway_proxy_manager(tmp_path, "opencode-zen")
+    app_tools = AssistantToolGateway.list_tools()
+    closed: list[bool] = []
+    calls: list[str] = []
+
+    async def fake_stream(url: str, **_kwargs: object):
+        calls.append(url)
+        try:
+            yield (
+                b'data: {"choices":[{"index":0,"delta":{"content":"Partial"},'
+                b'"finish_reason":"stop"}]}\n\n'
+            )
+            await asyncio.Event().wait()
+        finally:
+            closed.append(True)
+
+    monkeypatch.setattr(providers, "stream_public_https", fake_stream)
+    body = {
+        "model": "assistant-selected",
+        "messages": [{"role": "user", "content": "Synthetic auth check."}],
+        "stream": True,
+    }
+
+    async def exercise() -> None:
+        stream = manager.proxy_chat_completion(
+            "opencode-zen",
+            model_id,
+            body,
+            app_tools=app_tools,
+            **_native_zen_context(),
+            authorization_check=lambda: True,
+        )
+        iterator = stream.__aiter__()
+        assert b"Partial" in await anext(iterator)
+        await iterator.aclose()
+
+        denied_stream = manager.proxy_chat_completion(
+            "opencode-zen",
+            model_id,
+            body,
+            app_tools=app_tools,
+            **_native_zen_context(),
+            authorization_check=lambda: False,
+        )
+        with pytest.raises(CredentialRejected, match="oauth_authorization_required"):
+            _ = [chunk async for chunk in denied_stream]
+
+    asyncio.run(exercise())
+
+    assert calls == ["https://opencode.ai/inference/openai/v1/chat/completions"]
+    assert closed == [True]
 
 
 @pytest.mark.parametrize("mutation", ("fourteenth", "unknown", "schema", "description"))
@@ -1835,10 +2098,31 @@ def _configured_provider_manager(
     return manager, catalog
 
 
+@pytest.mark.parametrize("provider_id", ("opencode-zen", "opencode-console", "custom"))
+@pytest.mark.parametrize(
+    "endpoint", ("https://opencode.ai/zen/v1", "https://opencode.ai/inference/openai/v1")
+)
+def test_nemotron_super_vl_trial_exclusion_cannot_be_overridden_by_provider_review(
+    tmp_path: Path, provider_id: str, endpoint: str
+) -> None:
+    """The NVIDIA trial restriction applies to the upstream identity on either Zen route."""
+
+    manager = AssistantProviderManager(
+        SimpleNamespace(data_dir=tmp_path, auth_session_secret="t" * 64),
+        vault_dir=tmp_path / "assistant-vault",
+    )
+
+    assert (
+        manager._known_model_exclusion_reason(provider_id, endpoint, "nemotron-3.5-super-vl-free")
+        == "trial terms prohibit personal or confidential data"
+    )
+
+
 @pytest.mark.parametrize(("native_model_id", "reason"), _zen_exclusion_fixtures())
 @pytest.mark.parametrize(
     "endpoint",
     [
+        "https://opencode.ai/inference/openai/v1",
         "HTTPS://OPENCODE.AI:443/%7Aen/v1/",
         "https://opencode.ai/unused/%2e%2e/zen/v1",
         "https://opencode.ai/zen/%76%31/",
@@ -1860,7 +2144,15 @@ def test_custom_inventory_excludes_catalog_native_ids_at_canonical_zen_endpoint(
     assert manager._parse_provider_model_rows("custom", [{"id": native_model_id}]) == ()
 
 
-def test_excluded_id_on_ambiguous_zen_host_path_fails_closed(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "endpoint",
+    (
+        "HTTPS://OPENCODE.AI:443/unrelated/path",
+        "https://opencode.ai/inference/openai/v1beta",
+        "https://opencode.ai/inference/openai/v1/chat/completions",
+    ),
+)
+def test_excluded_id_on_ambiguous_zen_host_path_fails_closed(tmp_path: Path, endpoint: str) -> None:
     """Do not infer that another path on Zen's host has unrelated model identity."""
 
     native_model_id = _zen_exclusion_fixtures()[0][0]
@@ -1870,9 +2162,7 @@ def test_excluded_id_on_ambiguous_zen_host_path_fails_closed(tmp_path: Path) -> 
     )
 
     with pytest.raises(ProviderUnavailable, match="model_policy_unavailable"):
-        manager._known_model_exclusion_reason(
-            "custom", "HTTPS://OPENCODE.AI:443/unrelated/path", native_model_id
-        )
+        manager._known_model_exclusion_reason("custom", endpoint, native_model_id)
 
 
 def test_custom_endpoint_allows_same_catalog_id_on_unrelated_host(tmp_path: Path) -> None:
@@ -1882,7 +2172,7 @@ def test_custom_endpoint_allows_same_catalog_id_on_unrelated_host(tmp_path: Path
     manager, _catalog = _configured_provider_manager(tmp_path, lambda: 10.0)
     _configure_custom_endpoint(
         manager,
-        base_url="https://opencode.ai.example.test/zen/v1",
+        base_url="https://opencode.ai.example.test/inference/openai/v1",
         billing_class="free",
     )
 
@@ -1893,7 +2183,7 @@ def test_custom_endpoint_allows_same_catalog_id_on_unrelated_host(tmp_path: Path
     assert rows[0].available is True
     assert (
         manager._known_model_exclusion_reason(
-            "custom", "https://opencode.ai.example.test/zen/v1", native_model_id
+            "custom", "https://opencode.ai.example.test/inference/openai/v1", native_model_id
         )
         is None
     )
@@ -3961,6 +4251,7 @@ def test_opencode_console_model_ids_and_inventories_are_owner_scoped(
 @pytest.mark.parametrize(
     "endpoint",
     [
+        "https://opencode.ai/inference/openai/v1",
         "HTTPS://OPENCODE.AI:443/%7Aen/v1/",
         "https://opencode.ai/unused/%2e%2e/zen/v1",
         "https://opencode.ai/zen/%76%31/",
@@ -4008,8 +4299,15 @@ def test_opencode_console_inventory_excludes_catalog_native_ids_after_alias_mapp
     )
 
 
+@pytest.mark.parametrize(
+    "endpoint",
+    (
+        "https://opencode.ai/zen/v1",
+        "https://opencode.ai/inference/openai/v1",
+    ),
+)
 def test_opencode_console_allows_review_of_nonexcluded_model_on_zen_endpoint(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, endpoint: str
 ) -> None:
     """Keep explicit admin review available for unrelated IDs on the exact Zen route."""
 
@@ -4025,7 +4323,7 @@ def test_opencode_console_allows_review_of_nonexcluded_model_on_zen_endpoint(
         return SimpleNamespace(
             status_code=200,
             content=json.dumps(
-                _opencode_console_payload_for_model(safe_native_id, "https://opencode.ai/zen/v1")
+                _opencode_console_payload_for_model(safe_native_id, endpoint)
             ).encode("utf-8"),
         )
 
@@ -4061,10 +4359,18 @@ def test_opencode_console_allows_review_of_nonexcluded_model_on_zen_endpoint(
 @pytest.mark.parametrize(
     "native_model_id", [model_id for model_id, _reason in _zen_exclusion_fixtures()[:1]]
 )
+@pytest.mark.parametrize(
+    "endpoint",
+    (
+        "https://opencode.ai.example.test/zen/v1",
+        "https://opencode.ai.example.test/inference/openai/v1",
+    ),
+)
 def test_opencode_console_same_model_id_on_similarly_named_host_is_not_globally_excluded(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     native_model_id: str,
+    endpoint: str,
 ) -> None:
     """Match the exact Zen endpoint, not a host that merely contains its name."""
 
@@ -4078,9 +4384,7 @@ def test_opencode_console_same_model_id_on_similarly_named_host_is_not_globally_
         return SimpleNamespace(
             status_code=200,
             content=json.dumps(
-                _opencode_console_payload_for_model(
-                    native_model_id, "https://opencode.ai.example.test/zen/v1"
-                )
+                _opencode_console_payload_for_model(native_model_id, endpoint)
             ).encode("utf-8"),
         )
 
@@ -4094,10 +4398,7 @@ def test_opencode_console_same_model_id_on_similarly_named_host_is_not_globally_
 
     assert len(inventory) == 1
     assert (
-        manager._known_model_exclusion_reason(
-            "opencode-console", "https://opencode.ai.example.test/zen/v1", native_model_id
-        )
-        is None
+        manager._known_model_exclusion_reason("opencode-console", endpoint, native_model_id) is None
     )
     assert manager.get_opencode_model(str(inventory[0]["model_id"]), owner_id=43).available is False
 

@@ -7,6 +7,7 @@ import argparse
 import fnmatch
 import gzip
 import hashlib
+import http.client
 import importlib.util
 import json
 import os
@@ -34,6 +35,140 @@ DEPLOYED_BASELINE = {
     "source": "root-provided observed deployment metadata",
 }
 MIGRATION_013_SHA256 = "41e7d0ef5e5267ab50a67666862bf01e4c6cfd8986b6096bd8b92deed70ff31b"
+HOTFIX_CONTRACT = "schema13_same_schema_hotfix_v1"
+HOTFIX_V3_CONTRACT = "schema13_same_schema_hotfix_v3"
+HELPER_SOURCE_PR_NUMBER = 11
+HOTFIX_PR_NUMBER = 9
+FIXED_PR_REPOSITORY = "eddiesoz/stock_probs"
+REVIEWED_PR_RESPONSE_LIMIT = 64 * 1024
+HOTFIX_CANDIDATE_REVISION = "f6a51d5c821e6b1ab7974a94f4ff795da10130bc"
+HOTFIX_V3_IMAGE_SOURCE_REVISION = "e40dbc3b721080057a2ab2b9b23565ebf4d85982"
+HOTFIX_V3_REVIEWED_PR_HEAD_SHA = "8622e303d63a6d2bc419ef6a97a2fb9601a63f7e"
+HOTFIX_V3_REVIEWED_PR9_COMMITS = (
+    "a8eee53c21cca79a2d6ddc7b2451f89f5e60be7c",
+    "7f66bc6cddb1f389b052714b4872828a3447b127",
+    "9e0680b343cbc1097bc29fdc709a24a7537290a1",
+    "1e134da0ad68ad4fe960714e2ea8911e3ee8d8aa",
+    "8622e303d63a6d2bc419ef6a97a2fb9601a63f7e",
+)
+HOTFIX_V3_REVIEWED_PR9_FILE_DELTA = (
+    (
+        "MVP-PLAN.md",
+        "d8c3646dcefd04ff2c8c9f3b8e38475500185405",
+        "1d05707f2c7edbc82cec60a6e1e319ab4e3822fd",
+        398,
+        0,
+    ),
+    (
+        "docs/develop/testing.md",
+        "4fdb2800bf272d42e67519745bcb2daa063c70a6",
+        "0386703d80211eda58b6740b7bac7904663ff3bf",
+        59,
+        0,
+    ),
+    (
+        "tests/test_assistant_api.py",
+        "888a32b17a2671aea3c2c87126c7e1f8f19e07e5",
+        "3fdbecf1554916eb82c8c9cec49f02bd39487110",
+        7,
+        3,
+    ),
+    (
+        "tests/test_assistant_final_boundary_coverage.py",
+        "652d04666bb17f9b1cd9f93f66a6abeb58b8ffa6",
+        "a9ea3c43c160123e812e03d82ced3cb9cab3eac7",
+        4,
+        2,
+    ),
+    (
+        "tests/test_assistant_provider_admin_api_flows.py",
+        "29959b587e3a53ce7b3b8f787000130a5771004e",
+        "a31ef10d9d2fa226ffb613208e9ce8e5773fa85f",
+        4,
+        6,
+    ),
+    (
+        "tests/test_assistant_runtime_event_http_flows.py",
+        "d076fb753fcf7899082eada854b59e5fc564f6a4",
+        "1bb3e947e051a3839494f82df1f75daea944d479",
+        17,
+        3,
+    ),
+    (
+        "tests/test_backup_automation.py",
+        "95d8b5f7305b2ce6e3b8f0db55fa9b19c03deed3",
+        "2570d14bf93fac0f6a794fe5aa19bb2fc2ef3f92",
+        22,
+        2,
+    ),
+    (
+        "tests/test_browser_assistant_fixture.py",
+        "0000000000000000000000000000000000000000",
+        "1ede43e34010ed48d5282c79c5ea3e1f5424876f",
+        85,
+        0,
+    ),
+    (
+        "tests/test_history_repository.py",
+        "81aae5be41362912d1697b132cc8aa24032fea57",
+        "7676736e90ef20b0e80f89bd33e6e1aa18f92bb3",
+        11,
+        8,
+    ),
+    (
+        "tools/browser/assistant_qa_server.py",
+        "ba6bbdd01d5a9e62f5e99d82b99152151f394bf2",
+        "2e6e4ecd861a5453b1498b184f57169fbfd68e9d",
+        84,
+        60,
+    ),
+    (
+        "tools/browser/tests/assistant.spec.js",
+        "3734a80eae843a382ac9b49bc2ec51d77b046903",
+        "5d4be699bceba523aef8fdb1f25943e01c62ae6f",
+        13,
+        1,
+    ),
+    (
+        "tools/browser/tests/fixtures.js",
+        "89468fe1a51ab1a7fa46b9fc1f169bf3a1028230",
+        "c517ba1ff6c8606042cbff041572cc5f628f2b79",
+        10,
+        1,
+    ),
+)
+HOTFIX_V3_REVIEWED_TEST_PATCH = (
+    '-        assert context["authorization_check"]() is True',
+    '+        authorization_check = context["authorization_check"]',
+    "+        assert callable(authorization_check)",
+    "+        assert asyncio.run(authorization_check()) is True",
+    '-        assert context["authorization_check"]() is False',
+    "+        assert asyncio.run(authorization_check()) is False",
+)
+HOTFIX_V3_IMAGE_ID = "sha256:76aecf5483a38a0328f8560e1ae6a09d90f248e712d1dc719f765a224c7ccd2a"
+HOTFIX_V3_IMAGE_CONTEXT_SHA256 = "16dba274c8485b69d3c798ea5f9a587c980eb37dbf6c0e64db2bcbc49ab8bf6c"
+HOTFIX_V3_CANDIDATE_TAG = "stock-probs:local-e40dbc3b7210-16dba274c848-4eb1f134ea7b"
+HOTFIX_V3_BUILD_RECEIPT_SHA256 = "b7810ed4ff96e96207a88886c8d9d1ec81625dc6d73ee1cd0d45121f25fd9ced"
+HOTFIX_CANDIDATE_IMAGE_ID = (
+    "sha256:52154c40d23c785f1d5522977c3add663ba6d3bffcc6c669cc2732c52cfdd196"
+)
+HOTFIX_CANDIDATE_CONTEXT_SHA256 = "a332dca5d27f4bb6fda4673e826096158c038e218f6291f01069951378c4fbae"
+HOTFIX_BUILD_RECEIPT_SHA256 = "d3529f24499ea2f3b7921055a4308be019798b7be083fc6e75f1ad94b205b0b5"
+HOTFIX_BUILD_RECEIPT_PATH = Path(
+    "/home/james/.local/state/stock-probs/r120-buildkit-v1/build-runs/"
+    "f6a51d5c821e6b1ab7974a94f4ff795da10130bc/"
+    "5962e1c34bd3f66db6d3bed981d8ed75cccbddef5043e3d916b3e69b4242accf/"
+    "build-receipt.json"
+)
+HOTFIX_RECOVERY_REVISION = "5ad2c3fddfce5a5a631b72cd832a53f24757c44a"
+HOTFIX_RECOVERY_IMAGE_ID = "sha256:78746f600815cac1941a9060f91bba41aca08f363714db466200c2d77e8ad7b1"
+HOTFIX_RECOVERY_ARCHIVE_SHA256 = "99b198f169958e63a4b1ee2380fa805c82a3bc75352d17f8feae2e4ad41185e5"
+HOTFIX_RECOVERY_ARCHIVE_SIZE = 202_156_038
+HOTFIX_RECOVERY_CONTEXT_SHA256 = "9f2abef917d4832783d32cfbf31290cc50df76c942b4238aa7f1330d4bc4f7bb"
+HOTFIX_PRIOR_PAIR_MANIFEST_SHA256 = (
+    "e9b7462aa6d5bf04201717a28644df085c58b5634125a2f9bb1aa096a7253ed3"
+)
+HOTFIX_EMPTY_OVERLAY_SHA256 = hashlib.sha256(b"[]").hexdigest()
 APP_UID = 10001
 APP_GID = 10001
 IMAGE_MEMORY_BYTES = 768 * 1024 * 1024
@@ -2198,6 +2333,535 @@ def _verify_candidate_image(
     }
 
 
+def _read_fixed_hotfix_build_receipt(
+    path: Path | None = None,
+    *,
+    expected_sha256: str | None = None,
+    image_revision: str | None = None,
+    image_id: str | None = None,
+    context_sha256: str | None = None,
+    receipt_profile: str = "legacy",
+) -> dict[str, object]:
+    """Read one no-follow build receipt and bind its exact fixed image identity."""
+
+    if receipt_profile not in ("legacy", "managed-v3"):
+        raise RehearsalError("accepted_hotfix_build_receipt_profile_invalid")
+    path = HOTFIX_BUILD_RECEIPT_PATH if path is None else path
+    expected_sha256 = HOTFIX_BUILD_RECEIPT_SHA256 if expected_sha256 is None else expected_sha256
+    image_revision = HOTFIX_CANDIDATE_REVISION if image_revision is None else image_revision
+    image_id = HOTFIX_CANDIDATE_IMAGE_ID if image_id is None else image_id
+    context_sha256 = HOTFIX_CANDIDATE_CONTEXT_SHA256 if context_sha256 is None else context_sha256
+    try:
+        metadata = path.lstat()
+        if not stat.S_ISREG(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
+            raise RehearsalError("accepted_hotfix_build_receipt_unsafe")
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except RehearsalError:
+        raise
+    except OSError as exc:
+        raise RehearsalError("accepted_hotfix_build_receipt_unavailable") from exc
+    try:
+        opened = os.fstat(descriptor)
+        if (opened.st_dev, opened.st_ino, opened.st_size) != (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_size,
+        ) or not 1 <= opened.st_size <= 65_536:
+            raise RehearsalError("accepted_hotfix_build_receipt_changed")
+        raw = os.read(descriptor, 65_537)
+        final = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    if (
+        len(raw) != metadata.st_size
+        or len(raw) > 65_536
+        or (final.st_dev, final.st_ino, final.st_size)
+        != (metadata.st_dev, metadata.st_ino, metadata.st_size)
+        or _sha256(raw) != expected_sha256
+    ):
+        raise RehearsalError("accepted_hotfix_build_receipt_digest_mismatch")
+    try:
+        value: object = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RehearsalError("accepted_hotfix_build_receipt_invalid") from exc
+    if receipt_profile == "managed-v3":
+        expected = {
+            "schema": "r120-bounded-image-build-v1",
+            "status": "built",
+            "stage": "complete",
+            "candidate_role": "current",
+            "source_branch": "local-managed-build",
+            "source_head": image_revision,
+            "revision_label": image_revision,
+            "platform": "linux/amd64",
+            "image_id": image_id,
+            "context_sha256": context_sha256,
+            "candidate_tag": HOTFIX_V3_CANDIDATE_TAG,
+            "builder": "r120-bounded",
+            "build_kind": "local",
+            "finished_utc": None,
+        }
+        if (
+            not isinstance(value, dict)
+            or set(value) != set(expected)
+            or any(
+                value.get(key) != item for key, item in expected.items() if key != "finished_utc"
+            )
+            or type(value.get("finished_utc")) is not str
+            or not value["finished_utc"]
+        ):
+            raise RehearsalError("accepted_hotfix_build_receipt_identity_mismatch")
+        try:
+            finished_utc = datetime.fromisoformat(value["finished_utc"])
+        except ValueError as exc:
+            raise RehearsalError("accepted_hotfix_build_receipt_identity_mismatch") from exc
+        if finished_utc.tzinfo is None or finished_utc.utcoffset() != UTC.utcoffset(None):
+            raise RehearsalError("accepted_hotfix_build_receipt_identity_mismatch")
+        return value
+
+    expected = {
+        "schema": "r120-bounded-image-build-v1",
+        "status": "built",
+        "stage": "complete",
+        "candidate_role": "current",
+        "source_branch": "codex/signal-ledger-assistant-fix",
+        "source_head": image_revision,
+        "revision_label": image_revision,
+        "image_platform": "linux/amd64",
+        "image_id": image_id,
+        "context_sha256": context_sha256,
+        "setup_receipt_sha256": "291ca40fc11266bac55fb095a30bcc17e9f0baf49530f72d5f703b300f0d7ceb",
+    }
+    if (
+        not isinstance(value, dict)
+        or any(value.get(key) != item for key, item in expected.items())
+        or type(value.get("build_exit_code")) is not int
+        or value.get("build_exit_code") != 0
+        or value.get("post_build_root_identity_verified") is not True
+    ):
+        raise RehearsalError("accepted_hotfix_build_receipt_identity_mismatch")
+    return value
+
+
+def _verify_fixed_hotfix_recovery_archive(directory: Path) -> tuple[str, int]:
+    """Verify the exact retained 5ad production archive with no-follow bounded reads."""
+
+    path = directory / f"signal-ledger-image-{HOTFIX_RECOVERY_REVISION}.tar.gz"
+    try:
+        before = path.lstat()
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or stat.S_ISLNK(before.st_mode)
+            or before.st_size != HOTFIX_RECOVERY_ARCHIVE_SIZE
+            or before.st_size > MAX_RELEASE_ARCHIVE_BYTES
+        ):
+            raise RehearsalError("fixed_hotfix_recovery_archive_identity_mismatch")
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except RehearsalError:
+        raise
+    except OSError as exc:
+        raise RehearsalError("fixed_hotfix_recovery_archive_unavailable") from exc
+    digest = hashlib.sha256()
+    size = 0
+    try:
+        opened = os.fstat(descriptor)
+        if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+            raise RehearsalError("fixed_hotfix_recovery_archive_changed")
+        while chunk := os.read(descriptor, 1024 * 1024):
+            size += len(chunk)
+            if size > HOTFIX_RECOVERY_ARCHIVE_SIZE:
+                raise RehearsalError("fixed_hotfix_recovery_archive_changed")
+            digest.update(chunk)
+        final = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    value = digest.hexdigest()
+    if (
+        size != HOTFIX_RECOVERY_ARCHIVE_SIZE
+        or value != HOTFIX_RECOVERY_ARCHIVE_SHA256
+        or (final.st_dev, final.st_ino, final.st_size)
+        != (before.st_dev, before.st_ino, before.st_size)
+    ):
+        raise RehearsalError("fixed_hotfix_recovery_archive_digest_mismatch")
+    return value, size
+
+
+def _v3_pr9_delta_matches(raw_diff: bytes, numstat: bytes) -> bool:
+    """Match Git's raw metadata and line counts to the frozen exact PR #9 delta."""
+
+    expected = {
+        filename: (base_blob.encode("ascii"), head_blob.encode("ascii"), additions, deletions)
+        for (
+            filename,
+            base_blob,
+            head_blob,
+            additions,
+            deletions,
+        ) in HOTFIX_V3_REVIEWED_PR9_FILE_DELTA
+    }
+    raw_records = raw_diff.split(b"\0")
+    if not raw_records or raw_records[-1] != b"" or (len(raw_records) - 1) % 2:
+        return False
+    observed_raw: dict[str, tuple[bytes, bytes, bytes, bytes]] = {}
+    for index in range(0, len(raw_records) - 1, 2):
+        fields = raw_records[index].split(b" ")
+        try:
+            filename = raw_records[index + 1].decode("ascii", errors="strict")
+        except UnicodeDecodeError:
+            return False
+        if (
+            len(fields) != 5
+            or fields[0] not in {b":100644", b":000000"}
+            or fields[1] != b"100644"
+            or fields[4] != (b"A" if fields[0] == b":000000" else b"M")
+            or filename in observed_raw
+        ):
+            return False
+        observed_raw[filename] = (fields[2], fields[3], fields[0], fields[1])
+    expected_raw = {
+        filename: (
+            base_blob,
+            head_blob,
+            b":000000" if base_blob == (b"0" * 40) else b":100644",
+            b"100644",
+        )
+        for filename, (base_blob, head_blob, _additions, _deletions) in expected.items()
+    }
+    if observed_raw != expected_raw:
+        return False
+
+    stat_records = numstat.split(b"\0")
+    if not stat_records or stat_records[-1] != b"":
+        return False
+    observed_stats: dict[str, tuple[bytes, bytes]] = {}
+    for record in stat_records[:-1]:
+        fields = record.split(b"\t")
+        if len(fields) != 3:
+            return False
+        try:
+            filename = fields[2].decode("ascii", errors="strict")
+        except UnicodeDecodeError:
+            return False
+        if filename in observed_stats:
+            return False
+        observed_stats[filename] = (fields[0], fields[1])
+    expected_stats = {
+        filename: (str(additions).encode("ascii"), str(deletions).encode("ascii"))
+        for filename, (_base_blob, _head_blob, additions, deletions) in expected.items()
+    }
+    return observed_stats == expected_stats
+
+
+def _verify_v3_pr_head(repository_root: Path, reviewed_pr_head_sha: str, helper_sha: str) -> None:
+    """Bind the PR9 review head to the image source and the PR11 helper descendant."""
+
+    if re.fullmatch(r"[0-9a-f]{40}", reviewed_pr_head_sha) is None:
+        raise RehearsalError("reviewed PR #9 head must be an exact commit SHA")
+    if reviewed_pr_head_sha != HOTFIX_V3_REVIEWED_PR_HEAD_SHA:
+        raise RehearsalError("reviewed PR #9 head is not the pinned reviewed test commit")
+    if re.fullmatch(r"[0-9a-f]{40}", helper_sha) is None:
+        raise RehearsalError("helper PR #11 head must be an exact commit SHA")
+    for base, descendant in (
+        (HOTFIX_V3_IMAGE_SOURCE_REVISION, reviewed_pr_head_sha),
+        (reviewed_pr_head_sha, helper_sha),
+    ):
+        result = subprocess.run(  # noqa: S603 - fixed Git argv, validated SHAs; no shell.
+            [_GIT_EXECUTABLE, "merge-base", "--is-ancestor", base, descendant],
+            cwd=repository_root,
+            env=_git_environment(),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+            shell=False,
+        )
+        if result.returncode != 0:
+            raise RehearsalError("PR #9 head is not in the reviewed image/helper lineage")
+    try:
+        commits = subprocess.run(  # noqa: S603 - fixed Git argv, validated SHAs; no shell.
+            [
+                _GIT_EXECUTABLE,
+                "rev-list",
+                "--reverse",
+                f"{HOTFIX_V3_IMAGE_SOURCE_REVISION}..{reviewed_pr_head_sha}",
+            ],
+            cwd=repository_root,
+            env=_git_environment(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+            shell=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RehearsalError("PR #9 commit lineage unavailable") from exc
+    expected_commits = ("\n".join(HOTFIX_V3_REVIEWED_PR9_COMMITS) + "\n").encode("ascii")
+    if commits.returncode != 0 or commits.stdout != expected_commits:
+        raise RehearsalError("PR #9 head is not in the reviewed image/helper lineage")
+    path = "tests/test_assistant_final_boundary_coverage.py"
+    try:
+        raw_diff = subprocess.run(  # noqa: S603 - fixed Git argv, validated SHAs; no shell.
+            [
+                _GIT_EXECUTABLE,
+                "diff",
+                "--raw",
+                "--no-abbrev",
+                "-z",
+                "--no-renames",
+                HOTFIX_V3_IMAGE_SOURCE_REVISION,
+                reviewed_pr_head_sha,
+            ],
+            cwd=repository_root,
+            env=_git_environment(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+            shell=False,
+        )
+        counts = subprocess.run(  # noqa: S603 - fixed Git argv, validated SHAs; no shell.
+            [
+                _GIT_EXECUTABLE,
+                "diff",
+                "--numstat",
+                "-z",
+                "--no-renames",
+                HOTFIX_V3_IMAGE_SOURCE_REVISION,
+                reviewed_pr_head_sha,
+            ],
+            cwd=repository_root,
+            env=_git_environment(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+            shell=False,
+        )
+        patch = subprocess.run(  # noqa: S603 - fixed Git argv, validated SHAs; no shell.
+            [
+                _GIT_EXECUTABLE,
+                "diff",
+                "--no-ext-diff",
+                "--no-renames",
+                "--unified=0",
+                HOTFIX_V3_IMAGE_SOURCE_REVISION,
+                reviewed_pr_head_sha,
+                "--",
+                path,
+            ],
+            cwd=repository_root,
+            env=_git_environment(),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+            shell=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RehearsalError("PR #9 test-only diff unavailable") from exc
+    if any(
+        result.returncode != 0 or len(result.stdout) > 16_384
+        for result in (raw_diff, counts, patch)
+    ):
+        raise RehearsalError("PR #9 test-only diff unavailable")
+    try:
+        changed_lines = [
+            line
+            for line in patch.stdout.decode("utf-8", errors="strict").splitlines()
+            if (line.startswith("+") and not line.startswith("+++"))
+            or (line.startswith("-") and not line.startswith("---"))
+        ]
+    except UnicodeDecodeError as exc:
+        raise RehearsalError("PR #9 test-only diff unavailable") from exc
+    expected_changed_lines = list(HOTFIX_V3_REVIEWED_TEST_PATCH)
+    if (
+        not _v3_pr9_delta_matches(raw_diff.stdout, counts.stdout)
+        or changed_lines != expected_changed_lines
+    ):
+        raise RehearsalError("PR #9 head includes unapproved source changes")
+
+
+def prepare_schema13_hotfix_pair(
+    repository_root: Path,
+    reviewed_helper_sha: str,
+    artifact_directory: Path,
+    *,
+    reviewed_pr_head_sha: str | None = None,
+    build_receipt_path: Path | None = None,
+) -> dict[str, object]:
+    """Package fixed PR9 image identity with the exact retained 5ad recovery archive."""
+
+    v3 = reviewed_pr_head_sha is not None or build_receipt_path is not None
+    if v3 and (reviewed_pr_head_sha is None or build_receipt_path is None):
+        raise RehearsalError("dual-head hotfix requires PR #9 head and build receipt")
+
+    if re.fullmatch(r"[0-9a-f]{40}", reviewed_helper_sha) is None:
+        raise RehearsalError("reviewed helper revision must be an exact commit SHA")
+    _verify_local_pr_head(repository_root, reviewed_helper_sha)
+    _verify_reviewed_pr(repository_root, reviewed_helper_sha, HELPER_SOURCE_PR_NUMBER)
+    if v3:
+        assert reviewed_pr_head_sha is not None and build_receipt_path is not None
+        _verify_v3_pr_head(repository_root, reviewed_pr_head_sha, reviewed_helper_sha)
+        _verify_reviewed_pr(repository_root, reviewed_pr_head_sha, HOTFIX_PR_NUMBER)
+        candidate_revision = HOTFIX_V3_IMAGE_SOURCE_REVISION
+        candidate_image_id = HOTFIX_V3_IMAGE_ID
+        candidate_context = HOTFIX_V3_IMAGE_CONTEXT_SHA256
+        build_receipt_sha = HOTFIX_V3_BUILD_RECEIPT_SHA256
+        build_receipt = _read_fixed_hotfix_build_receipt(
+            build_receipt_path,
+            expected_sha256=build_receipt_sha,
+            image_revision=candidate_revision,
+            image_id=candidate_image_id,
+            context_sha256=candidate_context,
+            receipt_profile="managed-v3",
+        )
+    else:
+        candidate_revision = HOTFIX_CANDIDATE_REVISION
+        candidate_image_id = HOTFIX_CANDIDATE_IMAGE_ID
+        candidate_context = HOTFIX_CANDIDATE_CONTEXT_SHA256
+        build_receipt_sha = HOTFIX_BUILD_RECEIPT_SHA256
+        build_receipt = _read_fixed_hotfix_build_receipt()
+    try:
+        artifact_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        directory_info = artifact_directory.lstat()
+    except OSError as exc:
+        raise RehearsalError("private hotfix artifact directory unavailable") from exc
+    if (
+        not stat.S_ISDIR(directory_info.st_mode)
+        or stat.S_ISLNK(directory_info.st_mode)
+        or directory_info.st_uid != os.getuid()
+        or stat.S_IMODE(directory_info.st_mode) & 0o077
+    ):
+        raise RehearsalError("private hotfix artifact directory unsafe")
+
+    candidate_name = f"signal-ledger-image-{candidate_revision}.tar.gz"
+    recovery_name = f"signal-ledger-image-{HOTFIX_RECOVERY_REVISION}.tar.gz"
+    manifest_name = f"signal-ledger-pair-{reviewed_helper_sha}.json"
+    candidate_path = artifact_directory / candidate_name
+    manifest_path = artifact_directory / manifest_name
+    if candidate_path.exists() or candidate_path.is_symlink() or manifest_path.exists():
+        raise RehearsalError("hotfix pair artifact already exists")
+    recovery_archive_sha256, recovery_archive_size = _verify_fixed_hotfix_recovery_archive(
+        artifact_directory
+    )
+
+    with tempfile.TemporaryDirectory(prefix="stock-probs-hotfix-pair-") as temporary:
+        docker_config = Path(temporary) / "docker-config"
+        env = _docker_environment(docker_config)
+        candidate_image = _verify_candidate_image(
+            candidate_image_id,
+            candidate_context,
+            env,
+            expected_revision_label=candidate_revision,
+        )
+        recovery_image = _verify_candidate_image(
+            HOTFIX_RECOVERY_IMAGE_ID,
+            HOTFIX_RECOVERY_CONTEXT_SHA256,
+            env,
+            expected_revision_label=HOTFIX_RECOVERY_REVISION,
+        )
+        if (
+            candidate_image["id"] != build_receipt.get("image_id")
+            or _image_platform(candidate_image_id, env) != "linux/amd64"
+            or _image_platform(HOTFIX_RECOVERY_IMAGE_ID, env) != "linux/amd64"
+        ):
+            raise RehearsalError("hotfix_image_identity_mismatch")
+        candidate_archive_sha256, candidate_archive_size = _save_image_archive(
+            candidate_image_id,
+            candidate_path,
+            env,
+        )
+
+    transition = {
+        "from_schema": 13,
+        "to_schema": 13,
+        "migrations": [],
+        "restore": False,
+    }
+    manifest = {
+        "format_version": 3 if v3 else 2,
+        "contract": HOTFIX_V3_CONTRACT if v3 else HOTFIX_CONTRACT,
+        "repository": "eddiesoz/stock_probs",
+        "revision": reviewed_helper_sha,
+        **(
+            {
+                "reviewed_pr_head_sha": reviewed_pr_head_sha,
+                "image_source_revision": candidate_revision,
+            }
+            if v3
+            else {}
+        ),
+        "helper_source": {
+            "pull_number": HELPER_SOURCE_PR_NUMBER,
+            "revision": reviewed_helper_sha,
+        },
+        "candidate": {
+            "asset": candidate_name,
+            "archive_sha256": candidate_archive_sha256,
+            "archive_size": candidate_archive_size,
+            "image_id": candidate_image_id,
+            "platform": "linux/amd64",
+            "pull_number": HOTFIX_PR_NUMBER,
+            "revision": candidate_revision,
+            "schema_version": 13,
+            "source_context_sha256": candidate_context,
+            "build_receipt_sha256": build_receipt_sha,
+        },
+        "recovery": {
+            "asset": recovery_name,
+            "archive_sha256": recovery_archive_sha256,
+            "archive_size": recovery_archive_size,
+            "image_id": HOTFIX_RECOVERY_IMAGE_ID,
+            "platform": "linux/amd64",
+            "revision": HOTFIX_RECOVERY_REVISION,
+            "schema_version": 13,
+            "source_context_sha256": HOTFIX_RECOVERY_CONTEXT_SHA256,
+            "kind": "previous_production_candidate",
+            "prior_pair_manifest_sha256": HOTFIX_PRIOR_PAIR_MANIFEST_SHA256,
+            "assistant_rollout_mode": "invited",
+        },
+        "transition": transition,
+        "recovery_overlay": {"kind": "none", "sha256": HOTFIX_EMPTY_OVERLAY_SHA256},
+    }
+    manifest_bytes = _canonical_json(manifest)
+    try:
+        descriptor = os.open(
+            manifest_path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(manifest_bytes)
+            output.flush()
+            os.fsync(output.fileno())
+    except OSError as exc:
+        raise RehearsalError("hotfix_pair_manifest_write_failed") from exc
+    return {
+        "status": "prepared",
+        "contract": HOTFIX_V3_CONTRACT if v3 else HOTFIX_CONTRACT,
+        "helper_source_revision": reviewed_helper_sha,
+        **({"reviewed_pr_head_sha": reviewed_pr_head_sha} if v3 else {}),
+        "hotfix_pull_number": HOTFIX_PR_NUMBER,
+        "candidate_image": candidate_image,
+        **({"candidate_build_receipt_sha256": build_receipt_sha} if v3 else {}),
+        "candidate_archive_name": candidate_name,
+        "candidate_archive_sha256": candidate_archive_sha256,
+        "candidate_archive_size": candidate_archive_size,
+        "recovery_image": recovery_image,
+        "recovery_archive_name": recovery_name,
+        "recovery_archive_sha256": recovery_archive_sha256,
+        "recovery_archive_size": recovery_archive_size,
+        "prior_pair_manifest_sha256": HOTFIX_PRIOR_PAIR_MANIFEST_SHA256,
+        "migration_commands": 0,
+        "restore_commands": 0,
+        "manifest_name": manifest_name,
+        "manifest_sha256": _sha256(manifest_bytes),
+    }
+
+
 def _git_environment() -> dict[str, str]:
     return {
         "PATH": os.defpath,
@@ -2289,8 +2953,72 @@ def _verify_local_pr_head(repository_root: Path, expected_sha: str) -> None:
         raise RehearsalError("the reviewed PR checkout could not be verified")
 
 
-def _verify_reviewed_pr(repository_root: Path, expected_sha: str) -> None:
-    """Call the fixed adjacent PR-2 verifier and expose only its closed safe result."""
+def _verify_fixed_hotfix_pr(expected_sha: str) -> None:
+    """Verify the exact open PR-9 head without widening the bootstrap allowlist."""
+
+    if not isinstance(expected_sha, str) or re.fullmatch(r"[0-9a-f]{40}", expected_sha) is None:
+        raise RehearsalError("reviewed_pr_invalid")
+    try:
+        connection = http.client.HTTPSConnection("api.github.com", timeout=10)
+        try:
+            connection.request(
+                "GET",
+                f"/repos/{FIXED_PR_REPOSITORY}/pulls/{HOTFIX_PR_NUMBER}",
+                headers={
+                    "Accept": "application/vnd.github+json",
+                    "User-Agent": "signal-ledger-schema13-rehearsal",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+            )
+            response = connection.getresponse()
+            raw = response.read(REVIEWED_PR_RESPONSE_LIMIT + 1)
+            if response.status != 200 or len(raw) > REVIEWED_PR_RESPONSE_LIMIT:
+                raise RehearsalError("reviewed_pr_unavailable")
+        finally:
+            connection.close()
+    except RehearsalError:
+        raise
+    except (OSError, TimeoutError, http.client.HTTPException) as exc:
+        raise RehearsalError("reviewed_pr_unavailable") from exc
+    try:
+        payload: object = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RehearsalError("reviewed_pr_invalid") from exc
+    if not isinstance(payload, dict):
+        raise RehearsalError("reviewed_pr_invalid")
+    base = payload.get("base")
+    head = payload.get("head")
+    head_repository = head.get("repo") if isinstance(head, dict) else None
+    if (
+        type(payload.get("number")) is not int
+        or payload.get("number") != HOTFIX_PR_NUMBER
+        or payload.get("state") != "open"
+        or not isinstance(base, dict)
+        or base.get("ref") != "main"
+        or not isinstance(head, dict)
+        or head.get("sha") != expected_sha
+        or not isinstance(head_repository, dict)
+        or head_repository.get("full_name") != FIXED_PR_REPOSITORY
+    ):
+        raise RehearsalError("reviewed_pr_mismatch")
+
+
+def _verify_reviewed_pr(
+    repository_root: Path,
+    expected_sha: str,
+    pull_number: int = 2,
+) -> None:
+    """Verify one fixed build, helper, or hotfix pull request."""
+
+    if type(pull_number) is not int or pull_number not in {
+        2,
+        HOTFIX_PR_NUMBER,
+        HELPER_SOURCE_PR_NUMBER,
+    }:
+        raise RehearsalError("the fixed reviewed PR verifier is unavailable")
+    if pull_number == HOTFIX_PR_NUMBER:
+        _verify_fixed_hotfix_pr(expected_sha)
+        return
 
     scripts_directory = repository_root / "scripts"
     verifier_path = scripts_directory / "pr_rehearsal_bootstrap.py"
@@ -2321,7 +3049,7 @@ def _verify_reviewed_pr(repository_root: Path, expected_sha: str) -> None:
         verify = getattr(module, "_verify_pull_request", None)
         if not callable(verify):
             raise RehearsalError("the fixed reviewed PR verifier is unavailable")
-        verify(expected_sha)
+        verify(expected_sha, pull_number=pull_number)
     except RehearsalError:
         raise
     except Exception as exc:
@@ -2975,8 +3703,22 @@ def main() -> int:
         help="build a private local image from the exact clean open PR #2 head",
     )
     parser.add_argument(
+        "--prepare-schema13-hotfix-pair",
+        action="store_true",
+        help="package the fixed PR #9 image with the exact retained schema-13 production image",
+    )
+    parser.add_argument(
         "--reviewed-pr-head",
         help="exact lowercase commit SHA reviewed for PR #2 candidate building",
+    )
+    parser.add_argument(
+        "--reviewed-hotfix-pr-head",
+        help="exact lowercase PR #9 test-only head for the dual-head schema-13 pair",
+    )
+    parser.add_argument(
+        "--hotfix-build-receipt",
+        type=Path,
+        help="exact bounded build receipt for the fixed v3 image source",
     )
     parser.add_argument(
         "--overlay-manifest",
@@ -3015,13 +3757,19 @@ def main() -> int:
     try:
         if args.use_deployed_baseline_image and (
             args.build_pr_candidate
+            or args.prepare_schema13_hotfix_pair
             or args.reviewed_pr_head is not None
+            or args.reviewed_hotfix_pr_head is not None
+            or args.hotfix_build_receipt is not None
             or args.overlay_manifest
             or args.source_context_manifest
         ):
             raise RehearsalError("--use-deployed-baseline-image is only valid for a full rehearsal")
         if args.build_pr_candidate:
             legacy_inputs = (
+                args.prepare_schema13_hotfix_pair,
+                args.reviewed_hotfix_pr_head is not None,
+                args.hotfix_build_receipt is not None,
                 args.overlay_manifest,
                 args.source_context_manifest,
                 args.candidate_image_id is not None,
@@ -3038,6 +3786,33 @@ def main() -> int:
                     "PR candidate build mode requires --reviewed-pr-head and --receipt"
                 )
             receipt = build_pr_candidate(repository_root, args.reviewed_pr_head, args.receipt)
+        elif args.prepare_schema13_hotfix_pair:
+            if (
+                args.build_pr_candidate
+                or args.overlay_manifest
+                or args.source_context_manifest
+                or args.candidate_image_id is not None
+                or args.expected_candidate_context_sha256 is not None
+                or args.candidate_revision is not None
+                or args.reviewed_pr_head is None
+                or args.release_artifact_directory is None
+                or args.receipt is None
+                or args.use_deployed_baseline_image
+                or (args.reviewed_hotfix_pr_head is None) != (args.hotfix_build_receipt is None)
+            ):
+                raise RehearsalError(
+                    "schema-13 hotfix packaging requires only the reviewed helper head, "
+                    "artifact directory, and receipt"
+                )
+            receipt = prepare_schema13_hotfix_pair(
+                repository_root,
+                args.reviewed_pr_head,
+                args.release_artifact_directory,
+                reviewed_pr_head_sha=args.reviewed_hotfix_pr_head,
+                build_receipt_path=args.hotfix_build_receipt,
+            )
+        elif args.reviewed_hotfix_pr_head is not None or args.hotfix_build_receipt is not None:
+            raise RehearsalError("dual-head hotfix inputs require --prepare-schema13-hotfix-pair")
         elif args.reviewed_pr_head is not None:
             raise RehearsalError("--reviewed-pr-head requires --build-pr-candidate")
         elif args.overlay_manifest:

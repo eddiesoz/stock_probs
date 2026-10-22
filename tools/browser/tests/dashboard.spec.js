@@ -2106,7 +2106,7 @@ test("news renders empty partial stale failure busy unreachable and superseded s
   await page.route("**/api/v1/news?*", async (route) => {
     const symbol = new URL(route.request().url()).searchParams.get("symbol");
     if (mode === "provider") return route.fulfill({ status: 502, contentType: "application/json", json: { error: { code: "provider_unavailable", message: "Provider unavailable" } } });
-    if (mode === "busy") return route.fulfill({ status: 503, contentType: "application/json", json: { error: { code: "capacity_busy", message: "Busy" } } });
+    if (mode === "busy") return route.fulfill({ status: 503, contentType: "application/json", json: { error: { code: "provider_busy", message: "Busy" } } });
     const payload = newsPayload(symbol, mode === "empty" ? 0 : 1);
     if (mode === "partial") {
       payload.items[0] = { id: "partial", title: "Headline with partial metadata", publisher: null, published_at: null, url: "https://example.com/partial", related_symbols: null };
@@ -2431,12 +2431,20 @@ test("M04 360–1440 layouts, touch targets, reduced motion, and high contrast s
     await themeRadio(page, theme === "light" ? "Light" : "Dark").click();
     await page.keyboard.press("Escape");
     await page.emulateMedia({ media: "print", forcedColors: "none", reducedMotion: "reduce" });
-    printSurfaces[theme] = await page.evaluate(() => Object.fromEntries([
+    const readPrintSurfaces = () => page.evaluate(() => Object.fromEntries([
       ".search-panel", ".horizon-comparison", ".tail-figure", ".history-table th",
     ].map((selector) => {
       const style = getComputedStyle(document.querySelector(selector));
       return [selector, { color: style.color, background: style.backgroundColor }];
     })));
+    // Wait for the emulated media's computed styles; retain both theme-parity assertions below.
+    await expect.poll(readPrintSurfaces, {
+      message: `${theme} print styles did not settle to the required black-on-white surfaces`,
+      timeout: 5_000,
+    }).toEqual(Object.fromEntries([
+      ".search-panel", ".horizon-comparison", ".tail-figure", ".history-table th",
+    ].map((selector) => [selector, { color: "rgb(0, 0, 0)", background: "rgb(255, 255, 255)" }])));
+    printSurfaces[theme] = await readPrintSurfaces();
   }
   expect(printSurfaces.light).toEqual(printSurfaces.dark);
   expect(new Set(Object.values(printSurfaces.dark).map(({ background }) => background))).toEqual(new Set(["rgb(255, 255, 255)"]));

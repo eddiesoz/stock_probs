@@ -98,6 +98,14 @@ async function expectAssistantAxeClean(page, testInfo, scan) {
     body: Buffer.from(JSON.stringify(counts, null, 2)),
     contentType: "application/json",
   });
+  await testInfo.attach(`assistant-axe-raw-${scan}.json`, {
+    body: Buffer.from(JSON.stringify({
+      ...counts,
+      violations: results.violations,
+      incomplete: results.incomplete,
+    }, null, 2)),
+    contentType: "application/json",
+  });
   if (Array.isArray(results.incomplete) && results.incomplete.length > 0) {
     const incompleteNodes = results.incomplete.flatMap((rule) => (rule.nodes || []).map((node) => ({
       rule: rule.id,
@@ -266,6 +274,144 @@ async function expectAssistantLiveStatusAbsent(panel, message) {
   await expect(announcer).not.toHaveText(message);
 }
 
+const assistantCancellationStatusPattern = /^Response cancelled\.(?: Saved conversation history remains available\.| Review the saved conversation for its final state\.)$/;
+const assistantTurnStatuses = new Set(["queued", "running", "streaming", "pending", "completed", "cancelled", "failed", "timed_out"]);
+
+async function readAssistantTurnStatus(page, origin, conversationId, turnId, timeout = 5_000) {
+  const detailPath = `/api/v1/assistant/conversations/${encodeURIComponent(conversationId)}?message_page=1&action_page=1&event_page=1`;
+  const response = await page.context().request.get(new URL(detailPath, origin).toString(), { timeout });
+  if (!response.ok()) return { httpStatus: response.status(), turnStatus: "http_error" };
+  const detail = await response.json();
+  const turn = Array.isArray(detail.turns) ? detail.turns.find((item) => item.id === turnId) : null;
+  const turnStatus = typeof turn?.status === "string"
+    ? (assistantTurnStatuses.has(turn.status) ? turn.status : "other")
+    : "missing";
+  return { httpStatus: response.status(), turnStatus };
+}
+
+async function assertAssistantCancellationStatus(panel) {
+  const visibleStatus = panel.locator("p").filter({ hasText: assistantCancellationStatusPattern });
+  const announcer = panel.locator('span.sr-only[aria-live="polite"]');
+  await expect(visibleStatus).toHaveCount(1);
+  await expect(visibleStatus).toBeVisible();
+  await expect(visibleStatus).not.toHaveAttribute("role", "status");
+  await expect(visibleStatus).toHaveText(assistantCancellationStatusPattern);
+  await expect(panel.locator('[aria-live="polite"]')).toHaveCount(1);
+  await expect(announcer).toHaveCount(1);
+  await expect(announcer).toHaveText(assistantCancellationStatusPattern);
+  await expect(panel.getByRole("button", { name: "Stop response" })).toHaveCount(0);
+  const composer = panel.getByRole("textbox", { name: "Ask about this page" });
+  await expect(composer).toBeVisible();
+  await expect(composer).toBeEditable();
+  const sendButton = panel.getByRole("button", { name: "Send question" });
+  await expect(sendButton).toBeVisible();
+  const prompt = await composer.inputValue();
+  if (prompt.trim()) await expect(sendButton).toBeEnabled();
+  else await expect(sendButton).toBeDisabled();
+}
+
+async function withAssistantCancellationObservation(page, panel, testInfo, turnIdentity, assertion) {
+  try {
+    await assertion();
+  } catch (error) {
+    const schema = "assistant-cancel-status-observation/v1";
+    let observation = { schema, observationUnavailable: true };
+    try {
+      const browserState = await page.evaluate(() => {
+        const panelElement = document.querySelector('[data-testid="assistant-panel"]');
+        if (!panelElement) throw new Error("assistant panel unavailable");
+        const statusPattern = /^(?:Response cancelled\.|Assistant response complete\.|The assistant turn ended without a completed answer\.|The response stream ended without a completion event\.|The response did not finish\.|Ready when you are\.)/i;
+        const boundedText = (element) => (element.innerText || element.textContent || "")
+          .replace(/\s+/g, " ").trim().slice(0, 240);
+        const visible = (element) => {
+          const style = window.getComputedStyle(element);
+          return element.getClientRects().length > 0 && style.display !== "none"
+            && style.visibility === "visible" && Number(style.opacity) > 0;
+        };
+        const visibleStatusParagraphs = Array.from(panelElement.querySelectorAll("p"))
+          .filter((element) => visible(element) && statusPattern.test(boundedText(element)))
+          .slice(0, 8).map(boundedText);
+        const politeLiveRegionStrings = Array.from(panelElement.querySelectorAll('[aria-live="polite"]'))
+          .map(boundedText).filter((text) => statusPattern.test(text)).slice(0, 8);
+        const buttons = Array.from(panelElement.querySelectorAll("button"));
+        const buttonName = (button) => (button.getAttribute("aria-label") || button.textContent || "")
+          .replace(/\s+/g, " ").trim();
+        const stopButtons = buttons.filter((button) => buttonName(button) === "Stop response");
+        const sendButtons = buttons.filter((button) => buttonName(button) === "Send question");
+        return {
+          visibleStatusParagraphs,
+          politeLiveRegionStrings,
+          stopButtonCount: stopButtons.length,
+          stopButtonEnabled: stopButtons.some((button) => !button.disabled),
+          sendButtonCount: sendButtons.length,
+          sendButtonEnabled: sendButtons.some((button) => !button.disabled),
+        };
+      });
+      let savedTurnStatus = "not_requested";
+      if (turnIdentity) {
+        try {
+          savedTurnStatus = (await readAssistantTurnStatus(
+            page,
+            turnIdentity.origin,
+            turnIdentity.conversationId,
+            turnIdentity.turnId,
+            1_500,
+          )).turnStatus;
+        } catch {
+          savedTurnStatus = "unavailable";
+        }
+      }
+      observation = { schema, observationUnavailable: false, ...browserState, savedTurnStatus };
+    } catch {
+      observation = { schema, observationUnavailable: true };
+    }
+    try {
+      await testInfo.attach("assistant-cancellation-observation.json", {
+        body: Buffer.from(JSON.stringify(observation, null, 2)),
+        contentType: "application/json",
+      });
+    } catch {
+      // Preserve the original assertion failure if the optional diagnostic cannot be attached.
+    }
+    throw error;
+  }
+}
+
+async function cancelAssistantWebFetchTurn(page, panel, testInfo, origin, eventPath, browserDiagnostics) {
+  const eventUrl = new URL(eventPath, origin);
+  expect(eventUrl.origin).toBe(origin);
+  const match = eventUrl.pathname.match(/^\/api\/v1\/assistant\/conversations\/([^/]+)\/turns\/([^/]+)\/events$/);
+  expect(match).not.toBeNull();
+  const [, conversationId, turnId] = match;
+  const turnIdentity = { origin, conversationId, turnId };
+  await withAssistantCancellationObservation(page, panel, testInfo, turnIdentity, async () => {
+    browserDiagnostics.expectRequestAborts({ method: "GET", path: eventUrl.pathname, count: 1 });
+    const cancelPath = `/api/v1/assistant/conversations/${encodeURIComponent(conversationId)}/turns/${encodeURIComponent(turnId)}/cancel`;
+    const cancelResponsePromise = page.waitForResponse((response) => {
+      const responseUrl = new URL(response.url());
+      return responseUrl.origin === origin && response.request().method() === "POST"
+        && responseUrl.pathname === cancelPath;
+    }, { timeout: 5_000 }).then(
+      (response) => ({ response }),
+      (error) => ({ error }),
+    );
+    await panel.getByRole("button", { name: "Stop response" }).click();
+    const cancelOutcome = await cancelResponsePromise;
+    if (cancelOutcome.error) throw cancelOutcome.error;
+    const cancelResponse = cancelOutcome.response;
+    expect(cancelResponse.status()).toBe(200);
+    expect(await cancelResponse.json()).toMatchObject({ turn_id: turnId, status: "cancelled" });
+    const savedTurn = await readAssistantTurnStatus(page, origin, conversationId, turnId);
+    expect(savedTurn.httpStatus).toBe(200);
+    expect(savedTurn.turnStatus).toBe("cancelled");
+    await assertAssistantCancellationStatus(panel);
+  });
+}
+
+async function expectAssistantCancellationStatus(page, panel, testInfo) {
+  await withAssistantCancellationObservation(page, panel, testInfo, null, () => assertAssistantCancellationStatus(panel));
+}
+
 async function chooseFixtureModel(panel) {
   const selector = panel.getByRole("combobox", { name: "Assistant model" });
   if (await selector.inputValue() !== model.id) await selector.selectOption(model.id);
@@ -342,6 +488,72 @@ function conversationDetail() {
     turns: [{ id: "turn-1", status: "completed", model_id: model.id, policy_version: model.policy_version, context_version: context.context_version, context, created_at: "2025-01-10T17:00:00Z", completed_at: "2025-01-10T17:01:00Z", actions: [] }],
     actions: [],
   };
+}
+
+for (const theme of ["light", "dark"]) {
+  test(`assistant preserves provider failure after completion and saved-chat reopening in ${theme}`, async ({ page }, testInfo) => {
+  await page.addInitScript((value) => localStorage.setItem("stock-probs.theme", value), theme);
+  let submitted = false;
+  let submittedContext = null;
+  let created = false;
+  let detailReads = 0;
+  let turnPosts = 0;
+  const summary = { id: "conversation-provider-failure", title: "Provider access check", revision: 1,
+    created_at: "2025-01-10T17:00:00Z", updated_at: "2025-01-10T17:01:00Z" };
+  const failure = "The selected model provider could not answer. Check Providers for access or choose another approved model. Your question was saved.";
+  await page.route("**/api/v1/auth/session", (route) => route.fulfill({ status: 200, contentType: "application/json",
+    body: JSON.stringify({ authenticated: true, user: { id: 1, role: "admin" }, csrf_token: "fixture-csrf" }) }));
+  await page.route("**/api/v1/assistant/**", async (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    const fulfill = (body, statusCode = 200) => route.fulfill({ status: statusCode, contentType: "application/json", body: JSON.stringify(body) });
+    if (pathname.endsWith("/status")) return fulfill(status);
+    if (pathname.endsWith("/models")) return fulfill({ items: [model] });
+    if (pathname.endsWith("/context")) return fulfill({ context: { ...context, route: "/overview" }, preview: { summary: "Overview", fields: ["page route only"] } });
+    if (pathname.endsWith("/conversations") && request.method() === "GET") return fulfill({ items: created ? [summary] : [], page: 1, page_size: 20, total: created ? 1 : 0 });
+    if (pathname.endsWith("/conversations") && request.method() === "POST") {
+      created = true;
+      return fulfill({ conversation: summary }, 201);
+    }
+    if (pathname.endsWith("/turns") && request.method() === "POST") {
+      turnPosts += 1;
+      submittedContext = request.postDataJSON().context;
+      submitted = true;
+      return fulfill({ turn: { id: "turn-provider-failure", status: "running" } }, 202);
+    }
+    if (pathname.endsWith("/events")) {
+      const events = [[1, "error", { code: "provider_unavailable", message: "UNTRUSTED_PROVIDER_BODY" }],
+        [2, "complete", { status: "failed", assistant_message_id: null }]];
+      return route.fulfill({ status: 200, contentType: "text/event-stream", body: events.map(([id, type, data]) => `id: ${id}\nevent: ${type}\ndata: ${JSON.stringify(data)}\n\n`).join("") });
+    }
+    if (pathname.endsWith("/conversation-provider-failure") && request.method() === "GET") {
+      detailReads += 1;
+      return fulfill({ conversation: { ...summary, delete_confirmation_phrase: "DELETE failure" },
+        messages: { items: submitted ? [{ id: "user-failure", seq: 1, turn_id: "turn-provider-failure", role: "user", text: "Synthetic provider check", created_at: summary.updated_at }] : [], page: 1, page_size: 50, total: submitted ? 1 : 0 },
+        turns: submitted ? [{ id: "turn-provider-failure", status: "failed", model_id: model.id, policy_version: model.policy_version, context: submittedContext, created_at: summary.updated_at }] : [],
+        events: { items: submitted ? [{ turn_id: "turn-provider-failure", type: "error", sequence: 1, data: { code: "provider_unavailable", message: "UNTRUSTED_PROVIDER_BODY" }, created_at: summary.updated_at }] : [], page: 1, page_size: 100, total: submitted ? 1 : 0 },
+        actions: [], action_pagination: { page: 1, page_size: 100, total: 0 } });
+    }
+    throw new Error(`Unexpected assistant failure fixture route: ${request.method()} ${pathname}`);
+  });
+  await page.goto("/overview");
+  await page.getByRole("button", { name: "Open Ledger assistant" }).click();
+  const panel = page.getByTestId("assistant-panel");
+  await chooseFixtureModel(panel);
+  await panel.getByRole("textbox", { name: "Ask about this page" }).fill("Synthetic provider check");
+  await panel.getByRole("button", { name: "Send question" }).click();
+  await expect.poll(() => detailReads).toBeGreaterThan(0);
+  await expectAssistantLiveStatus(panel, failure);
+  await expect(panel.getByText("Synthetic provider check", { exact: true })).toBeVisible();
+  await expect(panel.getByText("UNTRUSTED_PROVIDER_BODY", { exact: true })).toHaveCount(0);
+  await panel.getByRole("button", { name: "Open conversation history" }).click();
+  await panel.getByRole("button", { name: /Provider access check/ }).click();
+  await expect.poll(() => detailReads).toBeGreaterThan(1);
+  await expectAssistantLiveStatus(panel, failure);
+  expect(turnPosts).toBe(1);
+  await expectAssistantAxeClean(page, testInfo, `provider-failure-${theme}`);
+  await testInfo.attach(`provider-failure-${theme}.png`, { body: await page.screenshot({ fullPage: true, scale: "css" }), contentType: "image/png" });
+  });
 }
 
 test("assistant desktop/mobile widget keeps a structured saved answer readable and applies only a confirmed typed theme action", async ({ page }, testInfo) => {
@@ -1694,6 +1906,13 @@ test("assistant ignores delayed conversation, pagination, and stream responses a
 
 test("real FastAPI assistant flow keeps route-only context and reopens durable proposal and tool receipts", async ({ page, assistantApplication, browserDiagnostics }, testInfo) => {
   const origin = assistantApplication.url;
+  const startup = assistantApplication.logs().split("\n").map((line) => {
+    try { return JSON.parse(line); } catch { return null; }
+  }).find((entry) => entry?.qa_stage === "fixture_started");
+  await testInfo.attach("real-flow-fixture-startup.json", {
+    body: Buffer.from(JSON.stringify(startup || { available: false }, null, 2)),
+    contentType: "application/json",
+  });
   await page.context().addCookies([
     { name: "signal_ledger_session", value: "browser-assistant-fixture-session-not-a-production-credential", url: origin, httpOnly: true, sameSite: "Lax" },
     { name: "signal_ledger_csrf", value: "browser-assistant-fixture-csrf-token-not-a-production-credential", url: origin, sameSite: "Lax" },
@@ -1792,7 +2011,7 @@ test("real FastAPI assistant flow keeps route-only context and reopens durable p
   }
   await expect(panel.getByText("current route", { exact: true })).toBeVisible();
   await expect(panel.getByText(/ACDC · STOCK · NMS · deterministic fixture/)).toHaveCount(0);
-  await panel.getByRole("textbox", { name: "Ask about this page" }).fill("Explain this page without selected references");
+  await panel.getByRole("textbox", { name: "Ask about this page" }).fill("Explain this page without selected references (delayed browser fixture)");
   await expect(panel.getByRole("button", { name: "Send question" })).toBeEnabled();
   await panel.getByRole("button", { name: "Send question" }).click();
   const completion = expect.poll(async () => {
@@ -1805,12 +2024,43 @@ test("real FastAPI assistant flow keeps route-only context and reopens durable p
       && transcript.includes("Synthetic research response from the local browser fixture.")
       ? "completed"
       : "pending";
-  }).toBe("completed");
+  }, { timeout: 15_000, intervals: [100, 250, 500] }).toBe("completed");
   try {
     await completion;
   } catch (error) {
+    // Failure evidence distinguishes a slow fixture from a completed turn whose UI lost its state.
+    const transcript = await panel.innerText();
+    const diagnostic = await page.evaluate(async (eventUrl) => {
+      if (!eventUrl) return { available: false };
+      const path = new URL(eventUrl).pathname.split("/turns/")[0];
+      const response = await fetch(path, { signal: AbortSignal.timeout(1500) });
+      if (!response.ok) return { available: false, status: response.status };
+      const data = await response.json();
+      return {
+        available: true,
+        turns: (data.turns || []).map((turn) => ({ status: turn.status })),
+        messages: (data.messages?.items || []).map((message) => ({ role: message.role, length: message.text?.length || 0 })),
+        events: (data.events?.items || []).map((event) => ({ type: event.type, status: event.data?.status })),
+      };
+    }, submitted.eventStreamUrl).catch(() => ({ available: false }));
+    await testInfo.attach("real-flow-completion-diagnostic.json", {
+      body: Buffer.from(JSON.stringify({
+        ...diagnostic,
+        hasAnswer: transcript.includes("Synthetic research response from the local browser fixture."),
+        hasCompletion: transcript.includes("Assistant response complete."),
+        hasProviderError: transcript.includes("The selected model provider could not answer."),
+        hasClosedTurnWarning: transcript.includes("The assistant turn ended without a completed answer."),
+      }, null, 2)),
+      contentType: "application/json",
+    });
     throw new Error(`${error instanceof Error ? error.message : "Assistant turn did not complete."}\nConversation errors ${JSON.stringify(conversationErrors)}\n${assistantApplication.logs()}`);
   }
+  await testInfo.attach("real-flow-runtime-checkpoints.json", {
+    body: Buffer.from(JSON.stringify(assistantApplication.logs().split("\n").map((line) => {
+      try { return JSON.parse(line); } catch { return null; }
+    }).filter((entry) => ["fixture_started", "turn_started", "workspace_summary_received", "response_delay_started", "response_delay_completed", "runtime_completed"].includes(entry?.qa_stage)), null, 2)),
+    contentType: "application/json",
+  });
   await expect.poll(() => eventStreamResponse).not.toBeNull();
   expect(eventStreamResponse).toMatchObject({
     url: submitted.eventStreamUrl,
@@ -1891,6 +2141,12 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
   const externalRequests = [];
   const eventStreamPaths = [];
   let baseContextResponse = null;
+  let holdResearchContextResponse = false;
+  let researchContextRequestSeen = false;
+  let releaseResearchContextResponse = null;
+  let researchContextResponseSettled = false;
+  let researchContextResponseError = null;
+  let researchContextHandlerPromise = null;
   page.on("request", (request) => {
     const url = new URL(request.url());
     if (url.origin === "https://example.com") externalRequests.push(url.href);
@@ -1903,6 +2159,23 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
   });
   await page.route("**/api/v1/assistant/context**", async (route) => {
     const url = new URL(route.request().url());
+    if (holdResearchContextResponse && url.searchParams.get("route") === "/research") {
+      holdResearchContextResponse = false;
+      researchContextRequestSeen = true;
+      const responseGate = new Promise((resolve) => { releaseResearchContextResponse = resolve; });
+      researchContextHandlerPromise = (async () => {
+        try {
+          await responseGate;
+          await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ detail: "Fixture-held context failure" }) });
+        } catch (error) {
+          researchContextResponseError = error instanceof Error ? error.message : String(error);
+        } finally {
+          researchContextResponseSettled = true;
+        }
+      })();
+      await researchContextHandlerPromise;
+      return;
+    }
     if (url.searchParams.get("symbol") === "MSFT") {
       if (!baseContextResponse) throw new Error("The initial workspace context was not captured before instrument selection.");
       const context = baseContextResponse.context;
@@ -1938,6 +2211,18 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
   await panel.getByRole("button", { name: "Save privacy choice" }).click();
   await expectAssistantLiveStatus(panel, "Model privacy consent saved for this policy version.");
 
+  // Prepare this approval-focused journey before its per-turn response wait.
+  await panel.getByRole("button", { name: "Open conversation history" }).click();
+  const conversationCreated = page.waitForResponse((response) => {
+    const responseUrl = new URL(response.url());
+    return responseUrl.origin === origin
+      && responseUrl.pathname === "/api/v1/assistant/conversations"
+      && response.request().method() === "POST";
+  }, { timeout: 5_000 });
+  await panel.getByRole("button", { name: "New conversation" }).click();
+  expect((await conversationCreated).status()).toBe(201);
+  await expectAssistantLiveStatus(panel, "New conversation created. No assistant request has been sent.");
+
   async function assertServerEndedStream(eventPath) {
     await expect.poll(async () => page.evaluate(async (path) => {
       const response = await fetch("/__qa/assistant-stream-audit", { cache: "no-store" });
@@ -1970,7 +2255,16 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
     const sendButton = panel.getByRole("button", { name: "Send question" });
     await panel.getByRole("textbox", { name: "Ask about this page" }).fill(prompt);
     await expect(sendButton).toBeEnabled();
+    const turnResponsePromise = page.waitForResponse((response) => {
+      const request = response.request();
+      const responseUrl = new URL(response.url());
+      return responseUrl.origin === origin
+        && request.method() === "POST"
+        && /^\/api\/v1\/assistant\/conversations\/[^/]+\/turns$/.test(responseUrl.pathname);
+    }, { timeout: 5_000 });
     await sendButton.click();
+    const turnResponse = await turnResponsePromise;
+    expect(turnResponse.status()).toBe(202);
     const card = panel.getByRole("region", { name: "Web page request confirmation" });
     try {
       await expect(card).toBeVisible();
@@ -2085,6 +2379,10 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
   await panel.getByRole("textbox", { name: "Ask about this page" }).fill("");
   await assertServerEndedStream(approval.eventPath);
   await expectAssistantAxeClean(page, testInfo, "approved-preview");
+  await testInfo.attach("assistant-approved-preview.png", {
+    body: await page.screenshot({ fullPage: false }),
+    contentType: "image/png",
+  });
 
   const staleContext = await requestPreview(
     "fixture webfetch stale context",
@@ -2102,10 +2400,10 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
     window.dispatchEvent(new Event("workspace-instrument-change"));
   });
   await expect(panel.getByRole("region", { name: "Workspace context" })).toContainText("MSFT · STOCK");
-  await staleContext.card.getByRole("button", { name: "Approve exact URL once" }).click();
   await expect(staleContext.card).toHaveCount(0);
   await expect(panel.getByRole("alert")).toContainText("The page context changed after this URL preview. No URL was sent");
   expect(confirmationRequests).toHaveLength(1);
+  expect(externalRequests).toEqual([]);
   const staleTurn = new URL(staleContext.eventPath, origin).pathname.match(/\/conversations\/([^/]+)\/turns\/([^/]+)\/events$/);
   expect(staleTurn).not.toBeNull();
   const staleActivity = await page.evaluate(async (conversationId) => {
@@ -2116,9 +2414,7 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
       .map((item) => item.data?.name).filter((name) => typeof name === "string");
   }, staleTurn[1]);
   expect(staleActivity.some((name) => /web.?fetch/i.test(name))).toBe(false);
-  browserDiagnostics.expectRequestAborts({ method: "GET", path: staleContext.eventPath, count: 1 });
-  await panel.getByRole("button", { name: "Stop response" }).click();
-  await expectAssistantLiveStatus(panel, "Response cancelled. Saved conversation history remains available.");
+  await cancelAssistantWebFetchTurn(page, panel, testInfo, origin, staleContext.eventPath, browserDiagnostics);
 
   await changeRoute("/overview");
   await expect(panel.getByRole("region", { name: "Workspace context" })).toContainText("Overview");
@@ -2129,12 +2425,30 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
     "webfetch-stale-route-preview",
     "Approve exact URL once",
   );
-  await changeRoute("/research");
-  await expect(panel.getByRole("region", { name: "Workspace context" })).toContainText("Research");
-  await staleRouteContext.card.getByRole("button", { name: "Approve exact URL once" }).click();
+  const confirmationsBeforeStaleRoute = confirmationRequests.length;
+  holdResearchContextResponse = true;
+  try {
+    await changeRoute("/research");
+    await expect.poll(() => researchContextRequestSeen).toBe(true);
+    await expect(page).toHaveURL(/\/research(?:\?|$)/);
+    await expect(staleRouteContext.card).toHaveCount(0);
+    await expect(panel.getByRole("alert")).toContainText("The page context changed after this URL preview. No URL was sent");
+    expect(confirmationRequests).toHaveLength(confirmationsBeforeStaleRoute);
+    expect(externalRequests).toEqual([]);
+  } finally {
+    if (researchContextRequestSeen) {
+      browserDiagnostics.expectHttpFailures({ method: "GET", path: "/api/v1/assistant/context", status: 503 });
+    }
+    releaseResearchContextResponse?.();
+    if (researchContextRequestSeen) {
+      await expect.poll(() => researchContextResponseSettled, { timeout: 5000 }).toBe(true);
+      await researchContextHandlerPromise;
+      expect(researchContextResponseError).toBeNull();
+    }
+  }
   await expect(staleRouteContext.card).toHaveCount(0);
-  await expect(panel.getByRole("alert")).toContainText("The page context changed after this URL preview. No URL was sent");
-  expect(confirmationRequests).toHaveLength(1);
+  expect(confirmationRequests).toHaveLength(confirmationsBeforeStaleRoute);
+  expect(externalRequests).toEqual([]);
   const staleRouteTurn = new URL(staleRouteContext.eventPath, origin).pathname.match(/\/conversations\/([^/]+)\/turns\/([^/]+)\/events$/);
   expect(staleRouteTurn).not.toBeNull();
   const staleRouteActivity = await page.evaluate(async (conversationId) => {
@@ -2145,20 +2459,18 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
       .map((item) => item.data?.name).filter((name) => typeof name === "string");
   }, staleRouteTurn[1]);
   expect(staleRouteActivity.some((name) => /web.?fetch/i.test(name))).toBe(false);
-  browserDiagnostics.expectRequestAborts({ method: "GET", path: staleRouteContext.eventPath, count: 1 });
-  await panel.getByRole("button", { name: "Stop response" }).click();
-  await expectAssistantLiveStatus(panel, "Response cancelled. Saved conversation history remains available.");
+  await cancelAssistantWebFetchTurn(page, panel, testInfo, origin, staleRouteContext.eventPath, browserDiagnostics);
 
   await changeRoute("/overview");
   await expect(panel.getByRole("region", { name: "Workspace context" })).toContainText("Overview");
-  const decline = await requestPreview(
-    "fixture webfetch stale decline",
-    "Synthetic web page request was declined; no external request was made.",
-    "webfetch-stale-decline-preview",
-    "Decline request",
-  );
   await changeRoute("/research");
   await expect(panel.getByRole("region", { name: "Workspace context" })).toContainText("Research");
+  const decline = await requestPreview(
+    "fixture webfetch decline",
+    "Synthetic web page request was declined; no external request was made.",
+    "webfetch-current-context-decline-preview",
+    "Decline request",
+  );
   await decline.card.getByRole("button", { name: "Decline request" }).click();
   await expect(panel.getByText(decline.expectedAnswer, { exact: true })).toBeVisible();
   await expectAssistantLiveStatus(panel, "Assistant response complete.");
@@ -2174,9 +2486,7 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
     "webfetch-cancel-preview",
     "Approve exact URL once",
   );
-  browserDiagnostics.expectRequestAborts({ method: "GET", path: cancellation.eventPath, count: 1 });
-  await panel.getByRole("button", { name: "Stop response" }).click();
-  await expectAssistantLiveStatus(panel, "Response cancelled. Saved conversation history remains available.");
+  await cancelAssistantWebFetchTurn(page, panel, testInfo, origin, cancellation.eventPath, browserDiagnostics);
   await panel.getByRole("textbox", { name: "Ask about this page" }).fill("Can I ask after cancelling the preview?");
   await expect(panel.getByRole("button", { name: "Send question" })).toBeEnabled();
   await panel.getByRole("textbox", { name: "Ask about this page" }).fill("");
@@ -3575,7 +3885,7 @@ test("assistant keeps focus through send and cancel, and ignores stale focus han
   await expect(panel.getByRole("button", { name: "Stop response" })).toBeFocused();
 
   await panel.getByRole("button", { name: "Stop response" }).press("Enter");
-  await expectAssistantLiveStatus(panel, "Response cancelled. Saved conversation history remains available.");
+  await expectAssistantCancellationStatus(page, panel, testInfo);
   await expect(composer).toBeFocused();
   await expect(panel.getByRole("button", { name: "Stop response" })).toHaveCount(0);
 
@@ -3589,7 +3899,7 @@ test("assistant keeps focus through send and cancel, and ignores stale focus han
     await expect(panel).toHaveAttribute("aria-modal", "true");
     await expect(panel.getByRole("button", { name: "Stop response" })).toBeFocused();
     await panel.getByRole("button", { name: "Stop response" }).press("Enter");
-    await expectAssistantLiveStatus(panel, "Response cancelled. Saved conversation history remains available.");
+    await expectAssistantCancellationStatus(page, panel, testInfo);
     await expect(composer).toBeFocused();
     return;
   }

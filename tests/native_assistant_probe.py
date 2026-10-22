@@ -4153,13 +4153,17 @@ def run_native_live_zen_probe() -> int:
 
         original_verify = runtime._verify_location
 
-        async def traced_verify_location(context, directory, descriptor=None):
+        async def traced_verify_location(
+            context, directory, descriptor=None, *, turn_deadline=None
+        ):
             trace["location_verify_started"] = True
             trace["location_verify_directory_matches"] = directory == str(
                 location_root / context.execution_id
             )
             try:
-                result = await original_verify(context, directory, descriptor)
+                result = await original_verify(
+                    context, directory, descriptor, turn_deadline=turn_deadline
+                )
             except Exception as exc:
                 trace["location_verify_error_type"] = type(exc).__name__
                 raise
@@ -5308,7 +5312,10 @@ def _attached_reviewed_model_row(rows: object, reviewed_model_id: str) -> Mappin
 def run_attached_existing_app_probe() -> int:
     """Drive two isolated synthetic owners through an already supervised candidate app."""
 
-    from stock_probs.auth import CSRF_COOKIE_NAME, SESSION_COOKIE_NAME
+    # Public HTTP wire names; a contract test binds them to application auth constants.
+    # Keep the attached driver independent of the app's auth/import dependency graph.
+    SESSION_COOKIE_NAME = "signal_ledger_session"
+    CSRF_COOKIE_NAME = "signal_ledger_csrf"
 
     started_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     raw = sys.stdin.buffer.readline(_ATTACH_MAX_STDIN_BYTES + 1)
@@ -5452,15 +5459,44 @@ def run_attached_existing_app_probe() -> int:
             }
             if csrf:
                 headers["x-csrf-token"] = user["csrf_cookie"]
-            request_options = {} if timeout is None else {"timeout": timeout}
-            try:
-                response = clients[owner_index].request(
-                    method, path, json=body, headers=headers, **request_options
-                )
-            except httpx.HTTPError as exc:
-                raise _AttachedProbeFailure(f"transport_{type(exc).__name__.casefold()}") from None
-            parsed = _attached_json(response)
-            return response, parsed
+            poll_read = (
+                failure_stage == "turn_poll_and_search_confirmation"
+                and method == "GET"
+                and body is None
+                and not csrf
+                and timeout is None
+                and owner_index < len(conversations)
+                and path == f"/api/v1/assistant/conversations/{conversations[owner_index]}"
+            )
+            read_retries = 0
+            while True:
+                request_options = {} if timeout is None else {"timeout": timeout}
+                if poll_read:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise _AttachedProbeFailure("transport_readtimeout")
+                    request_options["timeout"] = httpx.Timeout(
+                        min(8.0, remaining), connect=min(2.0, remaining)
+                    )
+                try:
+                    response = clients[owner_index].request(
+                        method, path, json=body, headers=headers, **request_options
+                    )
+                except httpx.ReadTimeout:
+                    # An observation may recover within the original window. Never replay
+                    # writes, retry authorization/protocol errors, or reset that deadline.
+                    remaining = deadline - time.monotonic() if poll_read else 0.0
+                    if not poll_read or read_retries >= 2 or remaining <= 0:
+                        raise _AttachedProbeFailure("transport_readtimeout") from None
+                    read_retries += 1
+                    time.sleep(min(0.1, remaining))
+                    continue
+                except httpx.HTTPError as exc:
+                    raise _AttachedProbeFailure(
+                        f"transport_{type(exc).__name__.casefold()}"
+                    ) from None
+                parsed = _attached_json(response)
+                return response, parsed
 
         attached_request = request
 

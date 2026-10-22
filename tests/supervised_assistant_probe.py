@@ -77,7 +77,15 @@ _NATIVE_PROVIDER_403_CONTENT_TYPE_CLASSES = frozenset(
 )
 _NATIVE_PROVIDER_403_CF_MITIGATED_CLASSES = frozenset({"challenge", "absent", "other"})
 _NATIVE_PROVIDER_403_ERROR_TYPE_CLASSES = frozenset(
-    {"region_error", "data_policy_error", "free_usage_limit_error", "other", "malformed", "unknown"}
+    {
+        "region_error",
+        "data_policy_error",
+        "free_usage_limit_error",
+        "free_tier_access_error",
+        "other",
+        "malformed",
+        "unknown",
+    }
 )
 _NATIVE_PROVIDER_RESPONSE_FAILURE_PHASES = frozenset(
     {
@@ -4317,6 +4325,12 @@ def _run_native_driver(
                     "app_write_denied": True,
                     "worker_read_only": True,
                 }
+                # Resuming can complete the turn and revoke the lease checked by DAC.
+                try:
+                    dac_boundary = _probe_private_boundaries(candidate, users, config_path)
+                except ProbeError:
+                    stop_child()
+                    raise
                 try:
                     child.stdin.write(b'{"continue":true}\n')
                     child.stdin.flush()
@@ -4324,11 +4338,6 @@ def _run_native_driver(
                 except OSError as exc:
                     child.terminate()
                     raise ProbeError("native active-search acknowledgement pipe failed") from exc
-                try:
-                    dac_boundary = _probe_private_boundaries(candidate, users, config_path)
-                except ProbeError:
-                    stop_child()
-                    raise
             elif phase == "final":
                 if value.get("attached_candidate_acceptance") is False:
                     expected_line_count = 1 if checkpoint_scan is None else 2

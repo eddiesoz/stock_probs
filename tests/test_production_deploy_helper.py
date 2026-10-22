@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import errno
 import hashlib
 import importlib.util
@@ -28,6 +29,7 @@ from typing import Any
 import pytest
 
 import stock_probs.cli as cli
+from scripts import pr_rehearsal_host_helper as rehearsal_host_helper
 from stock_probs.config import Settings
 from stock_probs.repository import SCHEMA_VERSION, Repository
 
@@ -59,6 +61,7 @@ def _release_archive_with_layer_files(archive_path: Path, files: dict[str, bytes
     with tarfile.open(archive_path, mode="w:gz") as archive:
         for name, contents in (
             ("manifest.json", manifest),
+            ("config.json", b"{}"),
             ("layer/layer.tar", layer_contents),
         ):
             member = tarfile.TarInfo(name)
@@ -201,6 +204,376 @@ def _helper():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+_OMIT_CONTAINERD_IMAGE_NAME = object()
+
+
+def _temporary_recovery_oci_archive(
+    path: Path,
+    tag: str,
+    *,
+    config_bytes: bytes | None = None,
+    stored_config_bytes: bytes | None = None,
+    config_descriptor_digest: str | None = None,
+    ref_name: str | None = None,
+    containerd_image_name: object = _OMIT_CONTAINERD_IMAGE_NAME,
+    extra_annotations: dict[str, object] | None = None,
+    layer_payloads: tuple[bytes, ...] = (b"opaque layer bytes",),
+    docker_layer_count: int | None = None,
+    root_tags: list[str] | None = None,
+) -> tuple[bytes, str, str]:
+    """Build a bounded OCI save with distinct image-manifest and config digests."""
+    config = config_bytes if config_bytes is not None else b'{"architecture":"amd64","os":"linux"}'
+    stored_config = stored_config_bytes if stored_config_bytes is not None else config
+    config_hash = hashlib.sha256(config).hexdigest()
+    config_path = f"blobs/sha256/{config_hash}"
+    layer_descriptors: list[dict[str, object]] = []
+    layer_paths: list[str] = []
+    for payload in layer_payloads:
+        layer_hash = hashlib.sha256(payload).hexdigest()
+        layer_descriptors.append(
+            {
+                "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                "digest": f"sha256:{layer_hash}",
+                "size": len(payload),
+            }
+        )
+        layer_paths.append(f"blobs/sha256/{layer_hash}")
+    image_manifest = json.dumps(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "config": {
+                "mediaType": "application/vnd.oci.image.config.v1+json",
+                "digest": (
+                    config_descriptor_digest
+                    if config_descriptor_digest is not None
+                    else f"sha256:{config_hash}"
+                ),
+                "size": len(config),
+            },
+            "layers": layer_descriptors,
+        },
+        separators=(",", ":"),
+    ).encode()
+    image_manifest_digest = hashlib.sha256(image_manifest).hexdigest()
+    image_manifest_path = f"blobs/sha256/{image_manifest_digest}"
+    tag_name = tag.rsplit(":", 1)[1]
+    annotations: dict[str, object] = {
+        "org.opencontainers.image.created": "2025-09-15T00:00:00Z",
+        "org.opencontainers.image.ref.name": (ref_name if ref_name is not None else tag_name),
+    }
+    if containerd_image_name is not _OMIT_CONTAINERD_IMAGE_NAME:
+        annotations["io.containerd.image.name"] = containerd_image_name
+    if extra_annotations is not None:
+        annotations.update(extra_annotations)
+    descriptor = {
+        "digest": f"sha256:{image_manifest_digest}",
+        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "size": len(image_manifest),
+        "annotations": annotations,
+        "platform": {"os": "linux", "architecture": "amd64"},
+    }
+    index = {
+        "schemaVersion": 2,
+        "mediaType": "application/vnd.oci.image.index.v1+json",
+        "manifests": [descriptor],
+    }
+    selected_docker_layers = layer_paths[:docker_layer_count]
+    docker_manifest = [
+        {
+            "Config": config_path,
+            "RepoTags": root_tags if root_tags is not None else [tag],
+            "Layers": selected_docker_layers,
+        }
+    ]
+    members: dict[str, bytes | None] = {
+        "blobs/": None,
+        "blobs/sha256/": None,
+        image_manifest_path: image_manifest,
+        config_path: stored_config,
+        **dict(zip(layer_paths, layer_payloads, strict=True)),
+        "index.json": json.dumps(index, separators=(",", ":")).encode(),
+        "oci-layout": b'{"imageLayoutVersion":"1.0.0"}',
+        "manifest.json": json.dumps(docker_manifest, separators=(",", ":")).encode(),
+    }
+    with tarfile.open(path, mode="w:gz") as archive:
+        for name, contents in members.items():
+            member = tarfile.TarInfo(name)
+            if contents is None:
+                member.type = tarfile.DIRTYPE
+                archive.addfile(member)
+            else:
+                member.size = len(contents)
+                archive.addfile(member, io.BytesIO(contents))
+    return path.read_bytes(), f"sha256:{image_manifest_digest}", config_hash
+
+
+def _temporary_recovery_legacy_archive(path: Path, tag: str, image_id: str) -> bytes:
+    """Build a minimal legacy Docker save to cover the unchanged archive branch."""
+    _repository, tag_name = tag.rsplit(":", 1)
+    layer_id = "b" * 64
+    members: dict[str, bytes | None] = {
+        "manifest.json": json.dumps(
+            [
+                {
+                    "Config": f"{image_id.removeprefix('sha256:')}.json",
+                    "RepoTags": [tag],
+                    "Layers": [f"{layer_id}/layer.tar"],
+                }
+            ],
+            separators=(",", ":"),
+        ).encode(),
+        "repositories": json.dumps(
+            {_repository: {tag_name: layer_id}}, separators=(",", ":")
+        ).encode(),
+        f"{image_id.removeprefix('sha256:')}.json": b"{}",
+        layer_id: None,
+        f"{layer_id}/VERSION": b"1.0\n",
+        f"{layer_id}/json": b"{}",
+        f"{layer_id}/layer.tar": b"",
+    }
+    with tarfile.open(path, mode="w:gz") as archive:
+        for name, contents in members.items():
+            member = tarfile.TarInfo(name)
+            if contents is None:
+                member.type = tarfile.DIRTYPE
+                archive.addfile(member)
+            else:
+                member.size = len(contents)
+                archive.addfile(member, io.BytesIO(contents))
+    return path.read_bytes()
+
+
+def _mark_archive_owner_root_for_parser_unit_test(
+    monkeypatch: pytest.MonkeyPatch, helper: Any
+) -> None:
+    """Mock root ownership only to exercise archive parsing, not host admission."""
+    real_fstat = os.fstat
+
+    def parser_fstat(descriptor: int) -> SimpleNamespace:
+        result = real_fstat(descriptor)
+        return SimpleNamespace(
+            st_mode=result.st_mode,
+            st_uid=0,
+            st_nlink=result.st_nlink,
+            st_size=result.st_size,
+            st_dev=result.st_dev,
+            st_ino=result.st_ino,
+            st_mtime_ns=result.st_mtime_ns,
+            st_ctime_ns=result.st_ctime_ns,
+        )
+
+    monkeypatch.setattr(helper.os, "fstat", parser_fstat)
+
+
+def test_temporary_oci_parser_binds_manifest_and_config_in_one_bounded_rescan(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Exercise OCI parsing; mocked root admission is not host-file acceptance evidence."""
+    helper = _helper()
+    archive_path = tmp_path / "temporary-oci-image.tar.gz"
+    tag = f"signal-ledger:temporary-recovery-build-{helper.TEMPORARY_RECOVERY_SOURCE_REVISION[:12]}"
+    config = b'{"architecture":"amd64","os":"linux","fixture":"' + b"x" * 70_000 + b'"}'
+    raw, image_id, config_hash = _temporary_recovery_oci_archive(
+        archive_path, tag, config_bytes=config
+    )
+    assert image_id != f"sha256:{config_hash}"
+    archive_path.chmod(0o600)
+    monkeypatch.setattr(helper, "TEMPORARY_RECOVERY_ARCHIVE", archive_path)
+    _mark_archive_owner_root_for_parser_unit_test(monkeypatch, helper)
+    manifest = {
+        "image": {
+            "archive_sha256": hashlib.sha256(raw).hexdigest(),
+            "archive_size": len(raw),
+            "image_id": image_id,
+            "repo_tag": tag,
+        }
+    }
+    real_lseek = helper.os.lseek
+    scans = 0
+
+    def count_archive_scans(descriptor: int, offset: int, whence: int) -> int:
+        nonlocal scans
+        result = real_lseek(descriptor, offset, whence)
+        if offset == 0 and whence == os.SEEK_SET:
+            scans += 1
+        return result
+
+    monkeypatch.setattr(helper.os, "lseek", count_archive_scans)
+    helper._assert_temporary_recovery_archive(manifest)
+
+    assert scans == 2
+
+
+@pytest.mark.parametrize("canonical_containerd_name", [False, True])
+def test_temporary_oci_parser_accepts_only_exact_containerd_exporter_names(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    canonical_containerd_name: bool,
+) -> None:
+    """Accept the exact receipt tag or Docker's canonical library name for that tag."""
+    helper = _helper()
+    archive_path = tmp_path / "temporary-oci-containerd-name.tar.gz"
+    tag = f"signal-ledger:temporary-recovery-build-{helper.TEMPORARY_RECOVERY_SOURCE_REVISION[:12]}"
+    expected_name = f"docker.io/library/{tag}" if canonical_containerd_name else tag
+    raw, image_id, _config_hash = _temporary_recovery_oci_archive(
+        archive_path, tag, containerd_image_name=expected_name
+    )
+    archive_path.chmod(0o600)
+    monkeypatch.setattr(helper, "TEMPORARY_RECOVERY_ARCHIVE", archive_path)
+    _mark_archive_owner_root_for_parser_unit_test(monkeypatch, helper)
+
+    helper._assert_temporary_recovery_archive(
+        {
+            "image": {
+                "archive_sha256": hashlib.sha256(raw).hexdigest(),
+                "archive_size": len(raw),
+                "image_id": image_id,
+                "repo_tag": tag,
+            }
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "invalid_case",
+    [
+        "wrong_registry",
+        "wrong_library",
+        "wrong_repository",
+        "wrong_tag",
+        "extra_path_component",
+        "extra_tag_component",
+        "non_string",
+        "unknown_annotation",
+    ],
+)
+def test_temporary_oci_parser_rejects_containerd_annotation_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    invalid_case: str,
+) -> None:
+    """Reject registry, repository, tag, type, and annotation-key drift."""
+    helper = _helper()
+    archive_path = tmp_path / f"temporary-oci-containerd-{invalid_case}.tar.gz"
+    tag = f"signal-ledger:temporary-recovery-build-{helper.TEMPORARY_RECOVERY_SOURCE_REVISION[:12]}"
+    suffix = tag.rsplit(":", 1)[1]
+    expected_containerd_name: object = f"docker.io/library/{tag}"
+    extra_annotations = None
+    if invalid_case == "wrong_registry":
+        expected_containerd_name = f"registry.example/library/{tag}"
+    elif invalid_case == "wrong_library":
+        expected_containerd_name = f"docker.io/other/{tag}"
+    elif invalid_case == "wrong_repository":
+        expected_containerd_name = f"docker.io/library/other:{suffix}"
+    elif invalid_case == "wrong_tag":
+        expected_containerd_name = "docker.io/library/signal-ledger:unapproved"
+    elif invalid_case == "extra_path_component":
+        expected_containerd_name = f"docker.io/library/extra/{tag}"
+    elif invalid_case == "extra_tag_component":
+        expected_containerd_name = f"docker.io/library/{tag}/extra"
+    elif invalid_case == "non_string":
+        expected_containerd_name = None
+    elif invalid_case == "unknown_annotation":
+        extra_annotations = {"org.example.unapproved": "x"}
+    raw, image_id, _config_hash = _temporary_recovery_oci_archive(
+        archive_path,
+        tag,
+        containerd_image_name=expected_containerd_name,
+        extra_annotations=extra_annotations,
+    )
+    archive_path.chmod(0o600)
+    monkeypatch.setattr(helper, "TEMPORARY_RECOVERY_ARCHIVE", archive_path)
+    _mark_archive_owner_root_for_parser_unit_test(monkeypatch, helper)
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_archive_invalid"):
+        helper._assert_temporary_recovery_archive(
+            {
+                "image": {
+                    "archive_sha256": hashlib.sha256(raw).hexdigest(),
+                    "archive_size": len(raw),
+                    "image_id": image_id,
+                    "repo_tag": tag,
+                }
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "invalid_case",
+    [
+        "index_image_id",
+        "config_descriptor_digest",
+        "config_bytes",
+        "index_tag",
+        "root_tag",
+        "extra_layer",
+    ],
+)
+def test_temporary_oci_parser_rejects_image_config_and_tag_drift(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, invalid_case: str
+) -> None:
+    """Reject OCI identity drift while exercising only the bounded parser path."""
+    helper = _helper()
+    archive_path = tmp_path / f"temporary-oci-{invalid_case}.tar.gz"
+    tag = f"signal-ledger:temporary-recovery-build-{helper.TEMPORARY_RECOVERY_SOURCE_REVISION[:12]}"
+    options: dict[str, object] = {}
+    expected_image_id: str | None = None
+    if invalid_case == "config_descriptor_digest":
+        options["config_descriptor_digest"] = "sha256:" + "f" * 64
+    elif invalid_case == "config_bytes":
+        options["stored_config_bytes"] = b'{"architecture":"arm64","os":"linux"}'
+    elif invalid_case == "index_tag":
+        options["ref_name"] = "signal-ledger:unapproved"
+    elif invalid_case == "root_tag":
+        options["root_tags"] = [tag.rsplit(":", 1)[1]]
+    elif invalid_case == "extra_layer":
+        options["layer_payloads"] = (b"first layer", b"unbound second layer")
+        options["docker_layer_count"] = 1
+    raw, image_id, _config_hash = _temporary_recovery_oci_archive(archive_path, tag, **options)
+    if invalid_case == "index_image_id":
+        expected_image_id = "sha256:" + "e" * 64
+    archive_path.chmod(0o600)
+    monkeypatch.setattr(helper, "TEMPORARY_RECOVERY_ARCHIVE", archive_path)
+    _mark_archive_owner_root_for_parser_unit_test(monkeypatch, helper)
+    manifest = {
+        "image": {
+            "archive_sha256": hashlib.sha256(raw).hexdigest(),
+            "archive_size": len(raw),
+            "image_id": expected_image_id or image_id,
+            "repo_tag": tag,
+        }
+    }
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_archive_invalid"):
+        helper._assert_temporary_recovery_archive(manifest)
+
+
+def test_temporary_legacy_docker_archive_remains_accepted_by_bounded_parser(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Keep the legacy Docker save path covered; mocked root admission is parser-only."""
+    helper = _helper()
+    archive_path = tmp_path / "temporary-legacy-image.tar.gz"
+    image_id = "sha256:" + "a" * 64
+    tag = f"signal-ledger:temporary-recovery-build-{helper.TEMPORARY_RECOVERY_SOURCE_REVISION[:12]}"
+    raw = _temporary_recovery_legacy_archive(archive_path, tag, image_id)
+    archive_path.chmod(0o600)
+    monkeypatch.setattr(helper, "TEMPORARY_RECOVERY_ARCHIVE", archive_path)
+    _mark_archive_owner_root_for_parser_unit_test(monkeypatch, helper)
+    manifest = {
+        "image": {
+            "archive_sha256": hashlib.sha256(raw).hexdigest(),
+            "archive_size": len(raw),
+            "image_id": image_id,
+            "repo_tag": tag,
+        }
+    }
+
+    helper._assert_temporary_recovery_archive(manifest)
 
 
 @pytest.mark.parametrize(
@@ -382,6 +755,22 @@ def test_release_pair_request_shape_is_fixed_and_pair_hash_is_required_for_schem
                         "image_id": image_id,
                         "pair_manifest_sha256": pair_sha256,
                         "recovery_image_id": "sha256:" + "e" * 64,
+                    },
+                }
+            ).encode()
+        )
+
+    with pytest.raises(helper.HostError, match="payload_invalid"):
+        helper._parse_request(
+            json.dumps(
+                {
+                    "operation": "plan_deploy",
+                    "payload": {
+                        "revision": helper.HOTFIX_CANDIDATE_REVISION,
+                        "archive_sha256": archive_sha256,
+                        "image_id": helper.HOTFIX_CANDIDATE_IMAGE_ID,
+                        "pair_manifest_sha256": pair_sha256,
+                        "helper_source_revision": "a" * 40,
                     },
                 }
             ).encode()
@@ -602,7 +991,7 @@ def test_assistant_rollout_is_bound_to_current_schema13_release_and_ordered(
         "archive_sha256": archive_sha256,
         "image_id": image_id,
         "platform": "linux/amd64",
-        "archive_size": 1234,
+        "archive_size": helper.HOTFIX_RECOVERY_ARCHIVE_SIZE,
         "schema_version": 13,
         "compose_digest": "d" * 64,
         "assistant_rollout_mode": "disabled",
@@ -925,6 +1314,637 @@ def test_disable_rollout_stops_app_when_kill_switch_cannot_be_verified(
     assert failed["containment_status"] == "app_stopped"
 
 
+def test_original_5ad_disable_recreates_fixed_image_without_in_place_kill(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    revision = helper.PRODUCTION_PREDECESSOR_REVISION
+    archive_sha256 = helper.HOTFIX_RECOVERY_ARCHIVE_SHA256
+    image_id = helper.PRODUCTION_PREDECESSOR_IMAGE_ID
+    snapshot = tmp_path / "compose.yaml"
+    current = {
+        "revision": revision,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "release_role": "candidate",
+        "image_ref": helper._local_image_ref(revision),
+        "image_digest": archive_sha256,
+        "archive_sha256": archive_sha256,
+        "image_id": image_id,
+        "platform": "linux/amd64",
+        "archive_size": helper.HOTFIX_RECOVERY_ARCHIVE_SIZE,
+        "schema_version": 13,
+        "compose_digest": helper.PRODUCTION_PREDECESSOR_COMPOSE_SHA256,
+        "assistant_rollout_mode": "invited",
+    }
+    state = dict(current)
+    runtime_box = {"value": helper._runtime_file_bytes(current["image_ref"], "invited")}
+    compose_calls: list[dict[str, object]] = []
+    killed: list[str] = []
+    identities = iter(
+        [
+            ("1" * 64, "signal-ledger_signal-ledger-data"),
+            ("2" * 64, "signal-ledger_signal-ledger-data"),
+        ]
+    )
+
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(
+        helper, "_read_json", lambda path: state if path == helper.CURRENT_RECORD else None
+    )
+    monkeypatch.setattr(
+        helper,
+        "_write_json",
+        lambda path, value: state.update(value) if path == helper.CURRENT_RECORD else None,
+    )
+    monkeypatch.setattr(helper, "_image_schema", lambda _image: 13)
+    monkeypatch.setattr(helper, "_assert_loaded_image", lambda _record: None)
+    monkeypatch.setattr(helper, "_assert_record_compose_digest", lambda _record: snapshot)
+    monkeypatch.setattr(helper, "_compose_digest", lambda: current["compose_digest"])
+    monkeypatch.setattr(helper, "_read_installed_maintenance_helper", lambda: "a" * 40)
+    monkeypatch.setattr(helper, "_read_runtime_file", lambda: runtime_box["value"])
+    monkeypatch.setattr(
+        helper,
+        "_runtime_file",
+        lambda _image, mode: runtime_box.__setitem__(
+            "value", helper._runtime_file_bytes(current["image_ref"], mode)
+        ),
+    )
+    monkeypatch.setattr(helper, "_maintenance_app_identity", lambda _snapshot: next(identities))
+    monkeypatch.setattr(
+        helper,
+        "_live_app_identity",
+        lambda _snapshot: {
+            "revision": revision,
+            "image_id": image_id,
+            "container_status": "running",
+            "loopback_verified": True,
+            "data_volume": "signal-ledger_signal-ledger-data",
+            "data_volume_mount_valid": True,
+        },
+    )
+    monkeypatch.setattr(
+        helper,
+        "_health_check",
+        lambda *, assistant_rollout_mode=None: {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {
+                "enabled": assistant_rollout_mode != "disabled",
+                "status": "disabled" if assistant_rollout_mode == "disabled" else "ready",
+            },
+        },
+    )
+    original_compose_up = helper._compose_up
+    monkeypatch.setattr(
+        helper,
+        "_compose_up",
+        lambda record, **kwargs: compose_calls.append({"record": record, **kwargs}) or "",
+    )
+    monkeypatch.setattr(helper, "_request_in_place_assistant_kill", killed.append)
+    monkeypatch.setattr(helper, "_audit", lambda *_args, **_kwargs: None)
+
+    result = helper._set_assistant_rollout(
+        "disabled",
+        revision=revision,
+        archive_sha256=archive_sha256,
+        image_id=image_id,
+    )
+
+    assert result["maintenance_verified"] is True
+    assert result["assistant_rollout_mode"] == "disabled"
+    assert result["production_data_volume_preserved"] is True
+    assert state["assistant_rollout_mode"] == "disabled"
+    assert runtime_box["value"] == helper._runtime_file_bytes(current["image_ref"], "disabled")
+    assert len(compose_calls) == 1
+    assert compose_calls[0]["force_recreate"] is True
+    assert compose_calls[0]["compose_file"] == snapshot
+    assert killed == []
+
+    up_calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(helper, "_compose", lambda *args, **_kwargs: up_calls.append(args) or "")
+    original_compose_up(current, compose_file=snapshot, force_recreate=True)
+    assert up_calls == [
+        ("up", "--detach", "--no-build", "--force-recreate", "--pull", "never", "app")
+    ]
+
+
+def test_original_5ad_disable_failure_restores_captured_mode_and_reports_verification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    revision = helper.PRODUCTION_PREDECESSOR_REVISION
+    archive_sha256 = helper.HOTFIX_RECOVERY_ARCHIVE_SHA256
+    image_id = helper.PRODUCTION_PREDECESSOR_IMAGE_ID
+    snapshot = tmp_path / "compose.yaml"
+    current = {
+        "revision": revision,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "release_role": "candidate",
+        "image_ref": helper._local_image_ref(revision),
+        "image_digest": archive_sha256,
+        "archive_sha256": archive_sha256,
+        "image_id": image_id,
+        "platform": "linux/amd64",
+        "archive_size": helper.HOTFIX_RECOVERY_ARCHIVE_SIZE,
+        "schema_version": 13,
+        "compose_digest": helper.PRODUCTION_PREDECESSOR_COMPOSE_SHA256,
+        "assistant_rollout_mode": "invited",
+    }
+    state = dict(current)
+    runtime_box = {"value": helper._runtime_file_bytes(current["image_ref"], "invited")}
+    failures: list[dict[str, object]] = []
+    compose_count = [0]
+    identities = iter(
+        [
+            ("1" * 64, "signal-ledger_signal-ledger-data"),
+            ("2" * 64, "signal-ledger_signal-ledger-data"),
+            ("2" * 64, "signal-ledger_signal-ledger-data"),
+        ]
+    )
+
+    def write_json(path: Path, value: dict[str, object]) -> None:
+        if path == helper.CURRENT_RECORD:
+            state.clear()
+            state.update(value)
+        elif path == helper.FAILED_RECORD:
+            failures.append(dict(value))
+
+    def compose_up(*_args: object, **_kwargs: object) -> str:
+        compose_count[0] += 1
+        if compose_count[0] == 1:
+            raise helper.HostError("maintenance_start_failed")
+        return ""
+
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(
+        helper, "_read_json", lambda path: dict(state) if path == helper.CURRENT_RECORD else None
+    )
+    monkeypatch.setattr(helper, "_write_json", write_json)
+    monkeypatch.setattr(helper, "_image_schema", lambda _image: 13)
+    monkeypatch.setattr(helper, "_assert_loaded_image", lambda _record: None)
+    monkeypatch.setattr(helper, "_assert_record_compose_digest", lambda _record: snapshot)
+    monkeypatch.setattr(helper, "_compose_digest", lambda: current["compose_digest"])
+    monkeypatch.setattr(helper, "_read_installed_maintenance_helper", lambda: "a" * 40)
+    monkeypatch.setattr(helper, "_read_runtime_file", lambda: runtime_box["value"])
+    monkeypatch.setattr(
+        helper,
+        "_runtime_file",
+        lambda _image, mode: runtime_box.__setitem__(
+            "value", helper._runtime_file_bytes(current["image_ref"], mode)
+        ),
+    )
+    monkeypatch.setattr(
+        helper,
+        "_restore_runtime_file",
+        lambda content: runtime_box.__setitem__("value", content),
+    )
+    monkeypatch.setattr(helper, "_maintenance_app_identity", lambda _snapshot: next(identities))
+    monkeypatch.setattr(
+        helper,
+        "_live_app_identity",
+        lambda _snapshot: {
+            "revision": revision,
+            "image_id": image_id,
+            "container_status": "running",
+            "loopback_verified": True,
+            "data_volume": "signal-ledger_signal-ledger-data",
+            "data_volume_mount_valid": True,
+        },
+    )
+
+    def health_check(*, assistant_rollout_mode=None):
+        mode = assistant_rollout_mode or state.get("assistant_rollout_mode")
+        return {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {
+                "enabled": mode != "disabled",
+                "status": "disabled" if mode == "disabled" else "ready",
+            },
+        }
+
+    monkeypatch.setattr(helper, "_health_check", health_check)
+    monkeypatch.setattr(helper, "_compose_up", compose_up)
+    monkeypatch.setattr(helper, "_audit", lambda *_args, **_kwargs: None)
+
+    with pytest.raises(helper.HostError, match="maintenance_start_failed"):
+        helper._set_assistant_rollout(
+            "disabled",
+            revision=revision,
+            archive_sha256=archive_sha256,
+            image_id=image_id,
+        )
+
+    assert state["assistant_rollout_mode"] == "invited"
+    assert runtime_box["value"] == helper._runtime_file_bytes(current["image_ref"], "invited")
+    assert failures[0]["compensation_status"] == "verified_original_state_restored"
+    assert failures[0]["observed_state"]["current_rollout_mode"] == "invited"
+    assert failures[0]["observed_state"]["runtime_rollout_mode"] == "invited"
+    assert failures[0]["observed_state"]["state_verified"] is True
+
+
+@pytest.mark.parametrize("compensation_fault", ["compose_up", "observed_volume"])
+def test_original_5ad_failed_compensation_receipt_reports_unverified_observed_state(
+    compensation_fault: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper = _helper()
+    revision = helper.PRODUCTION_PREDECESSOR_REVISION
+    archive_sha256 = helper.HOTFIX_RECOVERY_ARCHIVE_SHA256
+    image_id = helper.PRODUCTION_PREDECESSOR_IMAGE_ID
+    snapshot = tmp_path / "compose.yaml"
+    current = {
+        "revision": revision,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "release_role": "candidate",
+        "image_ref": helper._local_image_ref(revision),
+        "image_digest": archive_sha256,
+        "archive_sha256": archive_sha256,
+        "image_id": image_id,
+        "platform": "linux/amd64",
+        "archive_size": helper.HOTFIX_RECOVERY_ARCHIVE_SIZE,
+        "schema_version": 13,
+        "compose_digest": helper.PRODUCTION_PREDECESSOR_COMPOSE_SHA256,
+        "assistant_rollout_mode": "invited",
+    }
+    state = dict(current)
+    runtime_box = {"value": helper._runtime_file_bytes(current["image_ref"], "invited")}
+    failures: list[dict[str, object]] = []
+    compose_count = 0
+    identity_count = 0
+
+    def write_json(path: Path, value: dict[str, object]) -> None:
+        if path == helper.CURRENT_RECORD:
+            state.clear()
+            state.update(value)
+        elif path == helper.FAILED_RECORD:
+            failures.append(dict(value))
+
+    def compose_up(*_args: object, **_kwargs: object) -> str:
+        nonlocal compose_count
+        compose_count += 1
+        if compose_count == 1:
+            raise helper.HostError("maintenance_start_failed")
+        if compensation_fault == "compose_up":
+            raise helper.HostError("compensation_start_failed")
+        return ""
+
+    def maintenance_identity(_snapshot: Path) -> tuple[str, str]:
+        nonlocal identity_count
+        identity_count += 1
+        volume = (
+            "unexpected-volume"
+            if compensation_fault == "observed_volume" and identity_count == 2
+            else "signal-ledger_signal-ledger-data"
+        )
+        return ("1" * 64 if identity_count == 1 else "2" * 64, volume)
+
+    if compensation_fault == "compose_up":
+        observed_live = {
+            "revision": revision,
+            "image_id": image_id,
+            "container_status": "exited",
+            "loopback_verified": False,
+            "data_volume": "signal-ledger_signal-ledger-data",
+            "data_volume_mount_valid": True,
+        }
+    else:
+        observed_live = {
+            "revision": revision,
+            "image_id": image_id,
+            "container_status": "running",
+            "loopback_verified": True,
+            "data_volume": "unexpected-volume",
+            "data_volume_mount_valid": True,
+        }
+
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(
+        helper,
+        "_read_json",
+        lambda path: dict(state) if path == helper.CURRENT_RECORD else None,
+    )
+    monkeypatch.setattr(helper, "_write_json", write_json)
+    monkeypatch.setattr(helper, "_image_schema", lambda _image: 13)
+    monkeypatch.setattr(helper, "_assert_loaded_image", lambda _record: None)
+    monkeypatch.setattr(helper, "_assert_record_compose_digest", lambda _record: snapshot)
+    monkeypatch.setattr(helper, "_compose_digest", lambda: current["compose_digest"])
+    monkeypatch.setattr(helper, "_read_installed_maintenance_helper", lambda: "a" * 40)
+    monkeypatch.setattr(helper, "_read_runtime_file", lambda: runtime_box["value"])
+    monkeypatch.setattr(
+        helper,
+        "_runtime_file",
+        lambda _image, mode: runtime_box.__setitem__(
+            "value", helper._runtime_file_bytes(current["image_ref"], mode)
+        ),
+    )
+    monkeypatch.setattr(
+        helper,
+        "_restore_runtime_file",
+        lambda content: runtime_box.__setitem__("value", content),
+    )
+    monkeypatch.setattr(helper, "_maintenance_app_identity", maintenance_identity)
+    monkeypatch.setattr(helper, "_live_app_identity", lambda _snapshot: observed_live)
+    monkeypatch.setattr(
+        helper,
+        "_health_check",
+        lambda *, assistant_rollout_mode=None: {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {
+                "enabled": assistant_rollout_mode != "disabled",
+                "status": "disabled" if assistant_rollout_mode == "disabled" else "ready",
+            },
+        },
+    )
+    monkeypatch.setattr(helper, "_compose_up", compose_up)
+    monkeypatch.setattr(helper, "_audit", lambda *_args, **_kwargs: None)
+
+    with pytest.raises(helper.HostError, match="maintenance_start_failed"):
+        helper._set_assistant_rollout(
+            "disabled",
+            revision=revision,
+            archive_sha256=archive_sha256,
+            image_id=image_id,
+        )
+
+    assert len(failures) == 1
+    failure = failures[0]
+    assert failure["status"] == "assistant_maintenance_failed"
+    assert failure["compensation_status"] == "failed"
+    assert failure["compensation_status"] != "verified_original_state_restored"
+    observed = failure["observed_state"]
+    assert observed["production_revision"] == revision
+    assert observed["production_image_id"] == image_id
+    assert observed["current_rollout_mode"] == "invited"
+    assert observed["runtime_rollout_mode"] == "invited"
+    assert observed["app_status"] == "ready"
+    assert observed["assistant_status"] == "ready"
+    assert observed["assistant_enabled"] is True
+    assert observed["state_verified"] is False
+    if compensation_fault == "compose_up":
+        assert failure["compensation_failure_code"] == "compensation_start_failed"
+        assert observed["app_container_status"] == "exited"
+        assert observed["loopback_verified"] is False
+    else:
+        assert failure["compensation_failure_code"] == "maintenance_compensation_unverified"
+        assert observed["app_container_status"] == "running"
+        assert observed["data_volume"] == "unexpected-volume"
+
+
+def _prepare_original_5ad_real_state_files(
+    helper: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> tuple[dict[str, Any], Path, Path, Path, Callable[..., int]]:
+    """Use real atomic state/runtime writers with only host-service reads stubbed."""
+
+    revision = helper.PRODUCTION_PREDECESSOR_REVISION
+    archive_sha256 = helper.HOTFIX_RECOVERY_ARCHIVE_SHA256
+    current = {
+        "revision": revision,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "release_role": "candidate",
+        "image_ref": helper._local_image_ref(revision),
+        "image_digest": archive_sha256,
+        "archive_sha256": archive_sha256,
+        "image_id": helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+        "platform": "linux/amd64",
+        "archive_size": helper.HOTFIX_RECOVERY_ARCHIVE_SIZE,
+        "schema_version": 13,
+        "compose_digest": helper.PRODUCTION_PREDECESSOR_COMPOSE_SHA256,
+        "assistant_rollout_mode": "invited",
+    }
+    current_path = tmp_path / "current.json"
+    failed_path = tmp_path / "failed.json"
+    runtime_path = tmp_path / "runtime.env"
+    monkeypatch.setattr(helper, "CURRENT_RECORD", current_path)
+    monkeypatch.setattr(helper, "FAILED_RECORD", failed_path)
+    monkeypatch.setattr(helper, "RUNTIME_ENV_FILE", runtime_path)
+    monkeypatch.setattr(helper, "AUDIT_LOG", tmp_path / "audit.jsonl")
+    monkeypatch.setattr(helper, "_safe_mode", lambda *_args: None)
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(helper, "_ensure_no_active_temporary_recovery", lambda: None)
+    monkeypatch.setattr(
+        helper,
+        "_read_json",
+        lambda path: json.loads(path.read_text(encoding="utf-8")) if path.exists() else None,
+    )
+    monkeypatch.setattr(helper, "_image_schema", lambda _image: 13)
+    monkeypatch.setattr(helper, "_assert_loaded_image", lambda _record: None)
+    monkeypatch.setattr(
+        helper, "_assert_record_compose_digest", lambda _record: tmp_path / "compose.yaml"
+    )
+    monkeypatch.setattr(helper, "_compose_digest", lambda: current["compose_digest"])
+    monkeypatch.setattr(helper, "_read_installed_maintenance_helper", lambda: "a" * 40)
+    monkeypatch.setattr(helper, "_read_runtime_file", lambda: runtime_path.read_bytes())
+    monkeypatch.setattr(
+        helper,
+        "_maintenance_app_identity",
+        lambda _snapshot: (
+            "1" * 64,
+            "signal-ledger_signal-ledger-data",
+        ),
+    )
+    monkeypatch.setattr(
+        helper,
+        "_live_app_identity",
+        lambda _snapshot: {
+            "revision": revision,
+            "image_id": helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+            "container_status": "running",
+            "loopback_verified": True,
+            "data_volume": "signal-ledger_signal-ledger-data",
+            "data_volume_mount_valid": True,
+        },
+    )
+    monkeypatch.setattr(
+        helper,
+        "_health_check",
+        lambda *, assistant_rollout_mode=None: {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {
+                "enabled": assistant_rollout_mode != "disabled",
+                "status": "disabled" if assistant_rollout_mode == "disabled" else "ready",
+            },
+        },
+    )
+    monkeypatch.setattr(helper, "_audit", lambda *_args, **_kwargs: None)
+    helper._write_json(current_path, current)
+    helper._runtime_file(current["image_ref"], "invited")
+    return current, current_path, failed_path, runtime_path, os.open
+
+
+def _inject_state_open_enospc(
+    helper: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    current_path: Path,
+    failed_path: Path,
+    original_open: Callable[..., int],
+    *,
+    current_open_number: int | None = None,
+    fail_failed_record: bool = False,
+) -> None:
+    """Fail the real atomic writer's temp-file open at selected record boundaries."""
+
+    current_opens = 0
+    failed_record_failed = False
+
+    def open_with_enospc(
+        path: str | bytes | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        **kwargs: Any,
+    ) -> int:
+        nonlocal current_opens, failed_record_failed
+        candidate = Path(path)
+        if candidate.parent == current_path.parent and candidate.name.startswith(
+            f".{current_path.name}."
+        ):
+            current_opens += 1
+            if current_open_number == current_opens:
+                raise OSError(errno.ENOSPC, "synthetic state temp-file exhaustion")
+        if (
+            fail_failed_record
+            and not failed_record_failed
+            and candidate.parent == failed_path.parent
+            and candidate.name.startswith(f".{failed_path.name}.")
+        ):
+            failed_record_failed = True
+            raise OSError(errno.ENOSPC, "synthetic failure-record exhaustion")
+        return original_open(path, flags, mode, **kwargs)
+
+    monkeypatch.setattr(helper.os, "open", open_with_enospc)
+
+
+def test_original_5ad_state_temp_open_failure_after_runtime_change_is_compensated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    current, current_path, failed_path, runtime_path, original_open = (
+        _prepare_original_5ad_real_state_files(helper, monkeypatch, tmp_path)
+    )
+    compose_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        helper,
+        "_compose_up",
+        lambda record, **kwargs: compose_calls.append(kwargs) or "",
+    )
+    _inject_state_open_enospc(
+        helper, monkeypatch, current_path, failed_path, original_open, current_open_number=1
+    )
+
+    with pytest.raises(helper.HostError) as raised:
+        helper._set_assistant_rollout(
+            "disabled",
+            revision=current["revision"],
+            archive_sha256=current["archive_sha256"],
+            image_id=current["image_id"],
+        )
+
+    assert raised.value.code == "state_write_failed"
+    assert current_path.exists()
+    assert (
+        json.loads(current_path.read_text(encoding="utf-8"))["assistant_rollout_mode"] == "invited"
+    )
+    assert helper._runtime_rollout_mode(runtime_path.read_bytes()) == "invited"
+    assert len(compose_calls) == 1
+    failure = json.loads(failed_path.read_text(encoding="utf-8"))
+    assert failure["failure_code"] == "state_write_failed"
+    assert failure["compensation_status"] == "verified_original_state_restored"
+    assert failure["observed_state"]["state_verified"] is True
+
+
+def test_original_5ad_compensation_state_open_failure_preserves_both_codes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    current, current_path, failed_path, runtime_path, original_open = (
+        _prepare_original_5ad_real_state_files(helper, monkeypatch, tmp_path)
+    )
+    compose_calls = 0
+
+    def fail_initial_start(*_args: object, **_kwargs: object) -> str:
+        nonlocal compose_calls
+        compose_calls += 1
+        if compose_calls == 1:
+            raise helper.HostError("maintenance_start_failed")
+        return ""
+
+    monkeypatch.setattr(helper, "_compose_up", fail_initial_start)
+    _inject_state_open_enospc(
+        helper, monkeypatch, current_path, failed_path, original_open, current_open_number=2
+    )
+
+    with pytest.raises(helper.HostError) as raised:
+        helper._set_assistant_rollout(
+            "disabled",
+            revision=current["revision"],
+            archive_sha256=current["archive_sha256"],
+            image_id=current["image_id"],
+        )
+
+    assert raised.value.code == "maintenance_start_failed"
+    assert compose_calls == 1
+    assert (
+        json.loads(current_path.read_text(encoding="utf-8"))["assistant_rollout_mode"] == "disabled"
+    )
+    assert helper._runtime_rollout_mode(runtime_path.read_bytes()) == "invited"
+    failure = json.loads(failed_path.read_text(encoding="utf-8"))
+    assert failure["failure_code"] == "maintenance_start_failed"
+    assert failure["compensation_failure_code"] == "state_write_failed"
+    assert failure["compensation_status"] == "failed"
+    assert failure["observed_state"]["current_rollout_mode"] == "disabled"
+    assert failure["observed_state"]["runtime_rollout_mode"] == "invited"
+    assert failure["observed_state"]["state_verified"] is False
+
+
+def test_original_5ad_unrecorded_compensation_failure_returns_uncertain_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    current, current_path, failed_path, runtime_path, original_open = (
+        _prepare_original_5ad_real_state_files(helper, monkeypatch, tmp_path)
+    )
+    monkeypatch.setattr(
+        helper,
+        "_compose_up",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            helper.HostError("maintenance_start_failed")
+        ),
+    )
+    _inject_state_open_enospc(
+        helper,
+        monkeypatch,
+        current_path,
+        failed_path,
+        original_open,
+        current_open_number=2,
+        fail_failed_record=True,
+    )
+
+    with pytest.raises(helper.HostError) as raised:
+        helper._set_assistant_rollout(
+            "disabled",
+            revision=current["revision"],
+            archive_sha256=current["archive_sha256"],
+            image_id=current["image_id"],
+        )
+
+    assert raised.value.code == "assistant_maintenance_outcome_unrecorded"
+    assert isinstance(raised.value.__cause__, helper.HostError)
+    assert raised.value.__cause__.code == "maintenance_start_failed"
+    assert (
+        json.loads(current_path.read_text(encoding="utf-8"))["assistant_rollout_mode"] == "disabled"
+    )
+    assert helper._runtime_rollout_mode(runtime_path.read_bytes()) == "invited"
+    assert not failed_path.exists()
+
+
 def test_in_place_disable_rejects_container_replacement_and_stops_app(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1008,6 +2028,19 @@ def test_release_asset_location_is_derived_from_revision() -> None:
     )
     with pytest.raises(helper.HostError, match="revision_invalid"):
         helper._release_archive_url("main")
+
+    assert helper._hotfix_pair_release_tag(revision) == f"signal-ledger-hotfix-pair-{revision}"
+    assert helper._hotfix_pair_asset_name(revision) == f"signal-ledger-pair-{revision}.json"
+    assert helper._hotfix_pair_asset_url(revision) == (
+        "https://github.com/eddiesoz/stock_probs/releases/download/"
+        f"signal-ledger-hotfix-pair-{revision}/signal-ledger-pair-{revision}.json"
+    )
+    assert helper._release_asset_url(revision, "pair") == (
+        "https://github.com/eddiesoz/stock_probs/releases/download/"
+        f"signal-ledger-{revision}/signal-ledger-pair-{revision}.json"
+    )
+    with pytest.raises(helper.HostError, match="revision_invalid"):
+        helper._hotfix_pair_asset_url("main")
 
 
 def test_release_archive_hashes_before_loading_and_records_image_identity(
@@ -1452,7 +2485,10 @@ def test_local_release_publisher_uses_revision_bound_archive_and_digest() -> Non
     assert "verify-release-archive.py" in script
     assert 'tarfile.open(path, mode="r:gz")' in verifier
     assert 'tarfile.open(fileobj=layer_stream, mode="r|*")' in verifier
-    assert "SIGNAL_LEDGER_IMAGE_PUBLISH_MODE must be release, prebuilt-release, or ghcr." in script
+    assert (
+        "SIGNAL_LEDGER_IMAGE_PUBLISH_MODE must be release, prebuilt-release, "
+        "ghcr, hotfix-candidate, or hotfix-pair." in script
+    )
 
 
 def test_local_release_publisher_allows_public_ca_bundle_but_scans_private_keys(
@@ -1945,7 +2981,11 @@ def test_rollback_rejects_actual_schema_before_starting_old_code(
     monkeypatch.setattr(helper, "RELEASE_ROOT", tmp_path)
     monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
     monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
-    monkeypatch.setattr(helper, "_read_json", lambda _: release)
+    monkeypatch.setattr(
+        helper,
+        "_read_json",
+        lambda path: None if path == helper.TEMPORARY_RECOVERY_OPERATION else release,
+    )
     monkeypatch.setattr(helper, "_assert_record_compose_digest", lambda _: tmp_path / "compose")
     monkeypatch.setattr(helper, "_database_schema", lambda _: 8)
     monkeypatch.setattr(helper, "_compose_digest", lambda: release["compose_digest"])
@@ -2031,7 +3071,11 @@ def test_rollback_rejects_compose_drift_before_schema_probe(
     monkeypatch.setattr(helper, "RELEASE_ROOT", tmp_path)
     monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
     monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
-    monkeypatch.setattr(helper, "_read_json", lambda _: release)
+    monkeypatch.setattr(
+        helper,
+        "_read_json",
+        lambda path: None if path == helper.TEMPORARY_RECOVERY_OPERATION else release,
+    )
     snapshot = helper._compose_snapshot_path(revision)
     snapshot.write_bytes(b"services: {app: {image: drifted}}\n")
     snapshot.chmod(0o600)
@@ -2077,7 +3121,11 @@ def test_rollback_rejects_loaded_image_before_schema_probe(
     monkeypatch.setattr(helper, "RELEASE_ROOT", tmp_path)
     monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
     monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
-    monkeypatch.setattr(helper, "_read_json", lambda _: release)
+    monkeypatch.setattr(
+        helper,
+        "_read_json",
+        lambda path: None if path == helper.TEMPORARY_RECOVERY_OPERATION else release,
+    )
     monkeypatch.setattr(helper, "_assert_record_compose_digest", lambda _: None)
     monkeypatch.setattr(helper, "_image_id", lambda _: "sha256:" + "3" * 64)
     monkeypatch.setattr(
@@ -2092,31 +3140,132 @@ def test_rollback_rejects_loaded_image_before_schema_probe(
     assert schema_calls == []
 
 
-def test_failed_code_only_release_rolls_back_after_schema_probe(
+@pytest.mark.parametrize(
+    ("schema_version", "rollback_health", "fail_current_record", "rollback_succeeds"),
+    [
+        (7, {"status": "ready", "schema_version": 7}, False, True),
+        (
+            13,
+            {
+                "status": "ready",
+                "schema_version": 13,
+                "assistant": {"enabled": False, "status": "disabled"},
+            },
+            False,
+            True,
+        ),
+        (
+            13,
+            {
+                "status": "ready",
+                "schema_version": 13,
+                "assistant": {"enabled": True, "status": "ready"},
+            },
+            False,
+            False,
+        ),
+        (
+            13,
+            {
+                "status": "ready",
+                "schema_version": 13,
+                "assistant": {"enabled": False, "status": "starting"},
+            },
+            False,
+            False,
+        ),
+        (
+            13,
+            {
+                "status": "ready",
+                "schema_version": 12,
+                "assistant": {"enabled": False, "status": "disabled"},
+            },
+            False,
+            False,
+        ),
+        (
+            13,
+            {
+                "status": "ready",
+                "schema_version": 13,
+                "assistant": {"enabled": False, "status": "disabled"},
+            },
+            True,
+            False,
+        ),
+    ],
+    ids=[
+        "old-schema-without-assistant-projection",
+        "schema-13-invited-to-disabled",
+        "assistant-enabled-contradiction",
+        "assistant-not-ready-contradiction",
+        "schema-mismatch",
+        "disabled-record-write-failure",
+    ],
+)
+def test_failed_code_only_release_compensation_requires_disabled_persisted_state(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    schema_version: int,
+    rollback_health: dict[str, object],
+    fail_current_record: bool,
+    rollback_succeeds: bool,
 ) -> None:
     helper = _helper()
     old_revision = "a" * 40
     new_revision = "b" * 40
     old_digest = "1" * 64
     new_digest = "2" * 64
-    old_image = helper._image_ref(old_revision, old_digest)
-    new_image = helper._image_ref(new_revision, new_digest)
-    current = {
-        "revision": old_revision,
-        "image_ref": old_image,
-        "image_digest": old_digest,
-        "schema_version": 7,
-        "compose_digest": "c" * 64,
-    }
-    target = {
-        "revision": new_revision,
-        "image_ref": new_image,
-        "image_digest": new_digest,
-        "schema_version": 7,
-        "compose_digest": "c" * 64,
-    }
+    if schema_version == 13:
+        current = _schema13_release_record(helper)
+        current.update(
+            {
+                "revision": old_revision,
+                "image_ref": helper._local_image_ref(old_revision),
+                "image_digest": old_digest,
+                "archive_sha256": old_digest,
+                "schema_version": schema_version,
+                "assistant_rollout_mode": "invited",
+                "helper_source_revision": "f" * 40,
+            }
+        )
+        current["recovery_image_id"] = "sha256:" + "7" * 64
+        current["recovery_image_ref"] = helper._local_recovery_image_ref(old_revision)
+        target = _schema13_release_record(helper)
+        target.update(
+            {
+                "revision": new_revision,
+                "image_ref": helper._local_image_ref(new_revision),
+                "image_digest": new_digest,
+                "archive_sha256": new_digest,
+                "image_id": "sha256:" + "6" * 64,
+                "schema_version": schema_version,
+            }
+        )
+        target["recovery_image_ref"] = helper._local_recovery_image_ref(new_revision)
+        old_image = current["image_ref"]
+        new_image = target["image_ref"]
+    else:
+        old_image = helper._image_ref(old_revision, old_digest)
+        new_image = helper._image_ref(new_revision, new_digest)
+        current = {
+            "revision": old_revision,
+            "image_ref": old_image,
+            "image_digest": old_digest,
+            "schema_version": schema_version,
+            "compose_digest": "c" * 64,
+            "pair_manifest_sha256": "d" * 64,
+            "recovery_image_id": "sha256:" + "e" * 64,
+            "helper_source_revision": "f" * 40,
+        }
+        target = {
+            "revision": new_revision,
+            "image_ref": new_image,
+            "image_digest": new_digest,
+            "schema_version": schema_version,
+            "compose_digest": "c" * 64,
+        }
     events: list[tuple[str, object]] = []
     health_calls = 0
     writes: list[tuple[Path, dict[str, object]]] = []
@@ -2127,19 +3276,61 @@ def test_failed_code_only_release_rolls_back_after_schema_probe(
         health_calls += 1
         if health_calls == 2:
             raise helper.HostError("readiness_failed")
-        return {"status": "ready", "schema_version": 7}
+        if health_calls == 3:
+            return rollback_health
+        return {"status": "ready", "schema_version": schema_version}
 
     monkeypatch.setattr(
         helper,
         "_read_json",
         lambda path: current if path == helper.CURRENT_RECORD else None,
     )
-    monkeypatch.setattr(
-        helper,
-        "_image_digest",
-        lambda image: old_digest if image == old_image else new_digest,
-    )
-    monkeypatch.setattr(helper, "_image_schema", lambda _: 7)
+    recovery_entrypoint_checks: list[str] = []
+    if schema_version == 13:
+        loaded_images = {
+            current["image_ref"]: current,
+            current["recovery_image_ref"]: {
+                "image_id": current["recovery_image_id"],
+                "revision": old_revision,
+                "platform": current["recovery_platform"],
+            },
+            target["image_ref"]: target,
+            target["recovery_image_ref"]: {
+                "image_id": target["recovery_image_id"],
+                "revision": new_revision,
+                "platform": target["recovery_platform"],
+            },
+        }
+        monkeypatch.setattr(
+            helper,
+            "_image_id",
+            lambda image, **kwargs: loaded_images[image]["image_id"],
+        )
+        monkeypatch.setattr(
+            helper,
+            "_image_revision",
+            lambda image, **kwargs: loaded_images[image]["revision"],
+        )
+        monkeypatch.setattr(
+            helper,
+            "_image_platform",
+            lambda image, **kwargs: loaded_images[image]["platform"],
+        )
+
+        def has_recovery_entrypoint(image: str, **kwargs: object) -> bool:
+            recovery_entrypoint_checks.append(image)
+            # The first call validates the candidate's installed image. The later forward
+            # recovery attempt is unavailable at this mocked Docker boundary.
+            return len(recovery_entrypoint_checks) == 1
+
+        monkeypatch.setattr(helper, "_image_has_recovery_entrypoint", has_recovery_entrypoint)
+    else:
+        monkeypatch.setattr(
+            helper,
+            "_image_digest",
+            lambda image: old_digest if image == old_image else new_digest,
+        )
+    monkeypatch.setattr(helper, "_image_schema", lambda _: schema_version)
     monkeypatch.setattr(helper, "_health_check", health_check)
     monkeypatch.setattr(helper, "_assert_record_compose_digest", lambda _: compose_snapshot)
     monkeypatch.setattr(
@@ -2154,7 +3345,7 @@ def test_failed_code_only_release_rolls_back_after_schema_probe(
             "trigger": "pre_deploy",
             "name": "pre-deploy-safe.spbackup",
             "sha256": "3" * 64,
-            "schema_version": 7,
+            "schema_version": schema_version,
             "verified": True,
         },
     )
@@ -2167,33 +3358,58 @@ def test_failed_code_only_release_rolls_back_after_schema_probe(
     monkeypatch.setattr(
         helper,
         "_database_schema",
-        lambda image, **kwargs: events.append(("schema", image)) or 7,
+        lambda image, **kwargs: events.append(("schema", image)) or schema_version,
     )
     monkeypatch.setattr(
         helper,
         "_compose_up",
         lambda record, **kwargs: events.append(("up", kwargs)) or "",
     )
-    monkeypatch.setattr(
-        helper,
-        "_write_json",
-        lambda path, value, **_: writes.append((path, value)),
-    )
+
+    def write_json(path: Path, value: dict[str, Any], **_: object) -> None:
+        if path == helper.CURRENT_RECORD and fail_current_record:
+            raise helper.HostError("state_write_failed")
+        writes.append((path, dict(value)))
+
+    monkeypatch.setattr(helper, "_write_json", write_json)
     monkeypatch.setattr(helper, "_audit", lambda *arguments, **_: None)
 
     with pytest.raises(helper.HostError, match="readiness_failed"):
         helper._apply_release(target)
 
+    assert recovery_entrypoint_checks == (
+        [target["recovery_image_ref"], target["recovery_image_ref"]] if schema_version == 13 else []
+    )
+
     failed_writes = [value for path, value in writes if path == helper.FAILED_RECORD]
     assert len(failed_writes) == 1
     assert failed_writes[0]["rollback_attempted"] is True
-    assert failed_writes[0]["rollback_succeeded"] is True
+    assert failed_writes[0]["rollback_succeeded"] is rollback_succeeds
+    assert failed_writes[0]["failure_code"] == "readiness_failed"
+    current_writes = [value for path, value in writes if path == helper.CURRENT_RECORD]
+    if rollback_succeeds:
+        assert len(current_writes) == 1
+        assert current_writes[0] == {**current, "assistant_rollout_mode": "disabled"}
+        assert current_writes[0]["pair_manifest_sha256"] == current["pair_manifest_sha256"]
+        assert current_writes[0]["recovery_image_id"] == current["recovery_image_id"]
+        assert current_writes[0]["helper_source_revision"] == current["helper_source_revision"]
+    else:
+        assert current_writes == []
     schema_index = next(index for index, event in enumerate(events) if event[0] == "schema")
     up_indices = [index for index, event in enumerate(events) if event[0] == "up"]
     assert len(up_indices) == 2
     assert schema_index < up_indices[-1]
     assert events[up_indices[-1]][1]["compose_file"] == compose_snapshot
     assert events[up_indices[-1]][1]["force_recreate"] is True
+    rollback_runtime = [event for event in events if event[0] == "runtime"][-1]
+    assert rollback_runtime == ("runtime", (old_image, "disabled"))
+    if not rollback_succeeds:
+        stop_indices = [
+            index
+            for index, event in enumerate(events)
+            if event[0] == "compose" and event[1] == ("stop", "app")
+        ]
+        assert stop_indices[-1] > up_indices[-1]
 
 
 def test_first_deploy_refuses_an_unowned_existing_database(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3259,7 +4475,7 @@ def _dispatch_profile(
         or host.get("NanoCpus") != 1_000_000_000
         or host.get("PidsLimit") != 128
         or host.get("CapDrop") != ["ALL"]
-        or set(host.get("CapAdd", [])) != {"SETGID", "SETUID"}
+        or not rehearsal_host_helper._cap_add_matches(host.get("CapAdd", []))
         or host.get("SecurityOpt") != ["no-new-privileges:true"]
         or host.get("Tmpfs") != expected_tmpfs
         or host.get("RestartPolicy", {}).get("Name") != "no"
@@ -3314,6 +4530,75 @@ def _dispatch_profile(
             "tmpfs": dict(sorted(host["Tmpfs"].items())),
         },
     }
+
+
+@pytest.mark.parametrize(
+    ("capabilities", "accepted"),
+    [
+        (["CAP_SETGID", "CAP_SETUID"], True),
+        (["SETUID", "CAP_SETGID"], True),
+        (["CAP_SETUID", "SETUID"], False),
+        (["CAP_SETUID", "CAP_SETGID", "CAP_NET_ADMIN"], False),
+        (["CAP_CAP_SETUID", "CAP_SETGID"], False),
+        (["CAP_SETUID", 17], False),
+    ],
+    ids=[
+        "docker-prefixed",
+        "mixed-prefix",
+        "duplicate-alias",
+        "extra",
+        "double-prefix",
+        "nonstring",
+    ],
+)
+def test_dispatch_profile_uses_exact_docker_capability_matching(
+    capabilities: list[object], accepted: bool
+) -> None:
+    project = "signal-ledger-test"
+    run_id = "a" * 16
+    volume = "signal-ledger-data-test"
+    expected_network = f"{project}_isolated"
+    facts: dict[str, object] = {
+        "host_config": {
+            "ReadonlyRootfs": True,
+            "Memory": 768 * 1024 * 1024,
+            "NanoCpus": 1_000_000_000,
+            "PidsLimit": 128,
+            "CapDrop": ["ALL"],
+            "CapAdd": capabilities,
+            "SecurityOpt": ["no-new-privileges:true"],
+            "Tmpfs": {
+                "/tmp": "rw,nosuid,nodev,noexec,size=64m,uid=10001,gid=10001,mode=0700",  # noqa: S108
+                "/run/assistant": "rw,nosuid,nodev,noexec,size=16m,mode=0711",
+                "/run/assistant-worker-home": (
+                    "rw,nosuid,nodev,noexec,size=64m,uid=10002,gid=10002,mode=0700"
+                ),
+            },
+            "RestartPolicy": {"Name": "no"},
+            "Privileged": False,
+            "NetworkMode": expected_network,
+        },
+        "mounts": [
+            {
+                "Destination": "/data",
+                "Type": "volume",
+                "Name": volume,
+                "RW": True,
+                "Source": "/var/lib/docker/volumes/signal-ledger-data-test/_data",
+            }
+        ],
+        "published_ports": {"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "18000"}]},
+        "networks": {expected_network: {}},
+        "labels": {"com.stock-probs.task": "R-ASTRA-120", "com.stock-probs.run": run_id},
+        "config_user": "0:0",
+    }
+
+    if accepted:
+        result = _dispatch_profile(facts, project=project, run_id=run_id, volume=volume)
+        assert result["profile"]["cap_add"] == sorted(capabilities)
+    else:
+        with pytest.raises(ValueError, match="container_profile_invalid"):
+            _dispatch_profile(facts, project=project, run_id=run_id, volume=volume)
 
 
 def test_opt_in_schema13_recovery_dispatch_on_disposable_data(tmp_path: Path) -> None:
@@ -4997,6 +6282,8 @@ def test_rollback_selects_exact_recorded_schema13_recovery_image(
                 "pair_manifest_sha256": record["pair_manifest_sha256"],
                 "compose_digest": record["compose_digest"],
                 "schema_version": 13,
+                "helper_source_revision": None,
+                "candidate_release_revision": None,
             },
         ),
     ) in events
@@ -5338,3 +6625,3627 @@ def test_rollout_health_missing_or_wrong_projection_remains_fail_closed(
     with pytest.raises(helper.HostError, match="readiness_failed"):
         helper._health_check(assistant_rollout_mode="disabled")
     assert len(calls) == 2 and sleeps == [1.0, 1.0]
+
+
+def test_temporary_profile_passes_reserve_to_both_identity_waits(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    container_id = "a" * 64
+    image_id = "sha256:" + "b" * 64
+    reserve_kib = helper.TEMPORARY_RECOVERY_AVAILABLE_RESERVE_KIB
+    assert reserve_kib == 131_072
+    identity_format = "{{.Id}}|{{.State.Pid}}|{{.State.Running}}"
+    profile = "|".join(
+        (
+            container_id,
+            image_id,
+            "4321",
+            "true",
+            "true",
+            "null",
+            "0:0",
+            json.dumps(["no-new-privileges:true"]),
+            json.dumps(["ALL"]),
+            json.dumps(["SETUID", "SETGID"]),
+            json.dumps({"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}]}),
+            str(768 * 1024 * 1024),
+            str(1_000_000_000),
+            "128",
+        )
+    )
+    commands: list[tuple[list[str], float, int | None]] = []
+    process_profiles: list[tuple[str, int, str, int | None]] = []
+
+    def fake_run(
+        command: list[str],
+        *,
+        timeout: float,
+        cwd: Path | None = None,
+        memory_reserve_kib: int | None = None,
+    ) -> SimpleNamespace:
+        del cwd
+        commands.append((command, timeout, memory_reserve_kib))
+        if command[:2] == ["docker", "compose"]:
+            return SimpleNamespace(stdout=f"{container_id}\n")
+        if command[1] == "inspect" and command[3] == identity_format:
+            return SimpleNamespace(stdout=f"{container_id}|4321|true\n")
+        return SimpleNamespace(stdout=f"{profile}\n")
+
+    def assert_process_profile(
+        actual_container_id: str,
+        init_pid: int,
+        process_profile: str,
+        *,
+        memory_reserve_kib: int | None = None,
+    ) -> None:
+        process_profiles.append(
+            (actual_container_id, init_pid, process_profile, memory_reserve_kib)
+        )
+
+    monkeypatch.setattr(helper, "_run", fake_run)
+    monkeypatch.setattr(helper, "_assert_container_process_profile", assert_process_profile)
+
+    result = helper._assert_temporary_container_profile(
+        tmp_path / "compose.yaml",
+        expected_image_id=image_id,
+        process_profile="temporary_app_pid1",
+        memory_reserve_kib=reserve_kib,
+    )
+
+    assert result == container_id
+    assert len(commands) == 3
+    assert commands[0][0][-5:] == ["ps", "--status", "running", "--quiet", "app"]
+    assert commands[0][1:] == (20, reserve_kib)
+    assert commands[1][0][:3] == ["docker", "inspect", "--format"]
+    assert commands[1][0][3] == identity_format
+    assert commands[1][1:] == (10, reserve_kib)
+    assert commands[2][0][:3] == ["docker", "inspect", "--format"]
+    assert commands[2][1:] == (15, reserve_kib)
+    assert process_profiles == [(container_id, 4321, "temporary_app_pid1", reserve_kib)]
+
+
+@pytest.mark.parametrize(
+    ("init_json", "accepted"),
+    [("null", True), ("false", True), ("true", False), ("0", False), ("not-json", False)],
+    ids=["missing-init", "false-init", "true-init", "nonboolean-init", "malformed-init"],
+)
+def test_temporary_profile_uses_optional_init_lookup_without_weakening_guards(
+    init_json: str, accepted: bool, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    container_id = "a" * 64
+    image_id = "sha256:" + "b" * 64
+    profile = "|".join(
+        (
+            container_id,
+            image_id,
+            "4321",
+            "true",
+            "true",
+            init_json,
+            "0:0",
+            json.dumps(["no-new-privileges:true"]),
+            json.dumps(["ALL"]),
+            json.dumps(["SETUID", "SETGID"]),
+            json.dumps({"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}]}),
+            str(768 * 1024 * 1024),
+            str(1_000_000_000),
+            "128",
+        )
+    )
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        helper,
+        "_app_container_identity",
+        lambda *_args, **_kwargs: (container_id, 4321),
+    )
+
+    def inspect(command: list[str], **_kwargs: object) -> SimpleNamespace:
+        commands.append(command)
+        assert command[:3] == ["docker", "inspect", "--format"]
+        assert '{{json (index .HostConfig "Init")}}' in command[3]
+        assert ".HostConfig.Init" not in command[3]
+        return SimpleNamespace(stdout=profile + "\n")
+
+    monkeypatch.setattr(helper, "_run", inspect)
+    monkeypatch.setattr(helper, "_assert_container_process_profile", lambda *_args, **_kwargs: None)
+
+    if accepted:
+        assert (
+            helper._assert_temporary_container_profile(
+                tmp_path / "compose.yaml",
+                expected_image_id=image_id,
+                process_profile="temporary_app_pid1",
+            )
+            == container_id
+        )
+    else:
+        with pytest.raises(helper.HostError, match="temporary_recovery_container_profile_invalid"):
+            helper._assert_temporary_container_profile(
+                tmp_path / "compose.yaml",
+                expected_image_id=image_id,
+                process_profile="temporary_app_pid1",
+            )
+    assert len(commands) == 1
+
+
+@pytest.mark.parametrize(
+    ("capabilities", "extra_field", "accepted"),
+    [
+        (["CAP_SETGID", "CAP_SETUID"], False, True),
+        (["SETUID", "CAP_SETGID"], False, True),
+        (["CAP_SETUID", "SETUID"], False, False),
+        (["CAP_SETUID", "CAP_SETUID"], False, False),
+        (["CAP_SETUID", "CAP_SETGID", "CAP_NET_ADMIN"], False, False),
+        (["CAP_SETUID", "SYS_ADMIN"], False, False),
+        (["CAP_SETUID", " SETGID"], False, False),
+        (["cap_setuid", "CAP_SETGID"], False, False),
+        (["CAP_CAP_SETUID", "CAP_SETGID"], False, False),
+        (["CAP_SETUID", 17], False, False),
+        (["CAP_SETUID", "CAP_SETGID"], True, False),
+    ],
+    ids=[
+        "docker-prefixed-pair",
+        "mixed-prefix-pair",
+        "duplicate-alias",
+        "repeated-capability",
+        "extra-capability",
+        "unknown-capability",
+        "whitespace",
+        "case-change",
+        "double-prefix",
+        "nonstring-capability",
+        "extra-profile-field",
+    ],
+)
+def test_temporary_profile_accepts_only_the_exact_uid_gid_capabilities(
+    capabilities: list[object],
+    extra_field: bool,
+    accepted: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    container_id = "a" * 64
+    image_id = "sha256:" + "b" * 64
+    parts = [
+        container_id,
+        image_id,
+        "4321",
+        "true",
+        "true",
+        "null",
+        "0:0",
+        json.dumps(["no-new-privileges:true"]),
+        json.dumps(["ALL"]),
+        json.dumps(capabilities),
+        json.dumps({"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}]}),
+        str(768 * 1024 * 1024),
+        str(1_000_000_000),
+        "128",
+    ]
+    if extra_field:
+        parts.append("unreviewed")
+    profile = "|".join(parts)
+    monkeypatch.setattr(
+        helper,
+        "_app_container_identity",
+        lambda *_args, **_kwargs: (container_id, 4321),
+    )
+    monkeypatch.setattr(helper, "_run", lambda *_args, **_kwargs: SimpleNamespace(stdout=profile))
+    monkeypatch.setattr(helper, "_assert_container_process_profile", lambda *_args, **_kwargs: None)
+
+    if accepted:
+        assert (
+            helper._assert_temporary_container_profile(
+                tmp_path / "compose.yaml",
+                expected_image_id=image_id,
+                process_profile="temporary_app_pid1",
+            )
+            == container_id
+        )
+    else:
+        error = (
+            "temporary_recovery_container_identity_mismatch"
+            if extra_field
+            else "temporary_recovery_container_profile_invalid"
+        )
+        with pytest.raises(helper.HostError, match=error):
+            helper._assert_temporary_container_profile(
+                tmp_path / "compose.yaml",
+                expected_image_id=image_id,
+                process_profile="temporary_app_pid1",
+            )
+
+
+def test_app_container_identity_omits_none_reserve_for_legacy_command_seams(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    container_id = "c" * 64
+    calls: list[tuple[str, float]] = []
+
+    def legacy_compose(*arguments: str, timeout: float, compose_file: Path | None = None) -> str:
+        assert compose_file == tmp_path / "compose.yaml"
+        calls.append(("compose", timeout))
+        assert arguments == ("ps", "--status", "running", "--quiet", "app")
+        return container_id
+
+    def legacy_run(command: list[str], *, timeout: float) -> SimpleNamespace:
+        calls.append(("run", timeout))
+        assert command[1] == "inspect"
+        return SimpleNamespace(stdout=f"{container_id}|4321|true\n")
+
+    monkeypatch.setattr(helper, "_compose", legacy_compose)
+    monkeypatch.setattr(helper, "_run", legacy_run)
+
+    assert helper._app_container_identity(tmp_path / "compose.yaml") == (container_id, 4321)
+    assert calls == [("compose", 20), ("run", 10)]
+
+
+def _write_printf_docker_fixture(tmp_path: Path, output: str) -> Path:
+    """Create a local Docker executable fixture that emits fixed inspect text via printf."""
+
+    executable = tmp_path / "docker"
+    executable.write_text(
+        f"#!{sys.executable}\n"
+        "import os\n"
+        f"os.execv('/usr/bin/printf', ['/usr/bin/printf', '%s', {output!r}])\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o700)
+    return executable
+
+
+def test_live_app_identity_consumes_text_stdout_from_real_bounded_runner(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Parse real _run text output without weakening the ASCII identity contract."""
+
+    helper = _helper()
+    container_id = "a" * 64
+    image_id = "sha256:" + "b" * 64
+    revision = "c" * 40
+    bindings = {"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}]}
+    mounts = [
+        {
+            "Type": "volume",
+            "Name": "signal-ledger_signal-ledger-data",
+            "Destination": "/data",
+            "RW": True,
+        }
+    ]
+    output = "|".join((image_id, "running", revision, json.dumps(bindings), json.dumps(mounts)))
+    _write_printf_docker_fixture(tmp_path, output)
+    monkeypatch.setenv("PATH", f"{tmp_path}:/usr/bin:/bin")
+    compose_calls: list[tuple[tuple[str, ...], float, Path | None]] = []
+
+    def fake_compose(*arguments: str, timeout: float, compose_file: Path | None = None) -> str:
+        compose_calls.append((arguments, timeout, compose_file))
+        return container_id
+
+    monkeypatch.setattr(helper, "_compose", fake_compose)
+
+    identity = helper._live_app_identity(tmp_path / "compose.yaml")
+
+    assert compose_calls == [
+        (("ps", "--status", "running", "--quiet", "app"), 20, tmp_path / "compose.yaml")
+    ]
+    assert identity == {
+        "container_id": container_id,
+        "image_id": image_id,
+        "container_status": "running",
+        "revision": revision,
+        "loopback_verified": True,
+        "data_volume": "signal-ledger_signal-ledger-data",
+        "data_volume_mount_valid": True,
+    }
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "sha256:" + "b" * 64 + "|runnïng|" + "c" * 40 + "|{}|[]",
+        "sha256:" + "b" * 64 + "|running|" + "c" * 40 + "|not-json|[]",
+    ],
+    ids=["non-ascii", "malformed-port-bindings-json"],
+)
+def test_live_app_identity_rejects_non_ascii_and_malformed_structured_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, output: str
+) -> None:
+    """Keep strict ASCII and JSON failures inside the fixed fail-closed error."""
+
+    helper = _helper()
+    _write_printf_docker_fixture(tmp_path, output)
+    monkeypatch.setenv("PATH", f"{tmp_path}:/usr/bin:/bin")
+    monkeypatch.setattr(
+        helper,
+        "_compose",
+        lambda *_arguments, **_kwargs: "a" * 64,
+    )
+
+    with pytest.raises(helper.HostError, match="maintenance_app_identity_unavailable"):
+        helper._live_app_identity(tmp_path / "compose.yaml")
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [
+        (
+            b"sha256:"
+            + b"b" * 64
+            + b"|running|"
+            + b"c" * 40
+            + b'|{"8000/tcp":[{"HostIp":"127.0.0.1","HostPort":"8000"}]}'
+            + b'|[{"Type":"volume","Name":"signal-ledger_signal-ledger-data",'
+            + b'"Destination":"/data","RW":true}]'
+        ),
+        None,
+        123,
+    ],
+    ids=["valid-structured-bytes", "none", "integer"],
+)
+def test_live_app_identity_rejects_non_text_run_stdout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, stdout: object
+) -> None:
+    """Reject any producer type outside the bounded runner's CompletedProcess[str] contract."""
+
+    helper = _helper()
+    monkeypatch.setattr(helper, "_compose", lambda *_arguments, **_kwargs: "a" * 64)
+    monkeypatch.setattr(
+        helper,
+        "_run",
+        lambda *_arguments, **_kwargs: SimpleNamespace(stdout=stdout),
+    )
+
+    with pytest.raises(helper.HostError, match="maintenance_app_identity_unavailable"):
+        helper._live_app_identity(tmp_path / "compose.yaml")
+
+
+def test_temporary_profile_omits_none_reserve_for_legacy_identity_mock(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    container_id = "d" * 64
+    image_id = "sha256:" + "e" * 64
+    profile = "|".join(
+        (
+            container_id,
+            image_id,
+            "4321",
+            "true",
+            "true",
+            "null",
+            "0:0",
+            json.dumps(["no-new-privileges:true"]),
+            json.dumps(["ALL"]),
+            json.dumps(["SETUID", "SETGID"]),
+            json.dumps({"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}]}),
+            str(768 * 1024 * 1024),
+            str(1_000_000_000),
+            "128",
+        )
+    )
+    run_timeouts: list[float] = []
+
+    def legacy_identity(snapshot: Path) -> tuple[str, int]:
+        assert snapshot == tmp_path / "compose.yaml"
+        return container_id, 4321
+
+    def legacy_run(command: list[str], *, timeout: float) -> SimpleNamespace:
+        run_timeouts.append(timeout)
+        assert command[1] == "inspect"
+        return SimpleNamespace(stdout=f"{profile}\n")
+
+    monkeypatch.setattr(helper, "_app_container_identity", legacy_identity)
+    monkeypatch.setattr(helper, "_run", legacy_run)
+    monkeypatch.setattr(helper, "_assert_container_process_profile", lambda *_args, **_kwargs: None)
+
+    assert (
+        helper._assert_temporary_container_profile(
+            tmp_path / "compose.yaml",
+            expected_image_id=image_id,
+            process_profile="temporary_app_pid1",
+        )
+        == container_id
+    )
+    assert run_timeouts == [15]
+
+
+def _temporary_recovery_test_manifest(helper) -> dict[str, Any]:
+    return {
+        "format_version": 1,
+        "kind": "temporary_recovery",
+        "built_or_published": True,
+        "source_revision": helper.TEMPORARY_RECOVERY_SOURCE_REVISION,
+        "source_manifest_sha256": helper.TEMPORARY_RECOVERY_SOURCE_MANIFEST_SHA256,
+        "base_revision": helper.PAIR_BASE_REVISION,
+        "base_source_archive_sha256": helper.TEMPORARY_RECOVERY_BASE_ARCHIVE_SHA256,
+        "base_source_context_sha256": helper.TEMPORARY_RECOVERY_BASE_CONTEXT_SHA256,
+        "source_context_sha256": helper.TEMPORARY_RECOVERY_SOURCE_CONTEXT_SHA256,
+        "migration_sha256": helper.PAIR_MIGRATION_SHA256,
+        "overlay_sha256": helper.TEMPORARY_RECOVERY_OVERLAY_SHA256,
+        "overlay_files": dict(helper.TEMPORARY_RECOVERY_FILE_SHA256),
+        "schema_version": 13,
+        "image": {
+            "archive_sha256": "d" * 64,
+            "archive_size": 1234,
+            "image_id": "sha256:" + "c" * 64,
+            "platform": "linux/amd64",
+            "image_revision": helper.TEMPORARY_RECOVERY_SOURCE_REVISION,
+            "repo_tag": (
+                "signal-ledger:temporary-recovery-build-"
+                f"{helper.TEMPORARY_RECOVERY_SOURCE_REVISION[:12]}"
+            ),
+            "entrypoint": ["python", "-m", "stock_probs.recovery_supervisor"],
+            "command": helper.TEMPORARY_RECOVERY_COMMAND,
+        },
+    }
+
+
+def _install_temporary_recovery_fakes(
+    monkeypatch: pytest.MonkeyPatch,
+    helper,
+    tmp_path: Path,
+    *,
+    available_kib: int = 600_000,
+    memory_failure_call: int | None = None,
+) -> tuple[dict[Path, dict[str, Any]], list[tuple[object, ...]], dict[str, str]]:
+    original = {
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "revision": helper.PRODUCTION_PREDECESSOR_REVISION,
+        "image_ref": helper._local_image_ref(helper.PRODUCTION_PREDECESSOR_REVISION),
+        "image_digest": "b" * 64,
+        "archive_sha256": "b" * 64,
+        "image_id": helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+        "platform": "linux/amd64",
+        "archive_size": 2345,
+        "schema_version": 13,
+        "compose_digest": helper.PRODUCTION_PREDECESSOR_COMPOSE_SHA256,
+        "assistant_rollout_mode": "invited",
+    }
+    state: dict[Path, dict[str, Any]] = {helper.CURRENT_RECORD: original}
+    events: list[tuple[object, ...]] = []
+    tags: dict[str, str] = {}
+    memory_calls = 0
+    manifest = _temporary_recovery_test_manifest(helper)
+    manifest_sha256 = "e" * 64
+
+    def clone(value: dict[str, Any]) -> dict[str, Any]:
+        return json.loads(json.dumps(value))
+
+    def read_json(path: Path) -> dict[str, Any] | None:
+        value = state.get(path)
+        return clone(value) if value is not None else None
+
+    def write_json(path: Path, value: dict[str, Any]) -> None:
+        events.append(("write", path, value.get("phase"), value.get("operation_id")))
+        state[path] = clone(value)
+
+    def fake_run(command: list[str], **_kwargs: object) -> SimpleNamespace:
+        if command[1:3] == ["load", "--input"]:
+            tags[manifest["image"]["repo_tag"]] = manifest["image"]["image_id"]
+            events.append(("docker_load",))
+        elif command[1] == "tag":
+            tags[command[3]] = command[2]
+            events.append(("docker_tag", command[3]))
+        return SimpleNamespace(stdout="loaded\n")
+
+    def fake_phase(operation: dict[str, Any], phase: str, **updates: object) -> None:
+        operation.update(updates)
+        operation["phase"] = phase
+        write_json(helper.TEMPORARY_RECOVERY_OPERATION, operation)
+
+    def fake_memory_available() -> int:
+        nonlocal memory_calls
+        memory_calls += 1
+        events.append(("memory", memory_calls))
+        if memory_calls == memory_failure_call:
+            return 100_000
+        return available_kib
+
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(helper, "_read_json", read_json)
+    monkeypatch.setattr(helper, "_write_json", write_json)
+    monkeypatch.setattr(helper, "_audit", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(helper, "_write_temporary_recovery_phase", fake_phase)
+    monkeypatch.setattr(
+        helper,
+        "_temporary_compose_snapshot",
+        lambda _current, **_kwargs: tmp_path / "compose",
+    )
+    monkeypatch.setattr(helper, "_assert_protected_production_images", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        helper, "_assert_temporary_recovery_source_health", lambda _current, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        helper, "_assert_temporary_container_profile", lambda *_args, **_kwargs: "cid"
+    )
+    monkeypatch.setattr(
+        helper, "_load_temporary_recovery_authorization", lambda: (manifest, manifest_sha256)
+    )
+    monkeypatch.setattr(
+        helper,
+        "_assert_temporary_recovery_archive",
+        lambda _manifest, **_kwargs: None,
+    )
+    monkeypatch.setattr(helper, "_temporary_archive_stage_id", lambda _manifest, **_kwargs: None)
+    monkeypatch.setattr(
+        helper,
+        "_temporary_image_reference_id",
+        lambda image_ref, **_kwargs: tags.get(image_ref),
+    )
+    monkeypatch.setattr(helper, "_assert_temporary_image", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(helper, "_memory_available_kib", fake_memory_available)
+    monkeypatch.setattr(
+        helper,
+        "_verified_backup",
+        lambda *_args, **_kwargs: {
+            "trigger": "pre_deploy",
+            "name": "pre-deploy-5ad2c3fddfce5a5a-01234567.spbackup",
+            "sha256": "f" * 64,
+            "schema_version": 13,
+            "verified": True,
+        },
+    )
+    monkeypatch.setattr(helper, "_database_schema", lambda *_args, **_kwargs: 13)
+    monkeypatch.setattr(
+        helper, "_runtime_file", lambda *args, **kwargs: events.append(("runtime", *args))
+    )
+    monkeypatch.setattr(helper, "_stop_app", lambda *_args, **_kwargs: events.append(("stop_app",)))
+    monkeypatch.setattr(
+        helper,
+        "_compose_up",
+        lambda record, **_kwargs: events.append(
+            ("compose_up", record.get("operation_kind"), record.get("image_id"))
+        )
+        or "",
+    )
+    monkeypatch.setattr(
+        helper,
+        "_health_check",
+        lambda **_kwargs: {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {"enabled": False, "status": "disabled"},
+        },
+    )
+    monkeypatch.setattr(helper, "_run", fake_run)
+    return state, events, tags
+
+
+def test_temporary_recovery_start_records_phases_and_observes_512_mib_floor(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    state, events, tags = _install_temporary_recovery_fakes(monkeypatch, helper, tmp_path)
+
+    result = helper._start_temporary_recovery()
+
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    current = state[helper.CURRENT_RECORD]
+    assert result["result"] == "temporary_recovery_ready"
+    assert result["start_admission_allowed"] is True
+    assert result["startup_floor_kib"] == 512 * 1024
+    assert operation["phase"] == "startup_floor_passed"
+    assert operation["operation_kind"] == "temporary_recovery"
+    assert operation["image_id"] == "sha256:" + "c" * 64
+    assert operation["source_revision"] == helper.TEMPORARY_RECOVERY_SOURCE_REVISION
+    assert operation["backup"]["verified"] is True
+    assert operation["backup"]["promoted"] is False
+    assert current["operation_kind"] == "temporary_recovery"
+    assert current["assistant_rollout_mode"] == "disabled"
+    assert current["revision"] == helper.TEMPORARY_RECOVERY_SOURCE_REVISION
+    assert tags[current["image_ref"]] == current["image_id"]
+    status = helper._state_summary()
+    assert status["current"]["operation_kind"] == "temporary_recovery"
+    assert status["temporary_recovery"]["operation_id"] == result["operation_id"]
+    assert status["temporary_recovery"]["phase"] == "startup_floor_passed"
+    loading_phase_index = next(
+        index
+        for index, event in enumerate(events)
+        if event[0] == "write"
+        and event[1] == helper.TEMPORARY_RECOVERY_OPERATION
+        and event[2] == "loading_archive"
+    )
+    tagging_phase_index = next(
+        index
+        for index, event in enumerate(events)
+        if event[0] == "write"
+        and event[1] == helper.TEMPORARY_RECOVERY_OPERATION
+        and event[2] == "tagging_image"
+    )
+    starting_phase_index = next(
+        index
+        for index, event in enumerate(events)
+        if event[0] == "write"
+        and event[1] == helper.TEMPORARY_RECOVERY_OPERATION
+        and event[2] == "starting_temporary_app"
+    )
+    assert loading_phase_index < next(
+        index for index, event in enumerate(events) if event[0] == "docker_load"
+    )
+    assert tagging_phase_index < next(
+        index for index, event in enumerate(events) if event[0] == "docker_tag"
+    )
+    assert starting_phase_index < next(
+        index for index, event in enumerate(events) if event[0] == "compose_up"
+    )
+
+
+def test_temporary_recovery_start_below_floor_keeps_native_admission_closed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    state, _events, _tags = _install_temporary_recovery_fakes(
+        monkeypatch, helper, tmp_path, available_kib=200_000
+    )
+
+    result = helper._start_temporary_recovery()
+
+    assert result["result"] == "temporary_recovery_ready_startup_floor_unmet"
+    assert result["start_admission_allowed"] is False
+    assert state[helper.TEMPORARY_RECOVERY_OPERATION]["phase"] == "startup_floor_unmet"
+    assert state[helper.CURRENT_RECORD]["operation_kind"] == "temporary_recovery"
+
+
+def test_temporary_recovery_start_refuses_transition_below_128_mib_reserve(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    state, events, _tags = _install_temporary_recovery_fakes(
+        monkeypatch, helper, tmp_path, available_kib=100_000
+    )
+
+    with pytest.raises(helper.HostError, match="host_memory_reserve_breached"):
+        helper._start_temporary_recovery()
+
+    assert helper.TEMPORARY_RECOVERY_OPERATION not in state
+    assert not any(
+        event[0] in {"docker_load", "docker_tag", "stop_app", "compose_up"} for event in events
+    )
+
+
+def test_temporary_recovery_archive_reserve_failure_precedes_all_image_and_service_mutations(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    state, events, _tags = _install_temporary_recovery_fakes(monkeypatch, helper, tmp_path)
+    archive_reserves: list[int | None] = []
+    stage_calls: list[object] = []
+
+    def reject_archive(_manifest: dict[str, Any], *, memory_reserve_kib: int | None = None) -> None:
+        archive_reserves.append(memory_reserve_kib)
+        raise helper.HostError("host_memory_reserve_breached")
+
+    monkeypatch.setattr(helper, "_assert_temporary_recovery_archive", reject_archive)
+    monkeypatch.setattr(
+        helper,
+        "_temporary_archive_stage_id",
+        lambda *_args, **_kwargs: stage_calls.append("called"),
+    )
+
+    with pytest.raises(helper.HostError, match="host_memory_reserve_breached"):
+        helper._start_temporary_recovery()
+
+    assert archive_reserves == [helper.TEMPORARY_RECOVERY_AVAILABLE_RESERVE_KIB]
+    assert not stage_calls
+    assert helper.TEMPORARY_RECOVERY_OPERATION not in state
+    assert state[helper.CURRENT_RECORD]["image_id"] == helper.PRODUCTION_PREDECESSOR_IMAGE_ID
+    assert not any(
+        event[0] in {"docker_load", "docker_tag", "stop_app", "compose_up"} for event in events
+    )
+
+
+def test_temporary_recovery_start_keeps_backup_verification_fail_before_app_stop(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    state, events, _tags = _install_temporary_recovery_fakes(monkeypatch, helper, tmp_path)
+    monkeypatch.setattr(
+        helper,
+        "_verified_backup",
+        lambda *_args, **_kwargs: {
+            "trigger": "pre_deploy",
+            "name": "pre-deploy-5ad2c3fddfce5a5a-01234567.spbackup",
+            "sha256": "f" * 64,
+            "schema_version": 13,
+            "verified": False,
+        },
+    )
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_backup_unverified"):
+        helper._start_temporary_recovery()
+
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    assert operation["phase"] == "verifying_backup"
+    assert operation["failure_code"] == "temporary_recovery_backup_unverified"
+    assert not any(event[0] in {"stop_app", "compose_up"} for event in events)
+
+
+def test_temporary_recovery_preserves_phase_if_128_mib_reserve_breaches_mid_transition(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    state, events, _tags = _install_temporary_recovery_fakes(
+        monkeypatch, helper, tmp_path, memory_failure_call=13
+    )
+
+    with pytest.raises(helper.HostError, match="host_memory_reserve_breached"):
+        helper._start_temporary_recovery()
+
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    assert operation["phase"] == "verifying_temporary_app"
+    assert operation["failure_code"] == "host_memory_reserve_breached"
+    assert state[helper.CURRENT_RECORD]["operation_kind"] == "temporary_recovery"
+    assert any(event[0] == "compose_up" for event in events)
+    with pytest.raises(helper.HostError, match="temporary_recovery_active"):
+        helper._ensure_no_active_temporary_recovery()
+
+
+def test_temporary_recovery_kills_blocking_child_and_retains_loading_phase_on_reserve_breach(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    real_run = helper._run
+    state, events, _tags = _install_temporary_recovery_fakes(monkeypatch, helper, tmp_path)
+    ordinary_run = helper._run
+    pid_file = tmp_path / "blocking-child.pid"
+    reserve_kib = helper.TEMPORARY_RECOVERY_AVAILABLE_RESERVE_KIB
+    samples = [0]
+
+    def breach_during_child() -> int:
+        samples[0] += 1
+        if samples[0] <= 2:
+            return reserve_kib + 1
+        deadline = time.monotonic() + 1
+        while not pid_file.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        return reserve_kib - 1
+
+    def run_with_blocking_load(command: list[str], **kwargs: object) -> SimpleNamespace:
+        if command[1:3] == ["load", "--input"]:
+            events.append(("docker_load_started",))
+            monkeypatch.setattr(helper, "_memory_available_kib", breach_during_child)
+            code = (
+                "import os,pathlib,sys,time; "
+                "pathlib.Path(sys.argv[1]).write_text(str(os.getpid())); time.sleep(30)"
+            )
+            real_run(
+                [sys.executable, "-c", code, str(pid_file)],
+                timeout=10,
+                memory_reserve_kib=reserve_kib,
+            )
+            raise AssertionError("reserve breach should cancel the in-flight load child")
+        return ordinary_run(command, **kwargs)
+
+    monkeypatch.setattr(helper, "_run", run_with_blocking_load)
+
+    with pytest.raises(helper.HostError, match="host_memory_reserve_breached"):
+        helper._start_temporary_recovery()
+
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    assert operation["phase"] == "loading_archive"
+    assert operation["failure_code"] == "host_memory_reserve_breached"
+    assert state[helper.CURRENT_RECORD]["image_id"] == helper.PRODUCTION_PREDECESSOR_IMAGE_ID
+    assert any(event[0] == "docker_load_started" for event in events)
+    assert not any(event[0] in {"docker_tag", "stop_app", "compose_up"} for event in events)
+    child_pid = int(pid_file.read_text(encoding="ascii"))
+    with pytest.raises(ProcessLookupError):
+        os.kill(child_pid, 0)
+    with pytest.raises(helper.HostError, match="temporary_recovery_active"):
+        helper._ensure_no_active_temporary_recovery()
+
+
+def test_temporary_recovery_restore_returns_original_disabled_and_retains_terminal_record(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    state, events, _tags = _install_temporary_recovery_fakes(monkeypatch, helper, tmp_path)
+    started = helper._start_temporary_recovery()
+
+    result = helper._restore_temporary_recovery(started["operation_id"])
+
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    current = state[helper.CURRENT_RECORD]
+    assert result["result"] == "temporary_recovery_restored"
+    assert operation["phase"] == "restored"
+    assert current["image_id"] == helper.PRODUCTION_PREDECESSOR_IMAGE_ID
+    assert current["revision"] == helper.PRODUCTION_PREDECESSOR_REVISION
+    assert current["assistant_rollout_mode"] == "disabled"
+    assert current["temporary_recovery_restored_operation_id"] == started["operation_id"]
+    assert sum(event[0] == "compose_up" for event in events) == 2
+    helper._ensure_no_active_temporary_recovery()
+
+
+def test_temporary_recovery_restore_failure_preserves_active_phase_and_blocks_release_actions(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    state, _events, _tags = _install_temporary_recovery_fakes(monkeypatch, helper, tmp_path)
+    started = helper._start_temporary_recovery()
+    monkeypatch.setattr(
+        helper,
+        "_health_check",
+        lambda **_kwargs: (_ for _ in ()).throw(helper.HostError("readiness_failed")),
+    )
+
+    with pytest.raises(helper.HostError, match="readiness_failed"):
+        helper._restore_temporary_recovery(started["operation_id"])
+
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    assert operation["phase"] == "verifying_original_app"
+    assert operation["failure_code"] == "readiness_failed"
+    with pytest.raises(helper.HostError, match="temporary_recovery_active"):
+        helper._ensure_no_active_temporary_recovery()
+
+
+@pytest.mark.parametrize(
+    "operation", ["plan_deploy", "deploy", "rollback", "set_assistant_rollout"]
+)
+def test_ordinary_release_mutations_fail_closed_while_temporary_recovery_is_active(
+    operation: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper()
+    operation_id = "a" * 32
+    active = {
+        "operation_kind": "temporary_recovery",
+        "operation_id": operation_id,
+        "phase": "startup_floor_passed",
+        "source_revision": helper.TEMPORARY_RECOVERY_SOURCE_REVISION,
+        "schema_version": 13,
+        "compose_digest": helper.PRODUCTION_PREDECESSOR_COMPOSE_SHA256,
+        "source_manifest_sha256": helper.TEMPORARY_RECOVERY_SOURCE_MANIFEST_SHA256,
+        "source_context_sha256": helper.TEMPORARY_RECOVERY_SOURCE_CONTEXT_SHA256,
+        "base_revision": helper.PAIR_BASE_REVISION,
+        "migration_sha256": helper.PAIR_MIGRATION_SHA256,
+        "overlay_sha256": helper.TEMPORARY_RECOVERY_OVERLAY_SHA256,
+        "original_compose_revision": helper.PRODUCTION_PREDECESSOR_REVISION,
+        "image_id": "sha256:" + "c" * 64,
+        "image_ref": f"{helper.LOCAL_IMAGE_REPOSITORY}:temporary-recovery-{operation_id}",
+        "archive_sha256": "d" * 64,
+        "archive_size": 1234,
+        "manifest_sha256": "e" * 64,
+        "original_record": {},
+    }
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(
+        helper,
+        "_read_json",
+        lambda path: active if path == helper.TEMPORARY_RECOVERY_OPERATION else None,
+    )
+    action = {
+        "plan_deploy": lambda: helper._plan_deploy("a" * 40, "b" * 64),
+        "deploy": lambda: helper._deploy("a" * 32, "a" * 40, "b" * 64),
+        "rollback": lambda: helper._rollback("a" * 40),
+        "set_assistant_rollout": lambda: helper._set_assistant_rollout(
+            "disabled", revision="a" * 40, archive_sha256="b" * 64, image_id="sha256:" + "c" * 64
+        ),
+    }[operation]
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_active"):
+        action()
+
+
+def test_temporary_recovery_protocol_accepts_only_typed_start_and_restore_payloads() -> None:
+    helper = _helper()
+    operation, payload = helper._parse_request(
+        b'{"operation":"start_temporary_recovery","payload":{}}'
+    )
+    assert (operation, payload) == ("start_temporary_recovery", {})
+    with pytest.raises(helper.HostError, match="payload_invalid"):
+        helper._parse_request(
+            b'{"operation":"start_temporary_recovery","payload":{"archive_path":"/tmp/x"}}'
+        )
+    operation, payload = helper._parse_request(
+        json.dumps(
+            {
+                "operation": "start_next_temporary_recovery",
+                "payload": {"prior_operation_id": "a" * 32, "prior_view_sha256": "b" * 64},
+            }
+        ).encode()
+    )
+    assert operation == "start_next_temporary_recovery"
+    assert payload == {"prior_operation_id": "a" * 32, "prior_view_sha256": "b" * 64}
+    with pytest.raises(helper.HostError, match="payload_invalid"):
+        helper._parse_request(
+            b'{"operation":"start_next_temporary_recovery","payload":{"prior_operation_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","prior_view_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","path":"/tmp/x"}}'
+        )
+    operation, payload = helper._parse_request(
+        json.dumps(
+            {
+                "operation": "restore_temporary_recovery",
+                "payload": {"operation_id": "a" * 32},
+            }
+        ).encode()
+    )
+    assert operation == "restore_temporary_recovery"
+    assert payload["operation_id"] == "a" * 32
+
+
+def _install_restored_temporary_recovery(
+    monkeypatch: pytest.MonkeyPatch, helper, tmp_path: Path
+) -> tuple[dict[Path, dict[str, Any]], list[tuple[object, ...]], dict[str, str], dict[str, bytes]]:
+    state, events, tags = _install_temporary_recovery_fakes(monkeypatch, helper, tmp_path)
+    first = helper._start_temporary_recovery()
+    helper._restore_temporary_recovery(first["operation_id"])
+    state[helper.CURRENT_RECORD]["assistant_rollout_mode"] = "invited"
+
+    def read_root_owned_json(path: Path, **_kwargs: object) -> tuple[dict[str, Any], bytes]:
+        assert path == helper.TEMPORARY_RECOVERY_OPERATION
+        prior = state[path]
+        prior_raw = json.dumps(prior, sort_keys=True, separators=(",", ":")).encode()
+        return json.loads(json.dumps(prior)), prior_raw
+
+    monkeypatch.setattr(helper, "_read_root_owned_json", read_root_owned_json)
+    sidecars: dict[str, bytes] = {}
+
+    def publish(name: str, content: bytes, **_kwargs: object) -> str:
+        events.append(("sidecar", name))
+        if name in sidecars and sidecars[name] != content:
+            raise helper.HostError("sidecar_conflict")
+        sidecars[name] = content
+        return hashlib.sha256(content).hexdigest()
+
+    monkeypatch.setattr(helper, "_publish_immutable_temporary_recovery_file", publish)
+    return state, events, tags, sidecars
+
+
+@pytest.mark.parametrize("available_kib", [600_000, 200_000])
+def test_next_cycle_helper_response_passes_real_controller_contract(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, available_kib: int
+) -> None:
+    """Keep producer backup/response construction connected to the consuming controller."""
+
+    controller_path = ROOT / "tools/deploy_mcp/controller.py"
+    spec = importlib.util.spec_from_file_location("next_cycle_contract_controller", controller_path)
+    assert spec is not None and spec.loader is not None
+    consumer = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, spec.name, consumer)
+    spec.loader.exec_module(consumer)
+    helper = _helper()
+    verified_backup = helper._verified_backup
+    state, _events, _tags, sidecars = _install_restored_temporary_recovery(
+        monkeypatch, helper, tmp_path
+    )
+    prior = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    prior_id = prior["operation_id"]
+    prior_view_sha = helper._canonical_value_sha256(helper._temporary_operation_view())
+    backup_calls: list[tuple[str, ...]] = []
+
+    def backup_compose(*arguments: str, **options: object) -> str:
+        assert options["compose_file"] == tmp_path / "compose"
+        assert options["memory_reserve_kib"] == 128 * 1024
+        backup_calls.append(arguments)
+        name = arguments[-1]
+        assert name.startswith(f"pre-deploy-{helper.PRODUCTION_PREDECESSOR_REVISION[:16]}-")
+        if arguments[6] == "backup":
+            return json.dumps({"name": name, "sha256": "f" * 64, "schema_version": 13})
+        assert arguments[6] == "restore"
+        assert arguments == (
+            "run",
+            "--rm",
+            "--no-deps",
+            "-T",
+            "app",
+            "stock-probs",
+            "restore",
+            name,
+        )
+        return json.dumps({"name": name, "verified": True, "promoted": False})
+
+    monkeypatch.setattr(helper, "_verified_backup", verified_backup)
+    monkeypatch.setattr(helper, "_compose", backup_compose)
+    monkeypatch.setattr(helper, "_image_schema", lambda *_args, **_kwargs: 13)
+    monkeypatch.setattr(helper, "_memory_available_kib", lambda: available_kib)
+    produced = helper._start_next_temporary_recovery(prior_id, prior_view_sha)
+    assert len(backup_calls) == 2
+    assert produced["backup"]["promoted"] is False
+    assert produced["backup"]["verified"] is True
+    assert produced["operation_id"] == consumer._next_temporary_recovery_operation_id(
+        prior_id, prior_view_sha
+    )
+    assert (
+        produced["cycle_link_sha256"]
+        == hashlib.sha256(sidecars[f"cycle-{produced['operation_id']}.json"]).hexdigest()
+    )
+    admitted = available_kib >= 512 * 1024
+    assert produced["start_admission_allowed"] is admitted
+    assert produced["result"] == (
+        "temporary_recovery_ready" if admitted else "temporary_recovery_ready_startup_floor_unmet"
+    )
+    identity = tmp_path / "identity"
+    known_hosts = tmp_path / "known_hosts"
+    identity.write_text("fixture")
+    known_hosts.write_text("fixture")
+    identity.chmod(0o600)
+    known_hosts.chmod(0o600)
+    controller = consumer.DeployController(
+        consumer.DeployConfig("example.com", "deploy", identity, known_hosts)
+    )
+
+    def invoke(operation: str, payload: dict[str, str], *, timeout: int) -> dict[str, Any]:
+        assert operation == "start_next_temporary_recovery"
+        assert payload == {"prior_operation_id": prior_id, "prior_view_sha256": prior_view_sha}
+        assert timeout == 900
+        return produced
+
+    monkeypatch.setattr(controller, "_invoke", invoke)
+    assert controller.start_next_temporary_recovery(prior_id, prior_view_sha) is produced
+    for field in ("trigger", "name", "sha256", "schema_version", "verified", "promoted"):
+        missing = json.loads(json.dumps(produced))
+        del missing["backup"][field]
+        assert not consumer._valid_temporary_recovery_ready_response(
+            missing, prior_id, prior_view_sha
+        )
+    for field, replacement in (
+        ("operation_id", "0" * 32),
+        ("cycle_link_sha256", "0" * 64),
+    ):
+        invalid = json.loads(json.dumps(produced))
+        invalid[field] = replacement
+        if field == "operation_id":
+            assert replacement != produced["operation_id"]
+            invalid["image_ref"] = f"signal-ledger:temporary-recovery-{replacement}"
+            invalid["cycle_link_sha256"] = consumer._temporary_recovery_cycle_link_sha256(
+                prior_id, produced["prior_record_sha256"], prior_view_sha, replacement
+            )
+        else:
+            assert replacement != produced["cycle_link_sha256"]
+        assert not consumer._valid_temporary_recovery_ready_response(
+            invalid, prior_id, prior_view_sha
+        )
+    for field, replacement in (
+        ("verified", False),
+        ("promoted", True),
+        ("name", f"pre-deploy-{helper.TEMPORARY_RECOVERY_SOURCE_REVISION[:16]}-01234567.spbackup"),
+    ):
+        invalid = json.loads(json.dumps(produced))
+        invalid["backup"][field] = replacement
+        assert not consumer._valid_temporary_recovery_ready_response(
+            invalid, prior_id, prior_view_sha
+        )
+
+
+def test_temporary_recovery_next_cycle_preserves_exact_predecessor_and_restores_shared_schema(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    state, events, _tags, sidecars = _install_restored_temporary_recovery(
+        monkeypatch, helper, tmp_path
+    )
+    prior = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    prior_raw = json.dumps(prior, sort_keys=True, separators=(",", ":")).encode()
+    prior_id = prior["operation_id"]
+    prior_view_sha = helper._canonical_value_sha256(helper._temporary_operation_view())
+    original_record = json.loads(json.dumps(state[helper.CURRENT_RECORD]))
+
+    result = helper._start_next_temporary_recovery(prior_id, prior_view_sha)
+
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    history_name = f"closed-{prior_id}-{hashlib.sha256(prior_raw).hexdigest()}.json"
+    cycle_name = f"cycle-{result['operation_id']}.json"
+    assert result["result"] == "temporary_recovery_ready"
+    assert result["prior_operation_id"] == prior_id
+    assert result["prior_record_sha256"] == hashlib.sha256(prior_raw).hexdigest()
+    assert result["prior_view_sha256"] == prior_view_sha
+    assert sidecars[history_name] == prior_raw
+    assert list(sidecars) == [history_name, cycle_name]
+    assert hashlib.sha256(sidecars[cycle_name]).hexdigest() == result["cycle_link_sha256"]
+    cycle_link = json.loads(sidecars[cycle_name])
+    assert cycle_link == {
+        "format_version": 1,
+        "kind": "temporary_recovery_cycle_link",
+        "status": "intent",
+        "prior_operation_id": prior_id,
+        "prior_record_sha256": hashlib.sha256(prior_raw).hexdigest(),
+        "prior_view_sha256": prior_view_sha,
+        "new_operation_id": result["operation_id"],
+        "history_name": history_name,
+        "database_policy": "reuse_schema_13_no_restore",
+    }
+    assert operation["phase"] == "startup_floor_passed"
+    assert operation["operation_id"] == result["operation_id"]
+    assert operation["original_record"] == original_record
+    assert result["schema_version"] == 13
+    assert result["assistant_rollout_mode"] == "disabled"
+    sidecar_indexes = [index for index, event in enumerate(events) if event[0] == "sidecar"]
+    prepared_index = events.index(
+        ("write", helper.TEMPORARY_RECOVERY_OPERATION, "prepared", result["operation_id"])
+    )
+    assert sidecar_indexes and max(sidecar_indexes) < prepared_index
+
+    restored = helper._restore_temporary_recovery(result["operation_id"])
+    assert restored["result"] == "temporary_recovery_restored"
+    assert state[helper.TEMPORARY_RECOVERY_OPERATION]["phase"] == "restored"
+    assert (
+        state[helper.CURRENT_RECORD]["temporary_recovery_restored_operation_id"]
+        == result["operation_id"]
+    )
+    assert state[helper.CURRENT_RECORD]["schema_version"] == 13
+
+
+@pytest.mark.parametrize("available_kib", [600_000, 200_000])
+@pytest.mark.parametrize(
+    ("prior_startup_floor", "prior_start_admission"),
+    [(None, None), (200_000, False), (600_000, True)],
+)
+def test_temporary_recovery_next_cycle_accepts_only_explicitly_bound_restored_host_failure(
+    available_kib: int,
+    prior_startup_floor: int | None,
+    prior_start_admission: bool | None,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    state, events, _tags, sidecars = _install_restored_temporary_recovery(
+        monkeypatch, helper, tmp_path
+    )
+    prior = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    prior.update(
+        {
+            "failure_code": "host_command_failed",
+            "failed_at": "2026-10-17T10:11:12.123456+00:00",
+            "startup_floor_kib": prior_startup_floor,
+            "start_admission_allowed": prior_start_admission,
+        }
+    )
+    prior_id = prior["operation_id"]
+    prior_view_sha = helper._canonical_value_sha256(
+        helper._temporary_operation_view_for_record(prior)
+    )
+    prior_raw = json.dumps(prior, sort_keys=True, separators=(",", ":")).encode()
+    verified_backup = helper._verified_backup
+    backup_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def counted_backup(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        backup_calls.append((args, kwargs))
+        return verified_backup(*args, **kwargs)
+
+    monkeypatch.setattr(helper, "_verified_backup", counted_backup)
+    memory_samples: list[int] = []
+
+    def read_memory() -> int:
+        memory_samples.append(available_kib)
+        return available_kib
+
+    monkeypatch.setattr(helper, "_memory_available_kib", read_memory)
+    source_check = helper._assert_temporary_recovery_source_health
+    source_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def counted_source(*args: Any, **kwargs: Any) -> Any:
+        source_calls.append((args, kwargs))
+        return source_check(*args, **kwargs)
+
+    monkeypatch.setattr(helper, "_assert_temporary_recovery_source_health", counted_source)
+    archive_check = helper._assert_temporary_recovery_archive
+    archive_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def counted_archive(*args: Any, **kwargs: Any) -> Any:
+        archive_calls.append((args, kwargs))
+        return archive_check(*args, **kwargs)
+
+    monkeypatch.setattr(helper, "_assert_temporary_recovery_archive", counted_archive)
+    image_check = helper._assert_temporary_image
+    image_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def counted_image(*args: Any, **kwargs: Any) -> Any:
+        image_calls.append((args, kwargs))
+        return image_check(*args, **kwargs)
+
+    monkeypatch.setattr(helper, "_assert_temporary_image", counted_image)
+    schema_reader = helper._database_schema
+    schema_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def counted_schema(*args: Any, **kwargs: Any) -> int:
+        schema_calls.append((args, kwargs))
+        return schema_reader(*args, **kwargs)
+
+    monkeypatch.setattr(helper, "_database_schema", counted_schema)
+    events_before_retry = len(events)
+
+    result = helper._start_next_temporary_recovery(prior_id, prior_view_sha)
+
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    history_name = f"closed-{prior_id}-{hashlib.sha256(prior_raw).hexdigest()}.json"
+    admitted = available_kib >= helper.TEMPORARY_RECOVERY_STARTUP_FLOOR_KIB
+    assert result["result"] == (
+        "temporary_recovery_ready" if admitted else "temporary_recovery_ready_startup_floor_unmet"
+    )
+    assert result["prior_record_sha256"] == hashlib.sha256(prior_raw).hexdigest()
+    assert sidecars[history_name] == prior_raw
+    assert len(backup_calls) == 1
+    assert len(source_calls) == 1
+    assert len(archive_calls) == 1
+    assert len(image_calls) == 1
+    assert len(schema_calls) >= 2
+    assert memory_samples
+    retry_events = events[events_before_retry:]
+    assert any(event[0] == "docker_load" for event in retry_events)
+    assert any(event[0] == "docker_tag" for event in retry_events)
+    assert any(event[0] == "compose_up" for event in retry_events)
+    assert operation["startup_floor_kib"] == available_kib
+    assert operation["start_admission_allowed"] is admitted
+    assert "failure_code" not in operation
+
+
+def _legacy_omitted_startup_predecessor_fixture(helper) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Build synthetic metadata to exercise the exact legacy identity guard."""
+
+    operation_id = helper.TEMPORARY_RECOVERY_LEGACY_OMITTED_STARTUP_OPERATION_ID
+    original = {
+        "assistant_rollout_mode": "invited",
+        "revision": helper.PRODUCTION_PREDECESSOR_REVISION,
+        "image_id": helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+        "schema_version": 13,
+        "deployed_at": "2026-10-18T21:00:00+00:00",
+    }
+    prior = {
+        "phase": "restored",
+        "operation_id": operation_id,
+        "assistant_rollout_mode": "disabled",
+        "restored_image_id": helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+        "restored_at": "2026-10-18T21:01:00+00:00",
+        "failure_code": "host_command_failed",
+        "failed_at": "2026-10-18T21:02:00+00:00",
+        "original_record": original,
+    }
+    current = {
+        **original,
+        "temporary_recovery_restored_operation_id": operation_id,
+    }
+    return prior, current
+
+
+def _pin_synthetic_legacy_predecessor_hash(
+    helper, prior: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> str:
+    """Bind the test-only legacy digest to synthetic canonical metadata."""
+
+    digest = helper._canonical_value_sha256(prior)
+    monkeypatch.setattr(helper, "TEMPORARY_RECOVERY_LEGACY_OMITTED_STARTUP_SHA256", digest)
+    return digest
+
+
+def test_temporary_recovery_accepts_only_synthetic_metadata_bound_to_exact_legacy_pin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise the exact-ID/hash exception without claiming the fixture is production data."""
+
+    helper = _helper()
+    prior, current = _legacy_omitted_startup_predecessor_fixture(helper)
+    assert helper.TEMPORARY_RECOVERY_LEGACY_OMITTED_STARTUP_OPERATION_ID == (
+        "98ce0f645a558df329fd911b958e12a4"
+    )
+    assert helper.TEMPORARY_RECOVERY_LEGACY_OMITTED_STARTUP_SHA256 == (
+        "2b3f6c9e5886b1a25d1cd864f77b95b694224faff986648cf2bef1457c250dc3"
+    )
+    synthetic_digest = _pin_synthetic_legacy_predecessor_hash(helper, prior, monkeypatch)
+    assert synthetic_digest != "2b3f6c9e5886b1a25d1cd864f77b95b694224faff986648cf2bef1457c250dc3"
+
+    helper._validate_restored_temporary_recovery_predecessor(prior, current)
+
+
+def test_temporary_recovery_legacy_omission_rejects_unmatched_production_digest() -> None:
+    """Do not accept an omitted-field record unless its canonical bytes match the pin."""
+
+    helper = _helper()
+    prior, current = _legacy_omitted_startup_predecessor_fixture(helper)
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_prior_state_invalid"):
+        helper._validate_restored_temporary_recovery_predecessor(prior, current)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("operation_id", "0" * 32),
+        ("failure_code", "temporary_recovery_backup_unverified"),
+        ("failed_at", "not-a-time"),
+        ("phase", "failed"),
+        ("restored_image_id", "sha256:" + "0" * 64),
+    ],
+)
+def test_temporary_recovery_legacy_omission_rejects_wrong_identity_or_state(
+    field: str,
+    replacement: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep the legacy exception bound to its exact identity and restored state."""
+
+    helper = _helper()
+    prior, current = _legacy_omitted_startup_predecessor_fixture(helper)
+    prior[field] = replacement
+    if field == "operation_id":
+        current["temporary_recovery_restored_operation_id"] = replacement
+    _pin_synthetic_legacy_predecessor_hash(helper, prior, monkeypatch)
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_prior_state_invalid"):
+        helper._validate_restored_temporary_recovery_predecessor(prior, current)
+
+
+@pytest.mark.parametrize(
+    ("present_field", "value"),
+    [("startup_floor_kib", 600_000), ("start_admission_allowed", True)],
+)
+def test_temporary_recovery_legacy_omission_rejects_one_sided_startup_fields(
+    present_field: str,
+    value: int | bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A legacy hash never makes a partially present startup pair valid."""
+
+    helper = _helper()
+    prior, current = _legacy_omitted_startup_predecessor_fixture(helper)
+    prior[present_field] = value
+    _pin_synthetic_legacy_predecessor_hash(helper, prior, monkeypatch)
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_prior_state_invalid"):
+        helper._validate_restored_temporary_recovery_predecessor(prior, current)
+
+
+def test_temporary_recovery_legacy_digest_binds_every_prior_field(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changing otherwise valid predecessor metadata invalidates its exact digest."""
+
+    helper = _helper()
+    prior, current = _legacy_omitted_startup_predecessor_fixture(helper)
+    pinned_digest = _pin_synthetic_legacy_predecessor_hash(helper, prior, monkeypatch)
+    prior["restored_at"] = "2026-10-18T21:01:01+00:00"
+    assert helper._canonical_value_sha256(prior) != pinned_digest
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_prior_state_invalid"):
+        helper._validate_restored_temporary_recovery_predecessor(prior, current)
+
+
+@pytest.mark.parametrize(
+    "mismatch", ["current_link", "current_image", "original_current", "original_image"]
+)
+def test_temporary_recovery_legacy_exception_keeps_current_record_checks(
+    mismatch: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The legacy field omission does not bypass restored-link or record-equality checks."""
+
+    helper = _helper()
+    prior, current = _legacy_omitted_startup_predecessor_fixture(helper)
+    _pin_synthetic_legacy_predecessor_hash(helper, prior, monkeypatch)
+    if mismatch == "current_link":
+        current["temporary_recovery_restored_operation_id"] = "0" * 32
+    elif mismatch == "current_image":
+        current["image_id"] = "sha256:" + "0" * 64
+    else:
+        if mismatch == "original_current":
+            prior["original_record"]["revision"] = "f" * 40
+        else:
+            prior["original_record"]["image_id"] = "sha256:" + "0" * 64
+        _pin_synthetic_legacy_predecessor_hash(helper, prior, monkeypatch)
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_prior_current_mismatch"):
+        helper._validate_restored_temporary_recovery_predecessor(prior, current)
+
+
+@pytest.mark.parametrize(
+    "invalid_prior",
+    [
+        "unknown_failure",
+        "missing_failed_at",
+        "invalid_failed_at",
+        "invalid_restored_at",
+        "null_startup_without_failure",
+        "half_null_startup",
+        "startup_below_runtime_reserve",
+        "startup_admission_mismatch",
+    ],
+)
+def test_temporary_recovery_next_cycle_rejects_invalid_failed_predecessor_history(
+    invalid_prior: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    state, _events, _tags, sidecars = _install_restored_temporary_recovery(
+        monkeypatch, helper, tmp_path
+    )
+    prior = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    prior["failure_code"] = "host_command_failed"
+    prior["failed_at"] = "2026-10-17T10:11:12.123456+00:00"
+    prior["startup_floor_kib"] = None
+    prior["start_admission_allowed"] = None
+    if invalid_prior == "unknown_failure":
+        prior["failure_code"] = "temporary_recovery_backup_unverified"
+    elif invalid_prior == "missing_failed_at":
+        del prior["failed_at"]
+    elif invalid_prior == "invalid_failed_at":
+        prior["failed_at"] = "not-a-time"
+    elif invalid_prior == "invalid_restored_at":
+        prior["restored_at"] = "2026-10-17T10:11:12Z"
+    elif invalid_prior == "null_startup_without_failure":
+        del prior["failure_code"]
+        del prior["failed_at"]
+    elif invalid_prior == "half_null_startup":
+        prior["startup_floor_kib"] = 600_000
+    elif invalid_prior == "startup_below_runtime_reserve":
+        prior["startup_floor_kib"] = 100_000
+        prior["start_admission_allowed"] = False
+    elif invalid_prior == "startup_admission_mismatch":
+        prior["startup_floor_kib"] = 600_000
+        prior["start_admission_allowed"] = False
+    else:
+        raise AssertionError(f"unknown invalid predecessor: {invalid_prior}")
+    prior_id = prior["operation_id"]
+    view_sha = helper._canonical_value_sha256(helper._temporary_operation_view_for_record(prior))
+    prior_raw = json.dumps(prior, sort_keys=True, separators=(",", ":")).encode()
+    monkeypatch.setattr(
+        helper,
+        "_read_root_owned_json",
+        lambda _path, **_kwargs: (json.loads(json.dumps(prior)), prior_raw),
+    )
+
+    with pytest.raises(helper.HostError, match="temporary_recovery_prior_state_invalid"):
+        helper._start_next_temporary_recovery(prior_id, view_sha)
+    assert sidecars == {}
+
+
+def test_temporary_recovery_next_cycle_rechecks_runtime_reserve_before_publication(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    state, events, _tags, sidecars = _install_restored_temporary_recovery(
+        monkeypatch, helper, tmp_path
+    )
+    prior = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    prior.update(
+        {
+            "failure_code": "host_command_failed",
+            "failed_at": "2026-10-17T10:11:12.123456+00:00",
+            "startup_floor_kib": None,
+            "start_admission_allowed": None,
+        }
+    )
+    prior_id = prior["operation_id"]
+    view_sha = helper._canonical_value_sha256(helper._temporary_operation_view_for_record(prior))
+    prior_raw = json.dumps(prior, sort_keys=True, separators=(",", ":")).encode()
+    events_before_retry = len(events)
+    monkeypatch.setattr(helper, "_memory_available_kib", lambda: 100_000)
+
+    with pytest.raises(helper.HostError, match="host_memory_reserve_breached"):
+        helper._start_next_temporary_recovery(prior_id, view_sha)
+
+    assert state[helper.TEMPORARY_RECOVERY_OPERATION] == prior
+    assert json.dumps(prior, sort_keys=True, separators=(",", ":")).encode() == prior_raw
+    assert sidecars == {}
+    assert not any(
+        event[0] in {"docker_load", "docker_tag", "stop_app", "compose_up"}
+        for event in events[events_before_retry:]
+    )
+
+
+@pytest.mark.parametrize("fail_after_publish", [False, True])
+def test_temporary_recovery_next_cycle_crash_boundary_is_observable_and_retry_safe(
+    fail_after_publish: bool,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    state, _events, _tags, sidecars = _install_restored_temporary_recovery(
+        monkeypatch, helper, tmp_path
+    )
+    prior = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    prior_id = prior["operation_id"]
+    view_sha = helper._canonical_value_sha256(helper._temporary_operation_view())
+    write_phase = helper._write_temporary_recovery_phase
+
+    def simulate_crash(operation: dict[str, Any], phase: str, **updates: object) -> None:
+        if fail_after_publish:
+            write_phase(operation, phase, **updates)
+        if phase == "prepared":
+            raise helper.HostError("simulated_process_loss")
+        if not fail_after_publish:
+            write_phase(operation, phase, **updates)
+
+    monkeypatch.setattr(helper, "_write_temporary_recovery_phase", simulate_crash)
+    with pytest.raises(helper.HostError, match="simulated_process_loss"):
+        helper._start_next_temporary_recovery(prior_id, view_sha)
+    assert sidecars
+    if fail_after_publish:
+        active = helper._temporary_operation_view()
+        assert active is not None
+        assert active["phase"] == "prepared"
+        assert active["operation_id"] != prior_id
+        with pytest.raises(helper.HostError, match="temporary_recovery_prior_operation_mismatch"):
+            helper._start_next_temporary_recovery(prior_id, view_sha)
+        next_id = active["operation_id"]
+    else:
+        assert state[helper.TEMPORARY_RECOVERY_OPERATION]["operation_id"] == prior_id
+        assert state[helper.TEMPORARY_RECOVERY_OPERATION]["phase"] == "restored"
+        monkeypatch.setattr(helper, "_write_temporary_recovery_phase", write_phase)
+        retried = helper._start_next_temporary_recovery(prior_id, view_sha)
+        next_id = retried["operation_id"]
+        assert len(sidecars) == 2
+    restored = helper._restore_temporary_recovery(next_id)
+    assert restored["result"] == "temporary_recovery_restored"
+    assert state[helper.TEMPORARY_RECOVERY_OPERATION]["phase"] == "restored"
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_error"),
+    [
+        ("active", "temporary_recovery_active"),
+        ("prior_id", "temporary_recovery_prior_operation_mismatch"),
+        ("view_digest", "temporary_recovery_prior_view_mismatch"),
+        ("malformed", "temporary_recovery_state_invalid"),
+        ("current_link", "temporary_recovery_prior_current_mismatch"),
+        ("rollout_disabled", "temporary_recovery_predecessor_unready"),
+        ("artifact", "temporary_recovery_prior_artifact_mismatch"),
+    ],
+)
+def test_temporary_recovery_next_cycle_rejects_unbound_predecessors(
+    failure: str,
+    expected_error: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    state, _events, _tags, sidecars = _install_restored_temporary_recovery(
+        monkeypatch, helper, tmp_path
+    )
+    prior = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    prior_id = prior["operation_id"]
+    view_sha = helper._canonical_value_sha256(helper._temporary_operation_view())
+    if failure == "active":
+        prior["phase"] = "startup_floor_passed"
+        view_sha = helper._canonical_value_sha256(helper._temporary_operation_view())
+    elif failure == "malformed":
+        prior["source_revision"] = "f" * 40
+    elif failure == "current_link":
+        state[helper.CURRENT_RECORD]["temporary_recovery_restored_operation_id"] = "a" * 32
+    elif failure == "rollout_disabled":
+        state[helper.CURRENT_RECORD]["assistant_rollout_mode"] = "disabled"
+    elif failure == "artifact":
+        prior["manifest_sha256"] = "f" * 64
+    if failure == "prior_id":
+        prior_id = "a" * 32 if prior_id != "a" * 32 else "b" * 32
+    if failure == "view_digest":
+        view_sha = "0" * 64
+
+    prior_raw = json.dumps(prior, sort_keys=True, separators=(",", ":")).encode()
+    monkeypatch.setattr(
+        helper,
+        "_read_root_owned_json",
+        lambda _path, **_kwargs: (json.loads(json.dumps(prior)), prior_raw),
+    )
+    with pytest.raises(helper.HostError, match=expected_error):
+        helper._start_next_temporary_recovery(prior_id, view_sha)
+    assert sidecars == {}
+
+
+def _history_test_metadata(monkeypatch: pytest.MonkeyPatch, helper, tmp_path: Path) -> Path:
+    state_root = tmp_path / "state"
+    history_root = state_root / "temporary-recovery-history"
+    history_root.mkdir(parents=True, mode=0o700)
+    state_root.chmod(0o700)
+    helper.STATE_ROOT = state_root
+    helper.TEMPORARY_RECOVERY_HISTORY_ROOT = history_root
+    original_fstat = os.fstat
+
+    def root_owned_fstat(descriptor: int):
+        metadata = original_fstat(descriptor)
+        fields = list(metadata)
+        fields[4] = 0
+        return os.stat_result(fields)
+
+    monkeypatch.setattr(helper.os, "fstat", root_owned_fstat)
+    return history_root
+
+
+def _active_cycle_inspect_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    available_kib: int = 600_000,
+    helper: Any | None = None,
+    failed_prior: bool = False,
+) -> tuple[Any, dict[Path, dict[str, Any]], dict[str, bytes], Path]:
+    """Materialize producer-created cycle records and immutable sidecars for read-only inspect."""
+
+    helper = helper or _helper()
+    history_root = _history_test_metadata(monkeypatch, helper, tmp_path)
+    monkeypatch.setattr(helper, "CURRENT_RECORD", helper.STATE_ROOT / "current.json")
+    monkeypatch.setattr(
+        helper,
+        "TEMPORARY_RECOVERY_OPERATION",
+        helper.STATE_ROOT / "temporary-recovery-operation.json",
+    )
+    root_owned_json_reader = helper._read_root_owned_json
+    state, _events, _tags, sidecars = _install_restored_temporary_recovery(
+        monkeypatch, helper, tmp_path
+    )
+    prior = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    if failed_prior:
+        prior.update(
+            {
+                "failure_code": "host_command_failed",
+                "failed_at": "2026-10-17T10:11:12.123456+00:00",
+                "startup_floor_kib": None,
+                "start_admission_allowed": None,
+            }
+        )
+    prior_id = prior["operation_id"]
+    prior_view_sha256 = helper._canonical_value_sha256(helper._temporary_operation_view())
+    monkeypatch.setattr(helper, "_memory_available_kib", lambda: available_kib)
+    helper._start_next_temporary_recovery(prior_id, prior_view_sha256)
+
+    for name, content in sidecars.items():
+        path = history_root / name
+        path.write_bytes(content)
+        path.chmod(0o600)
+    for path in (helper.CURRENT_RECORD, helper.TEMPORARY_RECOVERY_OPERATION):
+        raw = json.dumps(state[path], sort_keys=True, separators=(",", ":")).encode()
+        path.write_bytes(raw)
+        path.chmod(0o600)
+    monkeypatch.setattr(helper, "_read_root_owned_json", root_owned_json_reader)
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+
+    readonly_calls: list[str] = []
+
+    def read_only_inspect_run(command: list[str], **kwargs: Any) -> SimpleNamespace:
+        if command == [
+            "curl",
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--max-time",
+            "3",
+            helper.HEALTH_URL,
+        ]:
+            assert kwargs == {"timeout": 5}
+            readonly_calls.append("health-curl")
+            return SimpleNamespace(
+                stdout=json.dumps(
+                    {
+                        "status": "ready",
+                        "schema_version": helper.ASSISTANT_MINIMUM_SCHEMA,
+                        "assistant": {"enabled": False, "status": "disabled"},
+                    }
+                ),
+                stderr="",
+            )
+        assert command[:4] == ["docker", "image", "inspect", "--format"]
+        assert len(command) == 6
+        assert command[-1] == operation["image_ref"]
+        assert kwargs == {"timeout": 30, "memory_reserve_kib": 128 * 1024}
+        template = command[4]
+        if template == "{{.Id}}":
+            stdout = operation["image_id"]
+            readonly_calls.append("image-id")
+        elif template == '{{index .Config.Labels "org.opencontainers.image.revision"}}':
+            stdout = operation["source_revision"]
+            readonly_calls.append("image-revision")
+        elif template == "{{.Os}}/{{.Architecture}}":
+            stdout = "linux/amd64"
+            readonly_calls.append("image-platform")
+        elif template == "{{json .Config.Entrypoint}}|{{json .Config.Cmd}}":
+            stdout = json.dumps(["python", "-m", "stock_probs.recovery_supervisor"])
+            readonly_calls.append("image-entrypoint")
+            fixed_metadata_host = "0.0.0.0"  # noqa: S104 - fixture metadata only; no process starts.
+            stdout += "|"
+            stdout += json.dumps(
+                ["serve", "--host", fixed_metadata_host, "--port", "8000", "--allow-non-loopback"]
+            )
+        else:
+            raise AssertionError("inspect requested unapproved image metadata")
+        return SimpleNamespace(stdout=stdout, stderr="")
+
+    monkeypatch.setattr(helper, "_run", read_only_inspect_run)
+    helper._inspect_readonly_run_calls = readonly_calls
+    return helper, state, sidecars, history_root
+
+
+def _snapshot_recovery_inspect_files(
+    state_root: Path, history_root: Path
+) -> dict[str, tuple[Any, ...]]:
+    snapshot: dict[str, tuple[Any, ...]] = {}
+    paths = [state_root / "current.json", state_root / "temporary-recovery-operation.json"]
+    paths.extend(sorted(history_root.iterdir()))
+    for path in paths:
+        metadata = path.lstat()
+        snapshot[str(path)] = (
+            path.read_bytes() if stat.S_ISREG(metadata.st_mode) else None,
+            metadata.st_mode,
+            metadata.st_ino,
+            metadata.st_size,
+            metadata.st_mtime_ns,
+            metadata.st_nlink,
+        )
+    return snapshot
+
+
+def test_temporary_recovery_inspect_proves_active_successor_read_only_and_keeps_floor_unmet_closed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    health_check = helper._health_check
+    profile_check = helper._assert_temporary_container_profile
+    helper, state, sidecars, history_root = _active_cycle_inspect_fixture(
+        monkeypatch, tmp_path, available_kib=200_000, helper=helper
+    )
+    monkeypatch.setattr(helper, "_health_check", health_check)
+    monkeypatch.setattr(helper, "_assert_temporary_container_profile", profile_check)
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    prior_id = operation["original_record"]["temporary_recovery_restored_operation_id"]
+    cycle_link = json.loads(sidecars[f"cycle-{operation['operation_id']}.json"])
+    prior_raw = sidecars[cycle_link["history_name"]]
+    prior_record = json.loads(prior_raw)
+    expected_prior_view_sha256 = helper._canonical_value_sha256(
+        helper._temporary_operation_view_for_record(prior_record)
+    )
+    before = _snapshot_recovery_inspect_files(helper.STATE_ROOT, history_root)
+    monkeypatch.setattr(
+        helper,
+        "_write_json",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("inspect wrote state")),
+    )
+    monkeypatch.setattr(
+        helper,
+        "_publish_immutable_temporary_recovery_file",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("inspect wrote a sidecar")),
+    )
+    source_checks: list[tuple[str, Any]] = []
+    load_authorization = helper._load_temporary_recovery_authorization
+    verify_archive = helper._assert_temporary_recovery_archive
+
+    def load_authorized_manifest() -> tuple[dict[str, Any], str]:
+        result = load_authorization()
+        source_checks.append(("authorization", result[1]))
+        return result
+
+    def verify_authorized_archive(manifest: dict[str, Any], **kwargs: Any) -> None:
+        assert kwargs == {"memory_reserve_kib": 128 * 1024}
+        verify_archive(manifest, **kwargs)
+        source_checks.append(("archive", manifest["image"]["archive_sha256"]))
+
+    monkeypatch.setattr(helper, "_load_temporary_recovery_authorization", load_authorized_manifest)
+    monkeypatch.setattr(helper, "_assert_temporary_recovery_archive", verify_authorized_archive)
+    container_id = "a" * 64
+    init_pid = 4242
+    compose_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def read_only_compose(*args: Any, **kwargs: Any) -> str:
+        assert args == ("ps", "--status", "running", "--quiet", "app")
+        assert kwargs == {
+            "timeout": 20,
+            "compose_file": tmp_path / "compose",
+            "memory_reserve_kib": 128 * 1024,
+        }
+        compose_calls.append((args, kwargs))
+        return container_id
+
+    monkeypatch.setattr(helper, "_compose", read_only_compose)
+    process_reads: list[int] = []
+
+    def read_only_proc_status(pid: int) -> dict[str, Any]:
+        assert pid == init_pid
+        process_reads.append(pid)
+        return {
+            "pid": init_pid,
+            "ppid": 1,
+            "uid": 10001,
+            "uids": (10001, 10001, 10001, 10001),
+            "name": "stock-probs",
+            "namespace_pid": 1,
+            "CapPrm": 0,
+            "CapEff": 0,
+            "CapBnd": 0xC0,
+            "CapAmb": 0,
+        }
+
+    monkeypatch.setattr(helper, "_read_container_process_status", read_only_proc_status)
+    profile_run_calls: list[tuple[str, ...]] = []
+    fixture_run = helper._run
+
+    def bounded_read_only_run(command: list[str], **kwargs: Any) -> Any:
+        if command == [
+            "docker",
+            "inspect",
+            "--format",
+            "{{.Id}}|{{.State.Pid}}|{{.State.Running}}",
+            container_id,
+        ]:
+            assert kwargs == {"timeout": 10, "memory_reserve_kib": 128 * 1024}
+            profile_run_calls.append(tuple(command))
+            return SimpleNamespace(stdout=f"{container_id}|{init_pid}|true\n", stderr="")
+        if command == [
+            "docker",
+            "inspect",
+            "--format",
+            (
+                "{{.Id}}|{{.Image}}|{{.State.Pid}}|{{.State.Running}}|"
+                '{{.HostConfig.ReadonlyRootfs}}|{{json (index .HostConfig "Init")}}|'
+                "{{.Config.User}}|{{json .HostConfig.SecurityOpt}}|"
+                "{{json .HostConfig.CapDrop}}|{{json .HostConfig.CapAdd}}|"
+                "{{json .HostConfig.PortBindings}}|{{.HostConfig.Memory}}|"
+                "{{.HostConfig.NanoCpus}}|{{.HostConfig.PidsLimit}}"
+            ),
+            container_id,
+        ]:
+            assert kwargs == {"timeout": 15, "memory_reserve_kib": 128 * 1024}
+            profile_run_calls.append(tuple(command))
+            return SimpleNamespace(
+                stdout=(
+                    f"{container_id}|{operation['image_id']}|{init_pid}|true|true|false|0:0|"
+                    '["no-new-privileges:true"]|["ALL"]|["SETUID","SETGID"]|'
+                    '{"8000/tcp":[{"HostIp":"127.0.0.1","HostPort":"8000"}]}|'
+                    f"{768 * 1024 * 1024}|1000000000|128\n"
+                ),
+                stderr="",
+            )
+        if command == ["docker", "top", container_id, "-eo", "pid,ppid,uid,comm"]:
+            assert kwargs == {"timeout": 15, "memory_reserve_kib": 128 * 1024}
+            profile_run_calls.append(tuple(command))
+            return SimpleNamespace(
+                stdout=f"PID PPID UID COMMAND\n{init_pid} 1 10001 stock-probs\n",
+                stderr="",
+            )
+        # The existing fixture accepts only the exact image-inspect and health-curl
+        # commands. Thus run/create/exec/copy and all other Docker operations fail closed.
+        return fixture_run(command, **kwargs)
+
+    monkeypatch.setattr(helper, "_run", bounded_read_only_run)
+    image_schema_calls: list[tuple[Any, ...]] = []
+
+    def reject_image_schema(*args: Any, **kwargs: Any) -> int:
+        image_schema_calls.append((args, kwargs))
+        raise AssertionError("inspect must not start a container to read image schema")
+
+    monkeypatch.setattr(helper, "_image_schema", reject_image_schema)
+    response = helper._inspect()
+    after = _snapshot_recovery_inspect_files(helper.STATE_ROOT, history_root)
+    proof = response["temporary_recovery_proof"]
+
+    assert response["status"] == "ok"
+    assert response["current"] == state[helper.CURRENT_RECORD]
+    assert response["temporary_recovery"] == helper._temporary_operation_view_for_record(operation)
+    assert proof == {
+        "schema": 1,
+        "status": "verified",
+        "operation_id": operation["operation_id"],
+        "phase": "startup_floor_unmet",
+        "operation_record_sha256": hashlib.sha256(
+            json.dumps(operation, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest(),
+        "source_artifact_verified": True,
+        "backup": operation["backup"],
+        "process_profile": "temporary_app_pid1",
+        "process_profile_verified": True,
+        "runtime_reserve_kib": 128 * 1024,
+        "runtime_available_kib": 200_000,
+        "startup_available_kib": 200_000,
+        "startup_floor_kib": 512 * 1024,
+        "start_admission_allowed": False,
+        "cycle_history_verified": True,
+        "cycle_link": {
+            "prior_operation_id": prior_id,
+            "prior_record_sha256": hashlib.sha256(prior_raw).hexdigest(),
+            "prior_view_sha256": expected_prior_view_sha256,
+            "successor_operation_id": operation["operation_id"],
+            "history_name": cycle_link["history_name"],
+            "cycle_link_sha256": hashlib.sha256(
+                sidecars[f"cycle-{operation['operation_id']}.json"]
+            ).hexdigest(),
+            "cycle_link_status": "started",
+            "database_policy": "reuse_schema_13_no_restore",
+        },
+    }
+    assert len(compose_calls) == 1
+    assert process_reads == [init_pid]
+    assert len(profile_run_calls) == 3
+    assert source_checks == [
+        ("authorization", operation["manifest_sha256"]),
+        ("archive", operation["archive_sha256"]),
+    ]
+    assert image_schema_calls == []
+    assert helper._inspect_readonly_run_calls == [
+        "health-curl",
+        "image-id",
+        "image-revision",
+        "image-platform",
+        "image-entrypoint",
+    ]
+    assert before == after
+
+
+def test_temporary_recovery_inspect_verifies_failed_restored_predecessor_history(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper, state, sidecars, _history_root = _active_cycle_inspect_fixture(
+        monkeypatch, tmp_path, failed_prior=True
+    )
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    response = helper._inspect()
+    proof = response["temporary_recovery_proof"]
+    cycle_link = json.loads(sidecars[f"cycle-{operation['operation_id']}.json"])
+    prior_raw = sidecars[cycle_link["history_name"]]
+    prior = json.loads(prior_raw)
+
+    assert response["status"] == "ok"
+    assert proof["status"] == "verified"
+    assert proof["cycle_history_verified"] is True
+    assert proof["cycle_link"]["prior_record_sha256"] == hashlib.sha256(prior_raw).hexdigest()
+    assert proof["cycle_link"]["prior_view_sha256"] == helper._canonical_value_sha256(
+        helper._temporary_operation_view_for_record(prior)
+    )
+    assert prior["failure_code"] == "host_command_failed"
+    assert prior["failed_at"] == "2026-10-17T10:11:12.123456+00:00"
+    assert prior["startup_floor_kib"] is None
+    assert prior["start_admission_allowed"] is None
+
+
+def test_temporary_recovery_inspect_omits_optional_proof_for_initial_and_restored_phases(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    _history_test_metadata(monkeypatch, helper, tmp_path)
+    monkeypatch.setattr(helper, "CURRENT_RECORD", helper.STATE_ROOT / "current.json")
+    monkeypatch.setattr(
+        helper,
+        "TEMPORARY_RECOVERY_OPERATION",
+        helper.STATE_ROOT / "temporary-recovery-operation.json",
+    )
+    root_owned_json_reader = helper._read_root_owned_json
+    state, _events, _tags = _install_temporary_recovery_fakes(monkeypatch, helper, tmp_path)
+    started = helper._start_temporary_recovery()
+    for path in (helper.CURRENT_RECORD, helper.TEMPORARY_RECOVERY_OPERATION):
+        raw = json.dumps(state[path], sort_keys=True, separators=(",", ":")).encode()
+        path.write_bytes(raw)
+        path.chmod(0o600)
+    monkeypatch.setattr(helper, "_read_root_owned_json", root_owned_json_reader)
+
+    assert "temporary_recovery_proof" not in helper._inspect()
+    helper._restore_temporary_recovery(started["operation_id"])
+    assert "temporary_recovery_proof" not in helper._inspect()
+
+
+@pytest.mark.parametrize(
+    "health",
+    [
+        {
+            "status": "ready",
+            "schema_version": 12,
+            "assistant": {"enabled": False, "status": "disabled"},
+        },
+        {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {"enabled": True, "status": "ready"},
+        },
+        {"status": "unavailable"},
+    ],
+)
+def test_temporary_recovery_inspect_requires_schema13_disabled_live_health(
+    health: dict[str, Any], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper, _state, _sidecars, _history_root = _active_cycle_inspect_fixture(monkeypatch, tmp_path)
+    monkeypatch.setattr(helper, "_health_check", lambda **_kwargs: health)
+
+    response = helper._inspect()
+
+    assert response["health"] == health
+    assert response["temporary_recovery_proof"] == {
+        "schema": 1,
+        "status": "unavailable",
+        "reason_code": "temporary_recovery_artifact_unverified",
+    }
+
+
+@pytest.mark.parametrize(
+    ("corruption", "expected_reason"),
+    [
+        ("current", "temporary_recovery_current_mismatch"),
+        ("missing_record", "temporary_recovery_state_invalid"),
+        ("image", "temporary_recovery_artifact_unverified"),
+        ("schema", "temporary_recovery_state_invalid"),
+        ("startup_reserve", "temporary_recovery_state_invalid"),
+        ("artifact", "temporary_recovery_artifact_unverified"),
+        ("profile", "temporary_recovery_process_profile_unverified"),
+        ("backup", "temporary_recovery_backup_unverified"),
+        ("history", "temporary_recovery_cycle_history_unverified"),
+        ("link", "temporary_recovery_cycle_history_unverified"),
+        ("partial_link", "temporary_recovery_cycle_history_unverified"),
+        ("link_symlink", "temporary_recovery_cycle_history_unverified"),
+    ],
+)
+def test_temporary_recovery_inspect_proof_fails_closed_for_mismatched_inputs(
+    corruption: str,
+    expected_reason: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper, state, sidecars, history_root = _active_cycle_inspect_fixture(monkeypatch, tmp_path)
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    operation_path = helper.TEMPORARY_RECOVERY_OPERATION
+    current_path = helper.CURRENT_RECORD
+    cycle_path = history_root / f"cycle-{operation['operation_id']}.json"
+
+    def write_canonical(path: Path, value: dict[str, Any]) -> None:
+        path.write_bytes(json.dumps(value, sort_keys=True, separators=(",", ":")).encode())
+        path.chmod(0o600)
+
+    if corruption == "current":
+        current = dict(state[current_path])
+        current["assistant_rollout_mode"] = "owner_canary"
+        state[current_path] = current
+        write_canonical(current_path, current)
+    elif corruption == "missing_record":
+        operation_path.unlink()
+    elif corruption == "image":
+        operation["image_id"] = "sha256:" + "9" * 64
+        state[operation_path] = operation
+        write_canonical(operation_path, operation)
+        current = helper._temporary_active_record(operation, status="ready")
+        state[current_path] = current
+        write_canonical(current_path, current)
+    elif corruption == "schema":
+        operation["schema_version"] = 12
+        state[operation_path] = operation
+        write_canonical(operation_path, operation)
+    elif corruption == "startup_reserve":
+        operation["startup_floor_kib"] = 100_000
+        operation["start_admission_allowed"] = False
+        state[operation_path] = operation
+        write_canonical(operation_path, operation)
+    elif corruption == "artifact":
+        monkeypatch.setattr(
+            helper,
+            "_assert_temporary_recovery_archive",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                helper.HostError("temporary_recovery_archive_digest_mismatch")
+            ),
+        )
+    elif corruption == "profile":
+        monkeypatch.setattr(
+            helper,
+            "_assert_temporary_container_profile",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                helper.HostError("temporary_recovery_container_profile_invalid")
+            ),
+        )
+    elif corruption == "backup":
+        operation["backup"]["promoted"] = True
+        state[operation_path] = operation
+        write_canonical(operation_path, operation)
+    elif corruption == "history":
+        link = json.loads(sidecars[f"cycle-{operation['operation_id']}.json"])
+        history_path = history_root / link["history_name"]
+        history_path.write_bytes(b"{}")
+        history_path.chmod(0o600)
+    elif corruption == "link":
+        link = json.loads(cycle_path.read_bytes())
+        link["new_operation_id"] = "0" * 32
+        write_canonical(cycle_path, link)
+    elif corruption == "partial_link":
+        cycle_path.write_bytes(b"{")
+        cycle_path.chmod(0o600)
+    elif corruption == "link_symlink":
+        target = history_root / "target.json"
+        target.write_bytes(cycle_path.read_bytes())
+        target.chmod(0o600)
+        cycle_path.unlink()
+        cycle_path.symlink_to(target)
+    else:
+        raise AssertionError(f"unknown corruption: {corruption}")
+
+    response = helper._inspect()
+    assert response["status"] == "ok"
+    assert response["health"]["status"] == "ready"
+    assert response["temporary_recovery_proof"] == {
+        "schema": 1,
+        "status": "unavailable",
+        "reason_code": expected_reason,
+    }
+
+
+def test_temporary_recovery_inspect_rejects_operation_change_during_proof(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper, _state, _sidecars, _history_root = _active_cycle_inspect_fixture(monkeypatch, tmp_path)
+    operation_path = helper.TEMPORARY_RECOVERY_OPERATION
+
+    def change_operation_after_initial_read(*_args: Any, **_kwargs: Any) -> str:
+        operation = json.loads(operation_path.read_bytes())
+        operation["created_at"] = "2099-01-01T00:00:00Z"
+        operation_path.write_bytes(
+            json.dumps(operation, sort_keys=True, separators=(",", ":")).encode()
+        )
+        operation_path.chmod(0o600)
+        return "a" * 64
+
+    monkeypatch.setattr(
+        helper, "_assert_temporary_container_profile", change_operation_after_initial_read
+    )
+    response = helper._inspect()
+
+    assert response["status"] == "ok"
+    assert response["health"]["status"] == "ready"
+    assert response["temporary_recovery_proof"] == {
+        "schema": 1,
+        "status": "unavailable",
+        "reason_code": "temporary_recovery_state_invalid",
+    }
+
+
+def test_temporary_recovery_history_rejects_conflict_and_symlink_without_replacing_them(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    history_root = _history_test_metadata(monkeypatch, helper, tmp_path)
+    expected = b'{"format_version":1}'
+    name = "cycle-" + "a" * 32 + ".json"
+    target = history_root / "target"
+    target.write_bytes(expected)
+    target.chmod(0o600)
+    conflict = history_root / name
+    conflict.write_bytes(b'{"format_version":2}')
+    conflict.chmod(0o600)
+    with pytest.raises(helper.HostError, match="history_conflict"):
+        helper._publish_immutable_temporary_recovery_file(
+            name, expected, maximum_bytes=128, error_code="history_conflict"
+        )
+    assert conflict.read_bytes() == b'{"format_version":2}'
+
+    symlink_name = "cycle-" + "b" * 32 + ".json"
+    (history_root / symlink_name).symlink_to(target)
+    with pytest.raises(helper.HostError, match="history_symlink"):
+        helper._publish_immutable_temporary_recovery_file(
+            symlink_name, expected, maximum_bytes=128, error_code="history_symlink"
+        )
+    assert (history_root / symlink_name).is_symlink()
+    assert target.read_bytes() == expected
+
+
+def test_temporary_recovery_history_retains_partial_file_and_refuses_retry(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    history_root = _history_test_metadata(monkeypatch, helper, tmp_path)
+    name = "closed-" + "c" * 32 + "-" + "d" * 64 + ".json"
+    content = b'{"operation_id":"' + b"c" * 32 + b'"}'
+    original_write_all = helper._write_all
+
+    def partial_write(descriptor: int, requested: bytes) -> None:
+        os.write(descriptor, requested[:5])
+        raise OSError("simulated write failure")
+
+    monkeypatch.setattr(helper, "_write_all", partial_write)
+    with pytest.raises(helper.HostError, match="history_write_failed"):
+        helper._publish_immutable_temporary_recovery_file(
+            name, content, maximum_bytes=1_024, error_code="history_write_failed"
+        )
+    partial = history_root / name
+    assert partial.read_bytes() == content[:5]
+    assert stat.S_IMODE(partial.stat().st_mode) == 0o600
+
+    monkeypatch.setattr(helper, "_write_all", original_write_all)
+    with pytest.raises(helper.HostError, match="history_write_failed"):
+        helper._publish_immutable_temporary_recovery_file(
+            name, content, maximum_bytes=1_024, error_code="history_write_failed"
+        )
+    assert partial.read_bytes() == content[:5]
+
+
+def test_temporary_recovery_history_fails_closed_on_fsync_then_syncs_identical_retry(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    history_root = _history_test_metadata(monkeypatch, helper, tmp_path)
+    name = "cycle-" + "f" * 32 + ".json"
+    content = b'{"format_version":1,"kind":"cycle"}'
+    original_fsync = helper.os.fsync
+
+    def fail_file_fsync(descriptor: int) -> None:
+        metadata = helper.os.fstat(descriptor)
+        if stat.S_ISREG(metadata.st_mode):
+            raise OSError("simulated file fsync failure")
+        original_fsync(descriptor)
+
+    monkeypatch.setattr(helper.os, "fsync", fail_file_fsync)
+    with pytest.raises(helper.HostError, match="history_fsync_failed"):
+        helper._publish_immutable_temporary_recovery_file(
+            name, content, maximum_bytes=1_024, error_code="history_fsync_failed"
+        )
+    published = history_root / name
+    assert published.read_bytes() == content
+
+    monkeypatch.setattr(helper.os, "fsync", original_fsync)
+    digest = helper._publish_immutable_temporary_recovery_file(
+        name, content, maximum_bytes=1_024, error_code="history_fsync_failed"
+    )
+    assert digest == hashlib.sha256(content).hexdigest()
+    assert published.read_bytes() == content
+
+
+def test_temporary_recovery_history_rejects_unsafe_directory_mode(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    helper = _helper()
+    history_root = _history_test_metadata(monkeypatch, helper, tmp_path)
+    history_root.chmod(0o750)
+    with pytest.raises(helper.HostError, match="history_unsafe"):
+        helper._publish_immutable_temporary_recovery_file(
+            "cycle-" + "g" * 32 + ".json",
+            b"{}",
+            maximum_bytes=1_024,
+            error_code="history_unsafe",
+        )
+    assert list(history_root.iterdir()) == []
+
+
+def _hotfix_release_manifest(helper: Any) -> dict[str, Any]:
+    """Represent the reviewed PR11 helper, PR9 candidate and original production artifact."""
+
+    return {
+        "format_version": 2,
+        "contract": "schema13_same_schema_hotfix_v1",
+        "repository": "eddiesoz/stock_probs",
+        "revision": "a" * 40,
+        "helper_source": {"pull_number": 11, "revision": "a" * 40},
+        "candidate": {
+            "asset": helper._release_archive_name(helper.HOTFIX_CANDIDATE_REVISION),
+            "archive_sha256": "c" * 64,
+            "archive_size": 1024,
+            "image_id": helper.HOTFIX_CANDIDATE_IMAGE_ID,
+            "platform": "linux/amd64",
+            "pull_number": 9,
+            "revision": helper.HOTFIX_CANDIDATE_REVISION,
+            "schema_version": 13,
+            "source_context_sha256": helper.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+            "build_receipt_sha256": helper.HOTFIX_BUILD_RECEIPT_SHA256,
+        },
+        "recovery": {
+            "asset": helper._release_archive_name(helper.PRODUCTION_PREDECESSOR_REVISION),
+            "archive_sha256": helper.HOTFIX_RECOVERY_ARCHIVE_SHA256,
+            "archive_size": helper.HOTFIX_RECOVERY_ARCHIVE_SIZE,
+            "image_id": helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+            "platform": "linux/amd64",
+            "revision": helper.PRODUCTION_PREDECESSOR_REVISION,
+            "schema_version": 13,
+            "source_context_sha256": helper.HOTFIX_RECOVERY_CONTEXT_SHA256,
+            "kind": "previous_production_candidate",
+            "prior_pair_manifest_sha256": helper.HOTFIX_PRIOR_PAIR_SHA256,
+            "assistant_rollout_mode": "invited",
+        },
+        "transition": {"from_schema": 13, "to_schema": 13, "migrations": [], "restore": False},
+        "recovery_overlay": {"kind": "none", "sha256": hashlib.sha256(b"[]").hexdigest()},
+    }
+
+
+def _prepare_hotfix_plan_fixture(
+    helper: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    main_revision: str,
+    helper_source_revision: str = "a" * 40,
+    registered_pair_sha256: str = "f" * 64,
+    pair_sha256: str = "f" * 64,
+    pair_helper_source_revision: str | None = None,
+    helper_registered: bool = True,
+) -> tuple[list[tuple[str, Any]], list[dict[str, Any]]]:
+    """Stub I/O while preserving plan authorization and app/helper identity boundaries."""
+
+    compose_file = tmp_path / "compose.yaml"
+    compose_file.write_text("services: {}\n", encoding="utf-8")
+    observed: list[tuple[str, Any]] = []
+    written: list[dict[str, Any]] = []
+    monkeypatch.setattr(helper, "COMPOSE_FILE", compose_file)
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(helper, "_ensure_no_active_temporary_recovery", lambda: None)
+    monkeypatch.setattr(helper, "_ensure_source", lambda: None)
+    monkeypatch.setattr(helper, "_read_json", lambda _path: None)
+    monkeypatch.setattr(
+        helper,
+        "_checkout_revision",
+        lambda revision: observed.append(("checkout", revision)),
+    )
+    monkeypatch.setattr(helper, "_assert_compose_revision", lambda: None)
+    monkeypatch.setattr(helper, "_compose_digest", lambda: "1" * 64)
+    monkeypatch.setattr(helper, "_write_compose_snapshot", lambda *args: None)
+    monkeypatch.setattr(helper, "_utc_now", lambda: "2026-10-17T00:00:00Z")
+    monkeypatch.setattr(helper, "_write_json", lambda _path, value: written.append(dict(value)))
+    monkeypatch.setattr(helper, "_audit", lambda *args, **kwargs: None)
+
+    def fake_git(*arguments: str, timeout: float = 120.0) -> str:
+        del timeout
+        if arguments == ("rev-parse", f"refs/remotes/origin/{helper.MAIN_BRANCH}"):
+            return main_revision
+        if arguments and arguments[0] == "cat-file":
+            return ""
+        raise AssertionError(f"unexpected git command: {arguments!r}")
+
+    monkeypatch.setattr(helper, "_git", fake_git)
+
+    def read_registered_helper(expected_pair_sha256: str | None = None) -> str:
+        observed.append(("registered_helper", expected_pair_sha256))
+        if not helper_registered:
+            raise helper.HostError("hotfix_helper_provenance_unavailable")
+        if expected_pair_sha256 != registered_pair_sha256:
+            raise helper.HostError("hotfix_helper_provenance_mismatch")
+        return helper_source_revision
+
+    monkeypatch.setattr(helper, "_read_installed_maintenance_helper", read_registered_helper)
+
+    def load_archive(
+        revision: str, digest: str, image_id: str
+    ) -> tuple[str, str, str, str, int, int]:
+        observed.append(("archive", revision))
+        return (
+            helper._local_image_ref(revision),
+            digest,
+            image_id,
+            "linux/amd64",
+            helper.ASSISTANT_MINIMUM_SCHEMA,
+            1024,
+        )
+
+    def load_pair(
+        revision: str,
+        expected_pair: str,
+        archive_digest: str,
+        image_id: str,
+        *,
+        candidate_archive_size: int,
+    ) -> dict[str, Any]:
+        observed.append(("pair", (revision, expected_pair, candidate_archive_size)))
+        assert revision == helper.HOTFIX_CANDIDATE_REVISION
+        assert expected_pair == pair_sha256
+        assert archive_digest == "e" * 64
+        assert image_id == helper.HOTFIX_CANDIDATE_IMAGE_ID
+        return {
+            "pair_manifest_sha256": expected_pair,
+            "source_context_sha256": helper.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+            "migration_sha256": None,
+            "recovery_contract": helper.HOTFIX_PAIR_CONTRACT,
+            "helper_source_revision": (
+                pair_helper_source_revision
+                if pair_helper_source_revision is not None
+                else helper_source_revision
+            ),
+            "recovery_image_id": helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+            "recovery_archive_sha256": helper.HOTFIX_RECOVERY_ARCHIVE_SHA256,
+            "recovery_archive_size": helper.HOTFIX_RECOVERY_ARCHIVE_SIZE,
+            "recovery_platform": "linux/amd64",
+            "recovery_schema_version": helper.ASSISTANT_MINIMUM_SCHEMA,
+        }
+
+    monkeypatch.setattr(helper, "_load_release_archive", load_archive)
+    monkeypatch.setattr(helper, "_load_release_pair", load_pair)
+    return observed, written
+
+
+def test_hotfix_plan_keeps_app_revision_distinct_from_registered_helper_source(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    candidate_revision = helper.HOTFIX_CANDIDATE_REVISION
+    helper_source_revision = "f548fd94dad75c73b31621ee1a466ac7d41d06c2"
+    pair_sha256 = "f" * 64
+    observed, written = _prepare_hotfix_plan_fixture(
+        helper,
+        monkeypatch,
+        tmp_path,
+        main_revision=helper_source_revision,
+        helper_source_revision=helper_source_revision,
+        pair_sha256=pair_sha256,
+    )
+
+    result = helper._plan_deploy(
+        candidate_revision,
+        "e" * 64,
+        helper.HOTFIX_CANDIDATE_IMAGE_ID,
+        pair_sha256,
+    )
+
+    assert result["revision"] == candidate_revision
+    assert result["image_ref"] == helper._local_image_ref(candidate_revision)
+    assert result["helper_source_revision"] == helper_source_revision
+    assert written[0]["revision"] == candidate_revision
+    assert written[0]["helper_source_revision"] == helper_source_revision
+    assert ("checkout", helper_source_revision) in observed
+    assert ("registered_helper", pair_sha256) in observed
+
+
+@pytest.mark.parametrize(
+    "main_revision",
+    ["4cab5eac006704b2f1d7d957ac5f05f26adaed0a", "d" * 40],
+)
+def test_hotfix_plan_rejects_when_registered_helper_is_not_exact_current_main(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    main_revision: str,
+) -> None:
+    helper = _helper()
+    observed, written = _prepare_hotfix_plan_fixture(
+        helper,
+        monkeypatch,
+        tmp_path,
+        main_revision=main_revision,
+        helper_source_revision="f548fd94dad75c73b31621ee1a466ac7d41d06c2",
+    )
+
+    with pytest.raises(helper.HostError, match="revision_not_current_main"):
+        helper._plan_deploy(
+            helper.HOTFIX_CANDIDATE_REVISION,
+            "e" * 64,
+            helper.HOTFIX_CANDIDATE_IMAGE_ID,
+            "f" * 64,
+        )
+
+    assert not any(operation in {"checkout", "archive", "pair"} for operation, _ in observed)
+    assert written == []
+
+
+@pytest.mark.parametrize(
+    "image_id,pair_sha256",
+    [(None, "f" * 64), ("sha256:" + "0" * 64, "f" * 64), (None, None)],
+)
+def test_hotfix_plan_requires_the_fixed_image_and_registered_pair(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    image_id: str | None,
+    pair_sha256: str | None,
+) -> None:
+    helper = _helper()
+    observed, written = _prepare_hotfix_plan_fixture(
+        helper,
+        monkeypatch,
+        tmp_path,
+        main_revision="a" * 40,
+    )
+
+    with pytest.raises(helper.HostError, match="hotfix_release_pair_required"):
+        helper._plan_deploy(
+            helper.HOTFIX_CANDIDATE_REVISION,
+            "e" * 64,
+            image_id,
+            pair_sha256,
+        )
+
+    assert not any(operation in {"checkout", "archive", "pair"} for operation, _ in observed)
+    assert written == []
+
+
+def test_hotfix_plan_rejects_a_pair_not_bound_to_registered_helper(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    observed, written = _prepare_hotfix_plan_fixture(
+        helper,
+        monkeypatch,
+        tmp_path,
+        main_revision="b" * 40,
+        registered_pair_sha256="f" * 64,
+    )
+
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_mismatch"):
+        helper._plan_deploy(
+            helper.HOTFIX_CANDIDATE_REVISION,
+            "e" * 64,
+            helper.HOTFIX_CANDIDATE_IMAGE_ID,
+            "0" * 64,
+        )
+
+    assert not any(operation in {"checkout", "archive", "pair"} for operation, _ in observed)
+    assert written == []
+
+
+def test_hotfix_plan_rejects_pair_helper_source_mismatch_after_pair_validation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    helper_source_revision = "a" * 40
+    observed, written = _prepare_hotfix_plan_fixture(
+        helper,
+        monkeypatch,
+        tmp_path,
+        main_revision=helper_source_revision,
+        helper_source_revision=helper_source_revision,
+        pair_helper_source_revision="b" * 40,
+    )
+
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_mismatch"):
+        helper._plan_deploy(
+            helper.HOTFIX_CANDIDATE_REVISION,
+            "e" * 64,
+            helper.HOTFIX_CANDIDATE_IMAGE_ID,
+            "f" * 64,
+        )
+
+    assert ("checkout", helper_source_revision) in observed
+    assert any(operation == "archive" for operation, _ in observed)
+    assert any(operation == "pair" for operation, _ in observed)
+    assert written == []
+
+
+def test_hotfix_plan_rejects_an_unregistered_helper(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    observed, written = _prepare_hotfix_plan_fixture(
+        helper,
+        monkeypatch,
+        tmp_path,
+        main_revision="b" * 40,
+        helper_registered=False,
+    )
+
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_unavailable"):
+        helper._plan_deploy(
+            helper.HOTFIX_CANDIDATE_REVISION,
+            "e" * 64,
+            helper.HOTFIX_CANDIDATE_IMAGE_ID,
+            "f" * 64,
+        )
+
+    assert not any(operation in {"checkout", "archive", "pair"} for operation, _ in observed)
+    assert written == []
+
+
+def test_hotfix_deploy_receipt_keeps_app_and_registered_helper_revisions_distinct(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper = _helper()
+    candidate_revision = helper.HOTFIX_CANDIDATE_REVISION
+    helper_source_revision = "f548fd94dad75c73b31621ee1a466ac7d41d06c2"
+    plan = {
+        "revision": candidate_revision,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "image_digest": "e" * 64,
+        "image_ref": helper._local_image_ref(candidate_revision),
+        "image_id": helper.HOTFIX_CANDIDATE_IMAGE_ID,
+        "archive_sha256": "e" * 64,
+        "archive_size": 1024,
+        "platform": "linux/amd64",
+        "schema_version": helper.ASSISTANT_MINIMUM_SCHEMA,
+        "compose_digest": "1" * 64,
+        "pair_manifest_sha256": "f" * 64,
+        "helper_source_revision": helper_source_revision,
+    }
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(helper, "_ensure_no_active_temporary_recovery", lambda: None)
+    monkeypatch.setattr(helper, "_load_plan", lambda _plan_id: plan)
+    monkeypatch.setattr(helper, "_compose_digest", lambda: plan["compose_digest"])
+    monkeypatch.setattr(
+        helper,
+        "_apply_release",
+        lambda record: {
+            "status": "ok",
+            "result": "deployed",
+            "revision": record["revision"],
+        },
+    )
+
+    result = helper._deploy(
+        "1" * 32,
+        candidate_revision,
+        plan["image_digest"],
+        helper.HOTFIX_CANDIDATE_IMAGE_ID,
+        plan["pair_manifest_sha256"],
+    )
+
+    assert result["revision"] == candidate_revision
+    assert result["image_id"] == helper.HOTFIX_CANDIDATE_IMAGE_ID
+    assert result["helper_source_revision"] == helper_source_revision
+
+
+def test_normal_release_still_requires_exact_current_main_revision(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    observed, written = _prepare_hotfix_plan_fixture(
+        helper,
+        monkeypatch,
+        tmp_path,
+        main_revision="a" * 40,
+    )
+
+    with pytest.raises(helper.HostError, match="revision_not_current_main"):
+        helper._plan_deploy("b" * 40, "e" * 64)
+
+    assert not any(operation == "registered_helper" for operation, _ in observed)
+    assert written == []
+
+
+def _validate_hotfix_release(helper: Any, manifest: dict[str, Any]) -> dict[str, Any]:
+    return helper._validate_release_pair_manifest(
+        manifest,
+        revision=helper.HOTFIX_CANDIDATE_REVISION,
+        candidate_archive_sha256="c" * 64,
+        candidate_archive_size=1024,
+        candidate_image_id=helper.HOTFIX_CANDIDATE_IMAGE_ID,
+        facts={
+            "--hotfix-helper-source": "a" * 40,
+            "--source-context-manifest": {
+                "source_context_sha256": helper.HOTFIX_CANDIDATE_CONTEXT_SHA256,
+            },
+        },
+    )
+
+
+def test_hotfix_release_pair_retains_distinct_helper_candidate_and_recovery_revisions() -> None:
+    helper = _helper()
+    manifest = _hotfix_release_manifest(helper)
+    assert _validate_hotfix_release(helper, manifest) is manifest
+    assert (
+        len(
+            {
+                manifest["revision"],
+                manifest["candidate"]["revision"],
+                manifest["recovery"]["revision"],
+            }
+        )
+        == 3
+    )
+    assert manifest["transition"]["migrations"] == []
+    assert manifest["transition"]["restore"] is False
+
+
+def _dual_head_release_manifest(helper: Any) -> dict[str, Any]:
+    manifest = _hotfix_release_manifest(helper)
+    manifest.update(
+        {
+            "format_version": 3,
+            "contract": helper.HOTFIX_PAIR_CONTRACT_V3,
+            "reviewed_pr_head_sha": "b" * 40,
+            "image_source_revision": helper.HOTFIX_V3_IMAGE_SOURCE_REVISION,
+        }
+    )
+    manifest["candidate"].update(
+        {
+            "asset": helper._release_archive_name(helper.HOTFIX_V3_CANDIDATE_REVISION),
+            "image_id": helper.HOTFIX_V3_IMAGE_ID,
+            "revision": helper.HOTFIX_V3_CANDIDATE_REVISION,
+            "source_context_sha256": helper.HOTFIX_V3_IMAGE_CONTEXT_SHA256,
+            "build_receipt_sha256": helper.HOTFIX_V3_BUILD_RECEIPT_SHA256,
+        }
+    )
+    return manifest
+
+
+def test_dual_head_release_pair_validates_image_and_reviewed_test_identity_separately() -> None:
+    helper = _helper()
+    manifest = _dual_head_release_manifest(helper)
+    facts = {
+        "--hotfix-helper-source": "a" * 40,
+        "--source-context-manifest": {
+            "source_context_sha256": helper.HOTFIX_V3_IMAGE_CONTEXT_SHA256,
+        },
+    }
+
+    validated = helper._validate_hotfix_release_pair_manifest(
+        manifest,
+        revision=helper.HOTFIX_V3_CANDIDATE_REVISION,
+        candidate_archive_sha256="c" * 64,
+        candidate_archive_size=1024,
+        candidate_image_id=helper.HOTFIX_V3_IMAGE_ID,
+        facts=facts,
+        format_version=3,
+    )
+
+    assert validated["revision"] == facts["--hotfix-helper-source"]
+    assert validated["reviewed_pr_head_sha"] == "b" * 40
+    assert validated["image_source_revision"] == helper.HOTFIX_V3_IMAGE_SOURCE_REVISION
+    assert validated["candidate"]["revision"] == helper.HOTFIX_V3_IMAGE_SOURCE_REVISION
+
+    for mutate in (
+        lambda value: value.pop("reviewed_pr_head_sha"),
+        lambda value: value.update(image_source_revision="b" * 40),
+        lambda value: value.update(unexpected=True),
+    ):
+        malformed = copy.deepcopy(manifest)
+        mutate(malformed)
+        with pytest.raises(
+            helper.HostError,
+            match="release_pair_hotfix_identity_invalid|release_pair_hotfix_invalid",
+        ):
+            helper._validate_hotfix_release_pair_manifest(
+                malformed,
+                revision=helper.HOTFIX_V3_CANDIDATE_REVISION,
+                candidate_archive_sha256="c" * 64,
+                candidate_archive_size=1024,
+                candidate_image_id=helper.HOTFIX_V3_IMAGE_ID,
+                facts=facts,
+                format_version=3,
+            )
+
+
+def test_dual_head_release_record_requires_reviewed_pr9_identity() -> None:
+    helper = _helper()
+    candidate_revision = helper.HOTFIX_V3_CANDIDATE_REVISION
+    record = {
+        "revision": candidate_revision,
+        "image_ref": helper._local_image_ref(candidate_revision),
+        "image_digest": "c" * 64,
+        "archive_sha256": "c" * 64,
+        "image_id": helper.HOTFIX_V3_IMAGE_ID,
+        "platform": "linux/amd64",
+        "archive_size": 1024,
+        "schema_version": 13,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "release_role": "candidate",
+        "source_context_sha256": helper.HOTFIX_V3_IMAGE_CONTEXT_SHA256,
+        "candidate_image_id": helper.HOTFIX_V3_IMAGE_ID,
+        "candidate_source_context_sha256": helper.HOTFIX_V3_IMAGE_CONTEXT_SHA256,
+        "recovery_contract": helper.HOTFIX_PAIR_CONTRACT_V3,
+        "helper_source_revision": "a" * 40,
+        "reviewed_pr_head_sha": "b" * 40,
+    }
+    helper._assert_image_record(record)
+
+    for value in (None, "not-a-commit"):
+        malformed = {**record, "reviewed_pr_head_sha": value}
+        with pytest.raises(helper.HostError, match="release_invalid"):
+            helper._assert_image_record(malformed)
+
+
+def test_hotfix_pair_parser_rejects_duplicate_nested_identity_keys() -> None:
+    helper = _helper()
+    with pytest.raises(ValueError, match="duplicate release pair key"):
+        json.loads(
+            '{"helper_source":{"pull_number":2,"pull_number":11}}',
+            object_pairs_hook=helper._unique_release_pair_object,
+        )
+
+
+def test_hotfix_pair_rejects_coordinated_helper_revision_substitution() -> None:
+    helper = _helper()
+    manifest = _hotfix_release_manifest(helper)
+    manifest["revision"] = manifest["helper_source"]["revision"] = "b" * 40
+    with pytest.raises(helper.HostError, match="release_pair_hotfix_identity_invalid"):
+        _validate_hotfix_release(helper, manifest)
+
+
+def _read_hotfix_install_fixture(
+    helper: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    value: object,
+    *,
+    uid: int = 0,
+    mode: int = 0o640,
+) -> str:
+    path = tmp_path / "installed.json"
+    path.write_bytes(value if isinstance(value, bytes) else json.dumps(value).encode())
+    path.chmod(mode)
+    monkeypatch.setattr(helper, "HOTFIX_HELPER_INSTALL_RECORD", path)
+    original_fstat = os.fstat
+    fields = ("st_dev", "st_ino", "st_mode", "st_gid", "st_size", "st_mtime_ns", "st_ctime_ns")
+
+    def projected_owner(descriptor: int) -> SimpleNamespace:
+        observed = original_fstat(descriptor)
+        return SimpleNamespace(st_uid=uid, **{name: getattr(observed, name) for name in fields})
+
+    with monkeypatch.context() as ownership:
+        ownership.setattr(helper.os, "fstat", projected_owner)
+        return helper._reviewed_hotfix_helper_revision("f" * 64)
+
+
+def _hotfix_install_metadata(helper: Any) -> dict[str, Any]:
+    return {
+        "format_version": 1,
+        "repository": helper.PAIR_REPOSITORY,
+        "pull_number": 11,
+        "helper_source_contract": helper.HOTFIX_INSTALLED_SOURCE_CONTRACT,
+        "reviewed_head_sha": "a" * 40,
+        "reviewed_pair_manifest_sha256": "f" * 64,
+    }
+
+
+def test_hotfix_helper_revision_comes_from_the_matching_root_bootstrap_record(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    assert (
+        _read_hotfix_install_fixture(
+            helper, monkeypatch, tmp_path, _hotfix_install_metadata(helper)
+        )
+        == "a" * 40
+    )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("format_version", 1.0),
+        ("repository", "unrelated/repository"),
+        ("pull_number", 2),
+        ("pull_number", 11.0),
+        ("helper_source_contract", None),
+        ("helper_source_contract", "schema13_same_schema_hotfix_v3"),
+        ("helper_source_contract", "spoofed_source_transport"),
+        ("reviewed_pair_manifest_sha256", "e" * 64),
+        ("reviewed_head_sha", "unreviewed"),
+    ],
+)
+def test_hotfix_helper_provenance_rejects_foreign_or_legacy_bootstrap_record(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    field: str,
+    value: Any,
+) -> None:
+    helper = _helper()
+    metadata = _hotfix_install_metadata(helper)
+    metadata[field] = value
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_mismatch"):
+        _read_hotfix_install_fixture(helper, monkeypatch, tmp_path, metadata)
+
+
+@pytest.mark.parametrize("uid,mode", [(10001, 0o640), (0, 0o660), (0, 0o642)])
+def test_hotfix_helper_provenance_rejects_untrusted_file_ownership_or_write_permissions(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    uid: int,
+    mode: int,
+) -> None:
+    helper = _helper()
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_unsafe"):
+        _read_hotfix_install_fixture(
+            helper, monkeypatch, tmp_path, _hotfix_install_metadata(helper), uid=uid, mode=mode
+        )
+
+
+def test_hotfix_helper_provenance_rejects_symlink_duplicate_keys_and_oversized_record(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    target = tmp_path / "target.json"
+    target.write_text("{}")
+    link = tmp_path / "installed-link.json"
+    link.symlink_to(target)
+    monkeypatch.setattr(helper, "HOTFIX_HELPER_INSTALL_RECORD", link)
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_unavailable"):
+        helper._reviewed_hotfix_helper_revision("f" * 64)
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_invalid"):
+        _read_hotfix_install_fixture(
+            helper, monkeypatch, tmp_path, b'{"pull_number":2,"pull_number":11}'
+        )
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_unsafe"):
+        _read_hotfix_install_fixture(helper, monkeypatch, tmp_path, b" " * 8193)
+
+
+def test_hotfix_helper_provenance_rejects_a_special_file_without_waiting_for_a_writer(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    fifo = tmp_path / "installed-fifo"
+    os.mkfifo(fifo, 0o600)
+    monkeypatch.setattr(helper, "HOTFIX_HELPER_INSTALL_RECORD", fifo)
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_unsafe"):
+        helper._reviewed_hotfix_helper_revision("f" * 64)
+
+
+def test_installed_maintenance_helper_requires_its_exact_root_recorded_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    revision = "a" * 40
+    pair_digest = "f" * 64
+    helper_bytes = b"reviewed production helper contents"
+    predecessor_bytes = b"known predecessor helper contents"
+    helper_path = tmp_path / "production-deploy-helper.py"
+    backup_path = tmp_path / "previous-production-deploy-helper.py"
+    manifest_path = tmp_path / "installed.json"
+    helper_path.write_bytes(helper_bytes)
+    helper_path.chmod(0o750)
+    backup_path.write_bytes(predecessor_bytes)
+    backup_path.chmod(0o600)
+    manifest = {
+        "format_version": 1,
+        "repository": helper.PAIR_REPOSITORY,
+        "pull_number": 11,
+        "reviewed_head_sha": revision,
+        "reviewed_pair_manifest_sha256": pair_digest,
+        "files": {
+            "host_helper.py": "1" * 64,
+            "seed.py": "2" * 64,
+            "native_driver.py": "3" * 64,
+            "production-deploy-helper.py": hashlib.sha256(helper_bytes).hexdigest(),
+        },
+        "installed_at": "2026-10-16T00:00:00Z",
+        "helper_source_contract": helper.HOTFIX_INSTALLED_SOURCE_CONTRACT,
+        "previous_production_helper_sha256": hashlib.sha256(predecessor_bytes).hexdigest(),
+    }
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    manifest_path.chmod(0o640)
+    monkeypatch.setattr(helper, "HOTFIX_HELPER_INSTALL_RECORD", manifest_path)
+    monkeypatch.setattr(helper, "PRODUCTION_HELPER_FILE", helper_path)
+    monkeypatch.setattr(helper, "PREVIOUS_PRODUCTION_HELPER_FILE", backup_path)
+    monkeypatch.setattr(helper, "PREVIOUS_PRODUCTION_HELPER_SIZE", len(predecessor_bytes))
+    monkeypatch.setattr(
+        helper,
+        "PREVIOUS_PRODUCTION_HELPER_SHA256",
+        hashlib.sha256(predecessor_bytes).hexdigest(),
+    )
+    monkeypatch.setattr(helper, "_reviewed_hotfix_helper_revision", lambda _digest: revision)
+
+    trusted_paths = {manifest_path, helper_path, backup_path}
+    original_lstat = Path.lstat
+    original_fstat = os.fstat
+
+    def as_root(metadata: os.stat_result) -> SimpleNamespace:
+        fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_gid",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+        return SimpleNamespace(st_uid=0, **{field: getattr(metadata, field) for field in fields})
+
+    inodes = {path.stat().st_ino for path in trusted_paths}
+
+    def projected_lstat(path: Path) -> os.stat_result | SimpleNamespace:
+        metadata = original_lstat(path)
+        return as_root(metadata) if path in trusted_paths else metadata
+
+    def projected_fstat(descriptor: int) -> os.stat_result | SimpleNamespace:
+        metadata = original_fstat(descriptor)
+        return as_root(metadata) if metadata.st_ino in inodes else metadata
+
+    monkeypatch.setattr(Path, "lstat", projected_lstat)
+    monkeypatch.setattr(helper.os, "fstat", projected_fstat)
+
+    assert (
+        helper._read_installed_maintenance_helper(
+            pair_digest,
+            expected_source_contract=helper.HOTFIX_INSTALLED_SOURCE_CONTRACT,
+        )
+        == revision
+    )
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_mismatch"):
+        helper._read_installed_maintenance_helper(
+            pair_digest,
+            expected_source_contract=helper.HOTFIX_PAIR_CONTRACT_V3,
+        )
+
+    for source_contract in (helper.HOTFIX_PAIR_CONTRACT_V3, "spoofed_source_transport"):
+        manifest["helper_source_contract"] = source_contract
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        manifest_path.chmod(0o640)
+        with pytest.raises(helper.HostError, match="hotfix_helper_provenance_mismatch"):
+            helper._read_installed_maintenance_helper(
+                pair_digest,
+                expected_source_contract=helper.HOTFIX_INSTALLED_SOURCE_CONTRACT,
+            )
+
+    manifest["helper_source_contract"] = helper.HOTFIX_INSTALLED_SOURCE_CONTRACT
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    manifest_path.chmod(0o640)
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_mismatch"):
+        helper._read_installed_maintenance_helper("e" * 64)
+
+    helper_path.write_bytes(b"changed helper bytes")
+    helper_path.chmod(0o750)
+    with pytest.raises(helper.HostError, match="hotfix_helper_digest_mismatch"):
+        helper._read_installed_maintenance_helper(pair_digest)
+
+
+@pytest.mark.parametrize(
+    "section,field,value",
+    [
+        ("helper_source", "pull_number", 2),
+        ("helper_source", "revision", "b" * 40),
+        ("candidate", "pull_number", 11),
+        ("candidate", "revision", "a" * 40),
+        ("candidate", "archive_sha256", "d" * 64),
+        ("candidate", "archive_size", 1024.0),
+        ("candidate", "build_receipt_sha256", "d" * 64),
+        (
+            "recovery",
+            "image_id",
+            "sha256:a9b5147cff0016e443589e8c7b72e83764ca4bac45866ef3ad9bbcd3b308c13f",
+        ),
+        ("recovery", "revision", "a" * 40),
+        ("recovery", "archive_sha256", "d" * 64),
+        ("recovery", "schema_version", 13.0),
+        ("transition", "from_schema", 12),
+        ("transition", "to_schema", 14),
+        ("transition", "migrations", ["013_assistant_conversations.sql"]),
+        ("transition", "restore", True),
+        ("transition", "restore", 0),
+        ("recovery_overlay", "kind", "migration"),
+        ("recovery_overlay", "sha256", "d" * 64),
+    ],
+)
+def test_hotfix_release_pair_rejects_identity_schema_or_overlay_substitution(
+    section: str, field: str, value: Any
+) -> None:
+    helper = _helper()
+    manifest = _hotfix_release_manifest(helper)
+    manifest[section][field] = value
+    with pytest.raises(helper.HostError, match="release_pair_"):
+        _validate_hotfix_release(helper, manifest)
+
+
+def _hotfix_release_record(
+    helper: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    dual_head: bool = False,
+) -> dict[str, Any]:
+    monkeypatch.setattr(
+        helper,
+        "_load_release_archive",
+        lambda *args: (
+            helper._local_image_ref(helper.PRODUCTION_PREDECESSOR_REVISION),
+            helper.HOTFIX_RECOVERY_ARCHIVE_SHA256,
+            helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+            "linux/amd64",
+            13,
+            helper.HOTFIX_RECOVERY_ARCHIVE_SIZE,
+        ),
+    )
+    monkeypatch.setattr(helper, "_image_has_recovery_entrypoint", lambda *args, **kwargs: True)
+    manifest = (
+        _dual_head_release_manifest(helper) if dual_head else _hotfix_release_manifest(helper)
+    )
+    candidate_revision = (
+        helper.HOTFIX_V3_CANDIDATE_REVISION if dual_head else helper.HOTFIX_CANDIDATE_REVISION
+    )
+    identity = helper._hotfix_identity(candidate_revision)
+    assert identity is not None
+    record = _schema13_release_record(helper)
+    record.update(
+        revision=candidate_revision,
+        image_ref=helper._local_image_ref(candidate_revision),
+        image_id=identity[1],
+    )
+    record.update(helper._load_hotfix_release_recovery(manifest, "f" * 64))
+    return record
+
+
+def test_hotfix_release_load_uses_the_original_production_archive_and_entrypoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper = _helper()
+    _hotfix_release_record(helper, monkeypatch)
+    calls = []
+    original = helper._load_release_archive
+    monkeypatch.setattr(
+        helper, "_load_release_archive", lambda *args: calls.append(args) or original(*args)
+    )
+    monkeypatch.setattr(
+        helper,
+        "_image_has_recovery_entrypoint",
+        lambda ref, **kwargs: calls.append((ref, kwargs)) or True,
+    )
+    result = helper._load_hotfix_release_recovery(_hotfix_release_manifest(helper), "f" * 64)
+    assert calls == [
+        (
+            helper.PRODUCTION_PREDECESSOR_REVISION,
+            helper.HOTFIX_RECOVERY_ARCHIVE_SHA256,
+            helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+        ),
+        (helper._local_image_ref(helper.PRODUCTION_PREDECESSOR_REVISION), {"managed": True}),
+    ]
+    assert result["migration_sha256"] is None
+    assert result["recovery_base_revision"] == helper.PRODUCTION_PREDECESSOR_REVISION
+
+
+def test_hotfix_recovery_validation_rechecks_actual_original_image_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper = _helper()
+    record = _hotfix_release_record(helper, monkeypatch)
+    monkeypatch.setattr(helper, "_image_id", lambda ref: helper.PRODUCTION_PREDECESSOR_IMAGE_ID)
+    monkeypatch.setattr(
+        helper, "_image_revision", lambda ref: helper.PRODUCTION_PREDECESSOR_REVISION
+    )
+    monkeypatch.setattr(helper, "_image_platform", lambda ref: "linux/amd64")
+    monkeypatch.setattr(helper, "_image_schema", lambda ref: 13)
+    helper._assert_loaded_recovery_image(record)
+    monkeypatch.setattr(helper, "_image_revision", lambda ref: helper.HOTFIX_CANDIDATE_REVISION)
+    with pytest.raises(helper.HostError, match="recovery_image_contract_mismatch"):
+        helper._assert_loaded_recovery_image(record)
+
+
+def test_hotfix_recovery_preserves_data_without_migrations_and_reports_actual_source_revision(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    helper = _helper()
+    record = _hotfix_release_record(helper, monkeypatch)
+    observed = _install_schema13_rollback_mocks(helper, monkeypatch, tmp_path, record)
+    monkeypatch.setattr(
+        helper,
+        "_run_migrations",
+        lambda *args, **kwargs: pytest.fail("same-schema recovery must not run migrations"),
+    )
+    monkeypatch.setattr(
+        helper,
+        "_run",
+        lambda *args, **kwargs: pytest.fail("recovery test must not execute external commands"),
+    )
+    result = helper._rollback_to_recorded_recovery(
+        record["revision"],
+        record,
+        record["recovery_image_id"],
+        observed["compose_snapshot"],
+    )
+    current = observed["persisted"][helper.CURRENT_RECORD]
+    assert result["revision"] == current["revision"] == helper.PRODUCTION_PREDECESSOR_REVISION
+    assert result["image_id"] == current["image_id"] == helper.PRODUCTION_PREDECESSOR_IMAGE_ID
+    assert current["candidate_release_revision"] == helper.HOTFIX_CANDIDATE_REVISION
+    assert current["source_context_sha256"] == helper.HOTFIX_RECOVERY_CONTEXT_SHA256
+    assert current["candidate_source_context_sha256"] == helper.HOTFIX_CANDIDATE_CONTEXT_SHA256
+    assert current["assistant_rollout_mode"] == "disabled"
+    assert [event[0] for event in observed["events"]].count("stop") == 1
+    assert [event for event in observed["events"] if event[0] == "runtime"] == [
+        ("runtime", (helper._local_image_ref(helper.PRODUCTION_PREDECESSOR_REVISION), "disabled")),
+    ]
+    helper._assert_image_record(current)
+    with pytest.raises(helper.HostError, match="recovery_image_record_invalid"):
+        helper._assert_image_record({**current, "revision": helper.HOTFIX_CANDIDATE_REVISION})
+
+
+@pytest.mark.parametrize("dual_head", [False, True], ids=("v1-pair", "v3-pair"))
+def test_hotfix_pair_load_keeps_source_transport_separate_from_pair_contract(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    dual_head: bool,
+) -> None:
+    helper = _helper()
+    _hotfix_release_record(helper, monkeypatch, dual_head=dual_head)
+    manifest = (
+        _dual_head_release_manifest(helper) if dual_head else _hotfix_release_manifest(helper)
+    )
+    raw = json.dumps(manifest).encode()
+    path = tmp_path / "pair.json"
+    path.write_bytes(raw)
+    calls = []
+
+    def read_installed_helper(
+        expected: str | None = None, *, expected_source_contract: str | None = None
+    ) -> str:
+        calls.append(("install", expected, expected_source_contract))
+        if expected_source_contract is not None:
+            assert expected_source_contract == helper.HOTFIX_INSTALLED_SOURCE_CONTRACT
+        return "a" * 40
+
+    monkeypatch.setattr(helper, "_read_installed_maintenance_helper", read_installed_helper)
+    monkeypatch.setattr(
+        helper,
+        "_download_hotfix_pair_asset",
+        lambda revision: calls.append(("pair", revision)) or path,
+    )
+    original = helper._load_release_archive
+    monkeypatch.setattr(
+        helper, "_load_release_archive", lambda *args: calls.append(args) or original(*args)
+    )
+    monkeypatch.setattr(
+        helper,
+        "_release_pair_source_facts",
+        lambda: {
+            "--source-context-manifest": {
+                "source_context_sha256": (
+                    helper.HOTFIX_V3_IMAGE_CONTEXT_SHA256
+                    if dual_head
+                    else helper.HOTFIX_CANDIDATE_CONTEXT_SHA256
+                )
+            }
+        },
+    )
+    monkeypatch.setattr(helper, "_reviewed_hotfix_helper_revision", lambda pair_sha: "a" * 40)
+    monkeypatch.setattr(helper, "_run", lambda *args, **kwargs: pytest.fail("external command"))
+    result = helper._load_release_pair(
+        helper.HOTFIX_V3_CANDIDATE_REVISION if dual_head else helper.HOTFIX_CANDIDATE_REVISION,
+        hashlib.sha256(raw).hexdigest(),
+        "c" * 64,
+        helper.HOTFIX_V3_IMAGE_ID if dual_head else helper.HOTFIX_CANDIDATE_IMAGE_ID,
+        candidate_archive_size=1024,
+    )
+    pair_sha = hashlib.sha256(raw).hexdigest()
+    expected_calls = [("install", pair_sha, None), ("pair", "a" * 40)]
+    if dual_head:
+        expected_calls.append(("install", pair_sha, helper.HOTFIX_INSTALLED_SOURCE_CONTRACT))
+    expected_calls.append(
+        (
+            helper.PRODUCTION_PREDECESSOR_REVISION,
+            helper.HOTFIX_RECOVERY_ARCHIVE_SHA256,
+            helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+        )
+    )
+    assert calls == expected_calls
+    assert result["recovery_image_ref"] == helper._local_image_ref(
+        helper.PRODUCTION_PREDECESSOR_REVISION
+    )
+    assert not path.exists()
+
+
+@pytest.mark.parametrize(
+    "installed_contract,helper_source_revision,expected_error",
+    [
+        ("schema13_same_schema_hotfix_v3", "a" * 40, "hotfix_helper_provenance_mismatch"),
+        ("spoofed_source_transport", "a" * 40, "hotfix_helper_provenance_mismatch"),
+        ("schema13_same_schema_hotfix_v1", "b" * 40, "release_pair_hotfix_identity_invalid"),
+    ],
+)
+def test_dual_head_pair_load_rejects_wrong_installer_contract_or_helper_pin(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    installed_contract: str,
+    helper_source_revision: str,
+    expected_error: str,
+) -> None:
+    helper = _helper()
+    _hotfix_release_record(helper, monkeypatch, dual_head=True)
+    manifest = _dual_head_release_manifest(helper)
+    raw = json.dumps(manifest).encode()
+    pair_path = tmp_path / "pair.json"
+    pair_path.write_bytes(raw)
+    pair_sha = hashlib.sha256(raw).hexdigest()
+
+    def read_installed_helper(
+        expected: str | None = None, *, expected_source_contract: str | None = None
+    ) -> str:
+        if installed_contract != helper.HOTFIX_INSTALLED_SOURCE_CONTRACT:
+            raise helper.HostError("hotfix_helper_provenance_mismatch")
+        if expected_source_contract is not None and (
+            expected_source_contract != installed_contract
+        ):
+            raise helper.HostError("hotfix_helper_provenance_mismatch")
+        if expected is not None and expected != pair_sha:
+            raise helper.HostError("hotfix_helper_provenance_mismatch")
+        return "a" * 40
+
+    monkeypatch.setattr(helper, "_read_installed_maintenance_helper", read_installed_helper)
+    monkeypatch.setattr(helper, "_download_hotfix_pair_asset", lambda _revision: pair_path)
+    monkeypatch.setattr(
+        helper,
+        "_release_pair_source_facts",
+        lambda: {
+            "--source-context-manifest": {
+                "source_context_sha256": helper.HOTFIX_V3_IMAGE_CONTEXT_SHA256
+            }
+        },
+    )
+    monkeypatch.setattr(
+        helper, "_reviewed_hotfix_helper_revision", lambda _pair_sha: helper_source_revision
+    )
+    monkeypatch.setattr(helper, "_run", lambda *args, **kwargs: pytest.fail("external command"))
+
+    with pytest.raises(helper.HostError, match=expected_error):
+        helper._load_release_pair(
+            helper.HOTFIX_V3_CANDIDATE_REVISION,
+            pair_sha,
+            "c" * 64,
+            helper.HOTFIX_V3_IMAGE_ID,
+            candidate_archive_size=1024,
+        )
+
+
+def test_hotfix_pair_load_rejects_install_record_before_downloading_pair(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helper = _helper()
+    calls: list[str] = []
+
+    def reject_install(expected: str) -> str:
+        calls.append(expected)
+        raise helper.HostError("hotfix_helper_provenance_mismatch")
+
+    monkeypatch.setattr(helper, "_read_installed_maintenance_helper", reject_install)
+    monkeypatch.setattr(
+        helper,
+        "_download_hotfix_pair_asset",
+        lambda revision: pytest.fail(
+            f"pair download happened before install validation: {revision}"
+        ),
+    )
+
+    with pytest.raises(helper.HostError, match="hotfix_helper_provenance_mismatch"):
+        helper._load_release_pair(
+            helper.HOTFIX_CANDIDATE_REVISION,
+            "f" * 64,
+            "c" * 64,
+            helper.HOTFIX_CANDIDATE_IMAGE_ID,
+            candidate_archive_size=1024,
+        )
+    assert calls == ["f" * 64]
+
+
+@pytest.mark.parametrize(
+    "module,managed,expected",
+    [
+        ("stock_probs.recovery_supervisor", False, True),
+        ("stock_probs.recovery_supervisor", True, False),
+        ("stock_probs.container_supervisor", True, True),
+        ("stock_probs.container_supervisor", False, False),
+        ("stock_probs.cli", True, False),
+    ],
+)
+def test_hotfix_recovery_entrypoint_is_explicitly_separate_from_app_only_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+    module: str,
+    managed: bool,
+    expected: bool,
+) -> None:
+    helper = _helper()
+    command = [
+        "serve",
+        "--host",
+        "0.0.0.0",  # noqa: S104 - fixed container command fixture; no process is started.
+        "--port",
+        "8000",
+        "--allow-non-loopback",
+    ]
+    stdout = json.dumps(["python", "-m", module]) + "|" + json.dumps(command)
+    monkeypatch.setattr(helper, "_run", lambda *args, **kwargs: SimpleNamespace(stdout=stdout))
+    assert helper._image_has_recovery_entrypoint("fixed-fixture", managed=managed) is expected
+
+
+@pytest.mark.parametrize("dual_head", [False, True], ids=("v2", "v3"))
+def test_hotfix_apply_persists_a_reloadable_pair_for_public_rollback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    dual_head: bool,
+) -> None:
+    helper = _helper()
+    target = _hotfix_release_record(helper, monkeypatch, dual_head=dual_head)
+    predecessor = {
+        "revision": helper.PRODUCTION_PREDECESSOR_REVISION,
+        "transport": helper.GITHUB_RELEASE_TRANSPORT,
+        "image_ref": helper._local_image_ref(helper.PRODUCTION_PREDECESSOR_REVISION),
+        "image_digest": helper.HOTFIX_RECOVERY_ARCHIVE_SHA256,
+        "archive_sha256": helper.HOTFIX_RECOVERY_ARCHIVE_SHA256,
+        "archive_size": helper.HOTFIX_RECOVERY_ARCHIVE_SIZE,
+        "image_id": helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+        "platform": "linux/amd64",
+        "schema_version": 13,
+        "source_context_sha256": helper.HOTFIX_RECOVERY_CONTEXT_SHA256,
+        "compose_digest": target["compose_digest"],
+        "assistant_rollout_mode": "invited",
+    }
+    monkeypatch.setattr(helper, "CURRENT_RECORD", tmp_path / "current.json")
+    monkeypatch.setattr(helper, "FAILED_RECORD", tmp_path / "failed.json")
+    monkeypatch.setattr(helper, "RELEASE_ROOT", tmp_path / "releases")
+    helper.RELEASE_ROOT.mkdir(mode=0o700)
+    helper._write_json(helper.CURRENT_RECORD, predecessor)
+    events = []
+    monkeypatch.setattr(helper, "_exclusive_lock", nullcontext)
+    monkeypatch.setattr(helper, "_ensure_layout", lambda: None)
+    monkeypatch.setattr(helper, "_ensure_no_active_temporary_recovery", lambda: None)
+    monkeypatch.setattr(
+        helper, "_assert_record_compose_digest", lambda row: tmp_path / "compose.yaml"
+    )
+    monkeypatch.setattr(
+        helper,
+        "_image_id",
+        lambda ref: target["image_id"] if ref == target["image_ref"] else predecessor["image_id"],
+    )
+    monkeypatch.setattr(
+        helper,
+        "_image_revision",
+        lambda ref: target["revision"] if ref == target["image_ref"] else predecessor["revision"],
+    )
+    monkeypatch.setattr(helper, "_image_platform", lambda ref: "linux/amd64")
+    monkeypatch.setattr(helper, "_image_schema", lambda *args, **kwargs: 13)
+    monkeypatch.setattr(helper, "_database_schema", lambda *args, **kwargs: 13)
+    monkeypatch.setattr(helper, "_stop_app", lambda *args, **kwargs: events.append("stop"))
+    monkeypatch.setattr(
+        helper, "_runtime_file", lambda *args, **kwargs: events.append(("runtime", args))
+    )
+    monkeypatch.setattr(helper, "_compose_up", lambda *args, **kwargs: events.append("up"))
+    monkeypatch.setattr(helper, "_run_migrations", lambda *args, **kwargs: events.append("migrate"))
+    monkeypatch.setattr(
+        helper,
+        "_verified_backup",
+        lambda *args, **kwargs: {
+            "name": "pre-deploy-safe.spbackup",
+            "sha256": "1" * 64,
+            "schema_version": 13,
+            "verified": True,
+        },
+    )
+    monkeypatch.setattr(
+        helper,
+        "_health_check",
+        lambda **kwargs: {
+            "status": "ready",
+            "schema_version": 13,
+            "assistant": {"enabled": False, "status": "disabled"},
+        },
+    )
+    monkeypatch.setattr(helper, "_audit", lambda *args, **kwargs: None)
+    monkeypatch.setattr(helper, "_run", lambda *args, **kwargs: pytest.fail("external command"))
+    assert helper._apply_release(target)["status"] == "ok"
+    for path in (helper.CURRENT_RECORD, helper.RELEASE_ROOT / f"{target['revision']}.json"):
+        persisted = helper._read_json(path)
+        for key in (
+            "recovery_contract",
+            "helper_source_revision",
+            "recovery_source_context_sha256",
+            "recovery_prior_pair_manifest_sha256",
+        ):
+            assert persisted[key] == target[key]
+        if dual_head:
+            for key in (
+                "candidate_image_id",
+                "candidate_source_context_sha256",
+                "reviewed_pr_head_sha",
+            ):
+                assert persisted[key] == target[key]
+        else:
+            assert "reviewed_pr_head_sha" not in persisted
+    current_summary = helper._state_summary()["current"]
+    assert current_summary["revision"] == target["revision"]
+    assert current_summary["helper_source_revision"] == target["helper_source_revision"]
+    result = helper._rollback(target["revision"], helper.PRODUCTION_PREDECESSOR_IMAGE_ID)
+    current = helper._read_json(helper.CURRENT_RECORD)
+    assert current["revision"] == result["revision"] == predecessor["revision"]
+    assert result["candidate_release_revision"] == target["revision"]
+    assert result["helper_source_revision"] == target["helper_source_revision"]
+    assert result["recovery_contract"] == target["recovery_contract"]
+    if dual_head:
+        assert result["reviewed_pr_head_sha"] == target["reviewed_pr_head_sha"]
+        assert current["reviewed_pr_head_sha"] == target["reviewed_pr_head_sha"]
+    assert current["image_id"] == predecessor["image_id"]
+    assert current["release_role"] == "recovery"
+    assert current["candidate_release_revision"] == target["revision"]
+    assert current["helper_source_revision"] == target["helper_source_revision"]
+    assert helper._state_summary()["current"] == current
+    assert current["assistant_rollout_mode"] == "disabled"
+    assert "migrate" not in events
+    before = list(events)
+    with pytest.raises(helper.HostError, match="recovery_image_assistant_disabled"):
+        helper._set_assistant_rollout(
+            "owner_canary",
+            revision=current["revision"],
+            archive_sha256=current["archive_sha256"],
+            image_id=current["image_id"],
+        )
+    assert events == before
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("revision", "a" * 40),
+        ("image_id", "sha256:" + "a" * 64),
+        ("archive_sha256", "a" * 64),
+        ("source_context_sha256", "a" * 64),
+        ("schema_version", 12),
+        ("schema_version", 13.0),
+        (None, None),
+    ],
+)
+def test_hotfix_apply_rejects_changed_predecessor_before_any_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str | None,
+    value: Any,
+) -> None:
+    helper = _helper()
+    target = _hotfix_release_record(helper, monkeypatch)
+    current = {
+        "revision": helper.PRODUCTION_PREDECESSOR_REVISION,
+        "image_id": helper.PRODUCTION_PREDECESSOR_IMAGE_ID,
+        "archive_sha256": helper.HOTFIX_RECOVERY_ARCHIVE_SHA256,
+        "source_context_sha256": helper.HOTFIX_RECOVERY_CONTEXT_SHA256,
+        "schema_version": 13,
+    }
+    if field is not None:
+        current[field] = value
+    monkeypatch.setattr(helper, "_read_json", lambda path: current if field else None)
+    monkeypatch.setattr(helper, "_assert_loaded_image", lambda record: None)
+    monkeypatch.setattr(helper, "_assert_loaded_recovery_image", lambda record: None)
+    for function in (
+        "_stop_app",
+        "_runtime_file",
+        "_write_json",
+        "_database_schema",
+        "_run_migrations",
+    ):
+        monkeypatch.setattr(helper, function, lambda *args, **kwargs: pytest.fail("mutation"))
+    with pytest.raises(helper.HostError, match="hotfix_predecessor_identity_mismatch"):
+        helper._apply_release(target)
+
+
+def test_temporary_recovery_inspect_isolates_active_successor_missing_created_at(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Malformed optional proof must preserve the current deployment and health."""
+    helper, state, _sidecars, history_root = _active_cycle_inspect_fixture(
+        monkeypatch, tmp_path, available_kib=200_000
+    )
+    operation = state[helper.TEMPORARY_RECOVERY_OPERATION]
+    assert operation["original_record"]["temporary_recovery_restored_operation_id"]
+    del operation["created_at"]
+    operation_path = helper.TEMPORARY_RECOVERY_OPERATION
+    operation_path.write_text(json.dumps(operation, sort_keys=True, separators=(",", ":")))
+    operation_path.chmod(0o600)
+    before = _snapshot_recovery_inspect_files(helper.STATE_ROOT, history_root)
+    expected_current = helper._read_json(helper.CURRENT_RECORD)
+    expected_health = helper._health_check()
+
+    response = helper._inspect()
+
+    assert response["status"] == "ok"
+    assert response["current"] == expected_current
+    assert response["health"] == expected_health
+    assert response["loopback_only"] is True
+    assert response["temporary_recovery_proof"] == {
+        "schema": 1,
+        "status": "unavailable",
+        "reason_code": "temporary_recovery_state_invalid",
+    }
+    assert _snapshot_recovery_inspect_files(helper.STATE_ROOT, history_root) == before
+
+
+@pytest.mark.parametrize(
+    "optional_function", ["_temporary_operation_view", "_temporary_recovery_proof_for_inspect"]
+)
+@pytest.mark.parametrize("error_type", [KeyError, RuntimeError, AssertionError])
+def test_temporary_recovery_inspect_isolates_optional_internal_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    optional_function: str,
+    error_type: type[Exception],
+) -> None:
+    """Unexpected optional failures remain bounded and cannot erase normal inspect facts."""
+    helper, _state, _sidecars, history_root = _active_cycle_inspect_fixture(
+        monkeypatch, tmp_path, available_kib=200_000
+    )
+    expected_current = helper._read_json(helper.CURRENT_RECORD)
+    expected_health = helper._health_check()
+    before = _snapshot_recovery_inspect_files(helper.STATE_ROOT, history_root)
+
+    def fail_optional(*_args: Any, **_kwargs: Any) -> Any:
+        raise error_type("private internal diagnostic must not escape")
+
+    monkeypatch.setattr(helper, optional_function, fail_optional)
+    response = helper._inspect()
+
+    assert response["status"] == "ok"
+    assert response["current"] == expected_current
+    assert response["health"] == expected_health
+    assert response["loopback_only"] is True
+    assert response["temporary_recovery_proof"] == {
+        "schema": 1,
+        "status": "unavailable",
+        "reason_code": "temporary_recovery_state_invalid",
+    }
+    assert "private internal diagnostic" not in json.dumps(response)
+    assert _snapshot_recovery_inspect_files(helper.STATE_ROOT, history_root) == before
+
+
+def test_v3_build_receipt_digest_matches_verified_producer_across_consumers() -> None:
+    """Keep every v3 consumer tied to the directly verified image receipt."""
+    from scripts import hotfix_release_transport, rehearse_schema13
+    from tools.deploy_mcp import pr_rehearsal
+
+    verified_producer_digest = "b7810ed4ff96e96207a88886c8d9d1ec81625dc6d73ee1cd0d45121f25fd9ced"
+    consumers = {
+        "deployment helper": _helper().HOTFIX_V3_BUILD_RECEIPT_SHA256,
+        "host helper": rehearsal_host_helper.HOTFIX_V3_BUILD_RECEIPT_SHA256,
+        "schema-13 rehearsal": rehearse_schema13.HOTFIX_V3_BUILD_RECEIPT_SHA256,
+        "release transport": hotfix_release_transport.HOTFIX_V3_BUILD_RECEIPT_SHA256,
+        "MCP rehearsal": pr_rehearsal.HOTFIX_V3_BUILD_RECEIPT_SHA256,
+    }
+
+    assert consumers == {name: verified_producer_digest for name in consumers}

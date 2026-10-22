@@ -19,6 +19,176 @@ resolve uncertain results with exact-node measurements, independent QA and paren
 review. See [contrast review](testing.md#reviewing-incomplete-contrast-results). A scoped manual
 resolution does not establish full application accessibility or change the raw automated result.
 
+## Temporary recovery evidence
+
+Temporary-recovery evidence must bind the approved image manifest, current/operation records,
+signed-reader backup verification and the exact source/profiles. Keep source agreement, archive
+validation, actual host transition and restoration as separate results. Document missing stage or
+import-path setup failures separately from a corrected test run; mocked reserve checks do not
+establish actual-host capacity. See [temporary recovery checks](testing.md#temporary-recovery-baseline-checks).
+
+For a next-cycle temporary-recovery workflow, document the prior operation record,
+separate current record, producer response, and inspected runtime state as distinct
+evidence. Bind the deterministic operation ID to the prior operation ID and canonical
+view digest; preserve immutable exact prior-record bytes and verify the canonical cycle
+link before publication. Never reset history or alter the current record before the
+active phase. The [operator
+runbook](../operations/getting-started.md#temporary-recovery-candidate) defines the
+actual response schema, admission boundary, post-start inspection, and restoration
+sequence. A ready response alone is not artifact/profile proof; source review,
+installation/readback, bounded host trial, and restoration remain separate evidence
+stages. A retryable predecessor is limited to a fully restored `host_command_failed` record
+with canonical failure/restoration timestamps, the exact original image/current marker, and
+either paired-null startup fields for that failure or a consistent measured startup pair. The
+exact prior operation ID and canonical view digest form the explicit acknowledgement; retain
+its immutable bytes. Admission and inspect proof share this validation, unknown or malformed
+states fail closed, and every successor reruns the normal source, image, schema, verified-backup,
+reserve, and startup checks.
+
+When documenting the next-cycle helper's optional `temporary_recovery_proof`, keep it distinct
+from the stable seven-field operation view and core current/health response. The proof is emitted
+only for an active successor in the two startup-floor phases with its restored-predecessor marker;
+initial or restored operations omit it. Its version-1 `verified` response binds the exact operation,
+current state, artifact/manifest, image metadata, stored backup provenance, process profile, current
+128 MiB runtime reserve, recorded startup available-memory sample and its admission decision
+against the 512 MiB floor, and immutable predecessor/cycle-link history. A `verified` result
+with admission false does not allow pairing. The proof is a bounded
+observation, not a continuous health/resource guarantee; it does not execute or rearm jobs and does
+not replace pair-time host/resource preflight or establish the combined 1 GB gate. An unavailable
+result has a fixed version-1 schema/reason and leaves core current/health data intact. Describe the new proof
+chain's bounded metadata and archive/history reads without calling the whole `inspect` operation
+filesystem-write-free: its existing layout setup may create or change directory modes. Stored
+backup verification metadata is not a fresh signed-reader backup verification. Link current
+candidate, independent, and runtime status to the [PR #11 proof checkpoint](../../MVP-PLAN.md#r-astra-121-pr-11-optional-inspect-proof-and-wrapper-checkpoint-2026-10-17).
+
+## Same-schema hotfix evidence
+
+For R-ASTRA-121, the separate operational-helper PR #11 candidate adds format 2 with contract
+`schema13_same_schema_hotfix_v1`. Keep helper source PR #11, application candidate PR #9, and the
+original 5ad schema-13 production artifact used for recovery as distinct identities. The contract
+keeps schema 13 on both sides, with no migration, database restore, or recovery overlay; the
+separately registered A9 app-only recovery image is not this contract's recovery artifact. Its
+recovery check expects the normal shipped supervisor/image with the assistant worker disabled and
+no OpenCode process, not an absent executable or package. Link current statuses and findings to the
+[E21 evidence ledger](../../MVP-PLAN.md#r-astra-121-e21-format-2-hotfix-and-production-reader-checkpoint);
+the persisted applied state must keep every field needed to select the format-2 rollback path.
+
+The additive format-3 pair contract is a separate provenance layer; it does not change the format-2
+persisted rollback contract. Keep the immutable image source, reviewed PR #9 test/application head,
+and PR #11 helper head distinct. A changed PR #9 head needs a new manifest and helper-head binding;
+never relabel an existing image or package. Link current lineage and acceptance status to the
+[PR #11 format-3 checkpoint](../../MVP-PLAN.md#r-astra-121-pr-11-format-3-lineage-rebind-2026-10-18).
+The checkpoint retracts an earlier claim that pre-edit byte copies for seven helper files existed:
+only hashes were recorded, so that preservation status is **Unavailable**. The later exact-Git-byte
+recovery occurred post-edit and does not retroactively satisfy the pre-edit requirement.
+The scoped three-module verifier selection later passed independently (669/669); the earlier
+658/659 failure remains preserved. Independent boundary source/security review passed with no
+blockers for the unchanged bootstrap 2/11 contract and dedicated PR #9 verifier check. These results
+remain scoped checks, not canonical, package, host, rollback, or release acceptance; use the
+checkpoint for exact bindings. The subsequent PR11 actual-host access attempt **Failed**; a later
+independent three-module source selection passed 675/675, but no helper installation occurred in
+that attempt. The later exact-0499 source/bootstrap repair passed independent integrated review
+and the three-module selection (696/696), while actual-host installation and retry remain pending.
+The separate home-group repair and its limits are recorded in the [latest host-access checkpoint](../../MVP-PLAN.md#r-astra-121-pr-11-actual-host-home-group-guard-and-recovery-checkpoint-2026-10-18).
+
+For failed code-only deployment compensation, count the prior release as restored only after it
+passes readiness with its exact prior schema and assistant disabled, then persist a matching
+disabled current record before reporting success. If readiness, schema, assistant state, or record
+persistence fails, compensation remains unsuccessful and the flow stops for reviewed recovery.
+Bootstrap may use an installed helper as a successor base only when its complete installed
+manifest, helper digest, reviewed head, and pair identity match the exact verified tuple pinned for
+that transition. Source and fixture checks do not establish host behavior.
+The current helper received independent selected source/test review (162 passed, one opt-in Docker
+test skipped, 266 bindings stable); the later independent process-profile review passed 360 tests
+with one direct-Docker test deselected. The local original-image profile diagnostic and its bounded
+independent receipt review passed. The reviewer did not rerun tests or start a container, and
+effective CPU/PID/swap/tmpfs limits were not all inspected. The two earlier reviewer setup outcomes
+remain recorded in the [E22 ledger](../../MVP-PLAN.md#r-astra-121-e22-independent-review-of-the-local-5ad-profile-diagnostic).
+A package and manifest were prepared for helper head
+`ae1d0a2d9d5e891436732e6655e360b93ecce817`, before three local source changes added the v2
+enabled-native phase. The old manifest does not bind those changes. Builder and independent
+copied-source checks each passed 373 selected tests with one Docker test deselected. Actual
+Docker/native-phase execution, archive scanning, pair publication, host resources, installation,
+rollback, and production acceptance remain **Pending**. The publisher/helper pair-locator issue is
+also open. See [E23](../../MVP-PLAN.md#r-astra-121-e23-enabled-native-phase-source-qa-and-package-identity)
+for the bound evidence and preserved setup results.
+
+E24 adds the published revision and actual-host preflight failure without changing E23's source-time
+checkpoint. Record the host rehearsal as **Fail** and the independent exact-input/structured-result
+review as a separate scoped **Pass**. SDK transport completion does not accept the typed operation;
+the post-call inspect also has a receipt-creation time, not an exact invocation time. See
+[E24](../../MVP-PLAN.md#r-astra-121-e24-host-reserve-preflight).
+
+E25 adds a source-only maintenance-helper checkpoint: bootstrap v2 has five fixed assets, and the
+helper's scoped production path disables the assistant on the existing 5ad schema-13 image without
+building, pulling, force-recreating, changing the data volume, or altering Compose/loopback
+configuration. The prior four-asset statement remains historical. Its builder regression run
+passed 462 selected tests with one skip and one Docker integration case deselected; independent
+review passed the selected suite and source bindings. Its separate requested rollback-failure
+coverage check **Failed** because `install_rollback_unverified` at
+`scripts/pr_rehearsal_bootstrap.py:503` still lacks a test assertion; this is a coverage gap, not a
+source-defect finding. Do not promote this to installation, actual-host or production acceptance. See
+[E25](../../MVP-PLAN.md#r-astra-121-e25-maintenance-only-assistant-disable-and-failure-edge-checkpoint).
+
+For the original 5ad schema-13 release, both disable and compensation recreate the same image with
+Compose flags `--no-build --force-recreate --pull never`; the flow verifies the original volume,
+schema, and loopback binding.
+
+E26 adds the missing rollback-failure test as a test-only change. The builder's two-module suite
+passed 463 tests with one skip; independent QA passed the two changed regression cases and scoped
+source/static checks, but did not rerun the full suite for the new test pin. E25's coverage finding
+remains in its historical checkpoint. See
+[E26](../../MVP-PLAN.md#r-astra-121-e26-install-rollback-failure-regression-supplement).
+
+E27 records the state-writer fault repair for PR11-MAINT-01. The builder's two-module suite passed
+466 tests with one skip; independent Astra re-review passed three actual-writer fault regressions
+and scoped input/static checks. This is not full security or release acceptance. E25's coverage
+finding and E26's test-only supplement remain historical; installation, host, production, recovery,
+resource, and publication-locator gates remain open. See
+[E27](../../MVP-PLAN.md#r-astra-121-e27-maintenance-state-writer-fault-repair).
+
+E28 records the pushed PR #11 draft at `d0236e56f88489b63e2a3f3164cdd77158df02b2`. Independent
+transport QA **Failed overall** on a reproduced mocked TOCTOU race, despite the separately corrected
+17 transport and 18 helper test counts and passing static checks. At that checkpoint, the private-
+copy repair's final tests and independent re-review remained pending; live scanning/publication was
+unavailable. At that checkpoint, the new transport source review remained pending. The
+authored-documentation validator, completeness check, and scoped change-aware check passed. See
+[E28](../../MVP-PLAN.md#r-astra-121-e28-pushed-pr-checkpoint-and-hotfix-transport-finding).
+
+E29 records the later bounded-final-wait repair and independent scoped pass: 21/21 transport tests,
+Ruff check, and format. E28's failed TOCTOU review and the intermediate snapshot-copy review's
+unbounded-wait finding remain historical. The docs now distinguish local publisher snapshot
+validation/upload/readback from the production consumer's installed-helper and expected-pair check.
+No live publication, installation, runtime, host, or release acceptance follows. See
+[E29](../../MVP-PLAN.md#r-astra-121-e29-bounded-hotfix-publisher-review-and-flow-separation).
+
+
+Local image replacement evidence must distinguish selecting a retained current image from retiring
+an obsolete candidate. The bounded builder's typed selection compares the expected full image ID,
+verifies both ledger-bound receipts and Docker identities, and atomically updates only the local
+pointer. Document the private command receipt and keep subsequent provenance, protection, reference,
+RootFS, absence and retirement-acknowledgement evidence separate; selection alone is not cleanup
+acceptance or a product release. See [the local selection procedure](testing.md#selecting-a-retained-local-image).
+
+For a local-build failure, record the primary error, CLI cancellation, actual builder/worker
+state, reservation state and receipt publication separately. A missing historical BuildKit result
+is Unavailable even when fresh history and image inventory show absence. Typed external-observation
+reconciliation is a distinct recovery scope; it does not turn the failed build into a success.
+The genuine-local-failure mode can use fresh proof of the same stopped builder generation and an
+absent/empty bounded cgroup when historical cancellation or history is unavailable. Historical
+false facts still fail closed. Keep that local recovery separate from the temporary production
+baseline's approval/manifest/current-record and host/MCP schema checks; static consumer agreement
+does not prove installation, image availability or a host transition.
+See [the local-build recovery procedure](testing.md#bounded-local-docker-builds-and-worker-verification).
+
+## Local build phase evidence
+
+For the local-build phase observer, publish only its bounded sanitized projection. Raw BuildKit
+vertex names, commands, URLs, digests, logs and warning/error payloads are not evidence artifacts.
+Keep partial or unavailable observations separate from the primary build failure and its cause;
+never infer a successful build from parser tests. The reader uses the pinned Buildx/BuildKit JSON
+shape and leaves existing build deadlines and failure recovery in force.
+
 ## Codex project configuration
 
 Codex loads repository policy from root `AGENTS.md` and trusted-project settings from
@@ -104,6 +274,13 @@ local PR-pair helper
 `python3 scripts/pin_pr_rehearsal_review.py --write` and its fixed metadata contract are described
 in [developer testing](testing.md#exact-pr-pair-review-pins), [local configuration](../configure/local-configuration.md#local-pr-rehearsal-review-metadata),
 and [getting started](../operations/getting-started.md#review-a-pr-pair-before-rehearsal).
+
+The current PR #9 startup-reserve checker has a bounded 30-second read-only observation before its
+unchanged final guard. E22's five-second observation remains historical; the 512/128 MiB floors and
+1,080-second operation budget are unchanged. E29 records independent local source/test review and
+parent review, while a fresh host retry, image, native answer, and actual 1 GB acceptance remain
+unverified. Map coverage for this deployment-review path includes this guide, developer testing,
+local configuration, getting started, and the workflow policy in `AGENTS.md`.
 
 ### Source-bound build recovery
 
@@ -305,11 +482,17 @@ reflect operational status in the operations/testing guides; the map describes s
 runtime acceptance. The optional `prebuilt-release` publisher mode uses the completed schema-13
 pair receipt and fixed revision-named artifacts; keep its verification and release prerequisites
 documented in the operations and testing guides when changing that contract.
-Archive-scanner changes also require the testing and operations guides to describe the fixed
-individually provenance-bound artifact exceptions and retained credential checks. Capture and diagnosis allowlists, genuine
-pre-snapshots, and immutable receipts follow the root agent policy.
-The merged application PR #1 is historical evidence. The current fixed rehearsal binding moves
-to follow-on PR #2, retaining exact repository, open state, main base and reviewed-head checks.
+The `release-archive-credential-coverage` rule maps the shared archive scanner and its tests to
+this page, the testing guide, and the operations guide; the additional workflow-policy rule also requires
+`AGENTS.md`. Keep the documented coverage aligned with scanning the manifest, referenced
+Config, every regular outer member, and nested layer contents under one decompressed-byte bound.
+Exceptions require exact public provenance, path, size, digest and match spans. Archive-scanner
+changes require the testing and operations guides to describe individually provenance-bound
+exceptions and retained credential checks. Capture and diagnosis allowlists, genuine pre-snapshots,
+and immutable receipts follow the root agent policy.
+The merged application PR #1 and follow-on PR #2 are historical. The current fixed rehearsal
+binding targets restoration PR #9, retaining exact repository, open-state, main-base, and reviewed-
+head checks.
 A prose statement here does not replace a passing completeness and change-aware
 coverage check.
 
@@ -474,6 +657,14 @@ not credentials, private paths, or copied runtime output.
 4. Run `.dev-venv/bin/python scripts/validate_docs.py`.
 5. Review the changed paths and record the actual pre-change and post-change checkpoint states.
 
+For local-build preparation on removable media, record the verified mount identity, free-space
+admission/stop readings, private audit scratch/receipt modes, and separate exact helper-source
+binding in the task ledger. Keep an approved setup receipt unchanged: it proves setup only. Pair it
+with independent review of the exact helper source and a successful build receipt bound to that
+source before claiming a helper or image build. Preserve Git-tracked executable modes in the
+materialized source context. For interrupted test runs, retain terminal and JUnit evidence
+independently and preserve count disagreements as a failed or unresolved result.
+
 The project `documentation` skill contains the agent-facing version of this workflow. Skill
 or configuration-time changes require an OpenCode restart before discovery can be validated;
 the editing session itself is not proof that the restarted process loaded them.
@@ -515,3 +706,178 @@ than a validator heuristic. These are static governance checks; metadata, the in
 allow-list, and `SKILL.md` frontmatter do not establish that a native loader discovered a skill.
 Native V2's directory-based auto-discovery is the loader boundary, and runtime discovery remains
 **Unavailable** in this harness.
+
+
+## R-ASTRA-121 free OpenCode restoration evidence
+
+The free-only OpenCode restoration precedes the seven-feature releases. The documentation map
+covers the packaged native SDK declaration record, managed execution guards, provider consumers,
+and their regressions. Keep the user correction in `AGENTS.md` and outcomes in `MVP-PLAN.md`.
+A genuine free answer from an isolated application fixture is functional evidence for that fixture.
+If its wrapper supplies guard readiness, it does not verify production receipt enforcement.
+Only the installed root-owned, nonwritable receipt and matching binary can establish the normal
+managed-worker readiness path. Preserve failed baseline and guard-fixture attempts separately;
+never reconstruct a missing contemporaneous wrapper or source binding.
+
+
+The PR #9 rehearsal documents two distinct baselines: the current schema-13 production image
+observed by read-only inspection, and the historical schema-12 migration/recovery origin. Keep
+live production identity and health guards and their consumer receipt validation aligned with the
+exact observed deployment; do not replace the historical migration origin or infer current health
+from it. See [the operational procedure](../operations/getting-started.md) and the R-ASTRA-121
+MVP ledger for source and runtime evidence separately.
+
+
+PR #9 checker diagnostics retain only the closed reserve phase and below-threshold numeric KiB
+readings; host and controller tests validate this boundary. Document actual host failures separately
+from local pair, native and canonical passes. Browser fixture checkpoints record only synthetic
+stage/status/timing and public module/process information, with no user prompts or capabilities.
+A focused browser pass does not replace a failed full aggregate. See the R-ASTRA-121 E14 ledger.
+
+
+Rehearsal baseline changes require the mapped testing, configuration and operations pages plus
+`AGENTS.md`. Document the running candidate or recovery role separately from the immutable
+schema-12 pair seed; an exact image allowlist is a guard, not evidence that the image served
+production or met the resource floors. Keep source checks, local disposable compatibility, signed
+backup verification and actual-host observations separate in the [E19 ledger](../../MVP-PLAN.md#r-astra-121-e19-installed-rollout-repair-and-signed-schema-13-backup).
+
+For the current PR #11 follow-on, coverage also spans the exact 6359 temporary-recovery consumer
+and the known 67723 installed-helper receipt. Update `AGENTS.md`, this page, testing, operations and
+the MVP ledger together. Keep the retained 5ad/A9 identities, immutable original helper backup,
+source/mock QA, actual-host preflight and restoration as separate facts; a build does not establish
+host acceptance. The later c408 helper install/readback, local 6359 fixture profile, archive scan,
+and actual archive-parser failure have separate scopes. The exact-tag/canonical-alias parser repair
+passed 56 selected tests and the retained-archive smoke, with `fstat.st_uid` mocked; actual
+root-owned admission and host transition remain unavailable. Preserve the prior failed QA receipt.
+The full F6 aggregate remains failed at 195/2/3, with two raw-axe attachments unavailable out of
+24; the focused four-case follow-up passed for its selected desktop/mobile and four raw-axe snapshot
+scope only. See the [latest PR11 checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-installed-helper-local-6359-profile-and-archive-parser-checkpoint-2026-10-16)
+and the [initial consumer/install checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-temporary-recovery-consumer-and-installer-receipt-checkpoint-2026-10-16).
+
+The later PR #11 Docker profile repair passed 33 builder and 33 independent focused tests, with
+scoped source review and static checks passing. A separate two-file run reported 617 passed and
+one skipped but had a workflow-compliance failure because it included a possible Docker integration
+test without JUnit; Docker execution and exact cleanup remain unavailable. The actual V5 host
+command failed with exit 1; its emitted workflow record reported unavailable at operation
+identity, and the pair rehearsal did not run. Read-only profile and
+canonical-manifest/archive diagnostics passed only their stated scopes; a counterfactual use of the
+repaired profile function still failed the existing approval-format check. Preserve the strict
+canonical serializer requirement and do not treat the diagnostic as an installed-helper or
+host-transition pass. See the [Docker profile and admission checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-docker-profile-repair-and-actual-host-admission-failure-2026-10-16).
+
+The lazy-provider startup repair is documented in the API, testing and operations guides and
+[E32](../../MVP-PLAN.md#r-astra-121-e32-lazy-provider-startup-and-host-reserve-checkpoint). Preserve
+its local import-memory and focused QA scope separately from the failed host startup guard.
+Changed recovery-overlay bytes require fresh image/pair bindings; an earlier image cannot inherit
+the source repair or the new frontend build result.
+
+The PR #11 helper-upgrade contract keeps the immutable original helper backup separate from the
+pre-install helper used for compensation. Document both identities, require the exact reviewed
+intermediate receipt and sidecar pins before upgrading, and retain a failed-upgrade/retry test.
+The identity parser must follow the actual subprocess producer's text contract. See the
+[F6 runtime/helper checkpoint](../../MVP-PLAN.md#r-astra-121-f6-native-results-and-deployment-helper-repair-2026-10-16)
+for scoped evidence; source/unit checks do not establish installed-helper or host acceptance.
+
+The subsequent PR #11 V7 host trial **Failed** at `admin_step_up` before either owner's model,
+turn, or tool activity. Its bounded receipt omitted the safe error code and HTTP status, so the
+specific cause remains **Unproven**. Source inspection confirms a fresh TOTP value is generated
+immediately before the step-up POST; this rules out only the stale-precomputed-code hypothesis. The
+pair phase failed, while restore, the recorded owner-canary-to-invited setting phases, and final
+5ad/schema-13 readiness passed for that trial. These operational phases do not deploy a new
+application release or establish an owner canary answer. See the
+[V7 and backup-retention checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-v7-host-trial-and-backup-retention-checkpoint-2026-10-16).
+
+The managed backup pool reached the 32-artifact limit. One archive was verified without promotion,
+independently copied opaquely to the approved SD volume, and moved with `NOREPLACE` into the
+same-volume retained-backup directory. The post-move readback observed 31 active artifacts and
+the retained archive; a later host trial created another backup, so that earlier count is not a
+current inventory. The signed-reader, copy, move, and receipt-integrity results are recorded in the
+plan. Key rotation and retirement remain held by task policy until that archive is re-admitted,
+verified, coordinated into rotation, and its independent copies are rebound; this is not an
+automatic application guard. Independent QA of the bounded failure-projection repair passed 14
+JUnit cases and its scoped lint/format/diff checks on the verified SD mount; the original misplaced
+builder run retains its storage-compliance failure. The repaired retention utility passed independent source/test QA with 26 cases and its configured,
+security, and format checks; the earlier three-finding review remains preserved. That QA did not execute the production move, which has a
+separate one-shot receipt and readback review. Neither source QA nor receipt-chain review establishes
+native/runtime or release acceptance. The existing 1 GB host, backups, and US$15 monthly cap remain
+in force, and the native/resource, exact-PR recovery, browser, canonical, guide, canary, and release
+gates remain open.
+
+
+The pushed PR11 diagnostic-projection commit `d6064e68026a5315e6f03337ad78ba74e7ff6c2e` passed
+packaging with the F6 and 5ad archives unchanged; installation was not invoked. Independent
+readiness review failed because the installed helper matched the candidate digest but its generic
+identical-digest branch rejected the exact prior E1/556 receipt. Source review corrected the preliminary DD7-branch attribution for the readiness failure: the
+independent receipt identifies rejection in the generic identical-digest branch. Separately, the
+builder-reported pre-edit DD7 test-fixture failure had stale current-source hashes; its raw artifact
+is **Unavailable**, with no independent reproduction or reconstructed baseline. The scoped builder repair passed 22 focused tests, and independent QA passed 22 tests with zero
+failures, errors, or skips. Review confirmed exact E1 constants against the actual `d040d87b`
+receipt and the known-E1/exact-candidate receipt rule; its synthetic DD7 sidecars do not establish
+real historical-DD7 reinstall acceptance. No host install or runtime was exercised. The a6 journal archival and 32-artifact readback
+passed separately. See the [d6064e6 bootstrap-readiness checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-d6064e6-bootstrap-readiness-checkpoint-2026-10-16).
+
+PR11's authentication-key lifecycle is documented separately from provider availability. The
+V8 trial stopped at TOTP step-up before any owner/model turn and restored the exact invited 5ad
+release. At that checkpoint, focused independent tests had passed the per-pair key repair and exact
+prior-install recognition, but no repaired-source host trial had run. Preserve the failed trial and
+the scope of its synthetic reproduction. The later V10 actual-host rehearsal passed for its bound
+F6/helper pair and restored the exact 5ad invited release. The full browser aggregate remains
+**Fail**, raw axe for that aggregate is **Unavailable**, and the corrected canonical check also
+**Failed** with exit 1: JUnit recorded 3,580 tests (3,574 passed, two failed, four skipped); the
+console separately reported four deselected, and the receipt was incomplete against its expected
+checks. The two failures were a fresh-child
+10-second timeout and a Node Playwright-config subprocess exit 1; the first cause is unproven and
+the second was diagnosed as a missing lock-matched `@playwright/test` link in the isolated checkout.
+Independent retest passed both affected selectors and matched unchanged source/stage bindings; the
+original fresh-child timeout cause remains unproven and the canonical failure is preserved. The
+helper revision-contract follow-up passed independent selected source/test QA and parent integration
+review; no host, deployment, or rollback result follows. See the [V8 auth-key checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-v8-auth-key-lifecycle-checkpoint-2026-10-17)
+and the [current V10 checkpoint](../../MVP-PLAN.md#r-astra-121-pr11-v10-actual-host-free-zen-rehearsal-and-current-release-checkpoint-2026-10-17).
+
+The bounded-build documentation rule covers failure-path fixture corrections as well as
+controller source changes. Record a failed aggregate separately from a passing focused test
+repair, preserve exact source bindings, and distinguish synthetic disk inputs from real build
+admission evidence. The [F6 disk-seam checkpoint](../../MVP-PLAN.md#r-astra-121-f6-canonical-disk-seam-checkpoint-2026-10-17)
+shows this distinction; it does not advance release acceptance.
+
+Typed local-timeout recovery changes need the mapped policy, testing and operations coverage.
+Document explicit-null receipt fields separately from missing fields, preserve failed candidate
+reviews, and bind the repaired source to fresh focused QA and the actual emitted recovery receipt.
+Completed build-step logs and remaining cache records explain a retry decision; they do not
+replace image, native, resource or release checks. See the
+[F6 recovery and history checkpoint](../../MVP-PLAN.md#r-astra-121-f6-typed-timeout-recovery-and-build-history-checkpoint-2026-10-18).
+
+For additive dual-head release tooling, document the image-source, reviewed application-test head
+and helper head separately. Keep bootstrap source transport distinct from pair-format versions,
+preserve legacy contracts and bind receipt claims to the actual producer. The managed-v3 receipt
+consumer and `tests/test_v3_build_receipt.py` are covered with the rehearsal workflow; record scoped
+private QA separately from applied-source, actual-host and release acceptance. See the
+[dual-head checkpoint](../../MVP-PLAN.md#r-astra-121-dual-head-receipt-compatibility-and-current-browser-checkpoint-2026-10-18).
+
+
+The R-ASTRA-121 format-3 helper rebind records immutable image inputs separately from the
+reviewed application head. Its complete fixed delta includes one added regression, whose local
+Git metadata and host GitHub/tree proof must agree on prior absence and exact regular-file identity.
+Record failed broader commands beside focused repairs and keep pending independent/host/release
+checks explicit. Maintain this policy in `AGENTS.md` when changing lineage admission; matching
+files or successful synthetic checks do not establish installed-helper or actual-host acceptance.
+
+
+For a changed-size release binary, the archive scanner may retain another exact path/size/digest variant only after public provenance verifies every admitted match span. Record the original rejection, independent source and archive review, and the updated transport consumer digest. Preserve image/application identity separately from the helper revision and reuse unchanged archive bytes when rebinding only the helper manifest. These checks do not promote unresolved canonical, browser, actual-host resource/recovery or release gates.
+
+
+Bootstrap predecessor admission needs an exact root-owned installed receipt and all file digests tied to public Git ancestry, plus the immutable original helper backup. Keep generic preparation failures separate from directly observed component errors and record rollback/readback scope. The 40ece predecessor repair adds one complete prior-state tuple; it changes no image, runtime, resource floor or release gate.
+
+
+Later format-3 checkpoint records must distinguish the reviewed application's exact commit chain
+from the helper merge that contains it. Document the complete file delta, fixed compare overflow
+bound and exact registered predecessor tuple. Treat generated install timestamps according to the
+existing validated timestamp contract; keep strict-comparison failures visible. Bind image reuse
+to the actual build worktree's input modes and compiled stage, and do not infer an equivalent
+checker-worktree stage from matching source content. See the
+[F6 lineage checkpoint](../../MVP-PLAN.md#r-astra-121-f6-current-pr-lineage-and-c38-predecessor-checkpoint-2026-10-22).
+
+Record response-envelope changes as a separate live failing-path finding: the exact reviewed
+comparison exceeded its prior 64 KiB limit, while unrelated routes retain that limit. A route-
+specific 128 KiB envelope needs exact-route and boundary tests plus actual public readback before
+full published ancestry proof; do not treat a mocked response as that public evidence.

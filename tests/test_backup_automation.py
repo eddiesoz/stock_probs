@@ -18,9 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import stock_probs.api as application_api
 import stock_probs.backup as backup_module
-import stock_probs.cli as cli
 from stock_probs.backup import BackupError, BackupManager
 from stock_probs.config import Settings
 from stock_probs.repository import SCHEMA_VERSION, Repository
@@ -203,6 +201,8 @@ def _cli_environment(monkeypatch: pytest.MonkeyPatch, settings: Settings) -> Non
 def test_migrate_cli_creates_and_reports_verified_pre_migration_backup(
     settings, monkeypatch, capsys
 ):
+    import stock_probs.cli as cli
+
     _version_one_database(settings)
     _cli_environment(monkeypatch, settings)
     monkeypatch.setattr(sys, "argv", ["stock-probs", "migrate"])
@@ -235,6 +235,7 @@ def test_migrate_cli_creates_and_reports_verified_pre_migration_backup(
 
 def test_schema_ten_upgrade_backs_up_before_expiring_only_oauth_transactions(settings):
     """The schema-11 cutover backs up v10 and preserves durable account/session data."""
+    import stock_probs.cli as cli
 
     _version_ten_database(settings)
     manager, receipt = cli._migration_operations(settings)
@@ -276,6 +277,7 @@ def test_schema_ten_upgrade_backs_up_before_expiring_only_oauth_transactions(set
 
 def test_schema_eleven_upgrade_backs_up_invites_and_research_before_email_binding(settings):
     """The v11 backup retains numeric invitations and research across the v12 rebuild."""
+    import stock_probs.cli as cli
 
     _version_ten_database(settings)
     with sqlite3.connect(settings.database_path) as connection:
@@ -344,6 +346,8 @@ def test_schema_eleven_upgrade_backs_up_invites_and_research_before_email_bindin
 
 
 def test_failed_pre_migration_backup_blocks_every_pending_migration(settings, monkeypatch, capsys):
+    import stock_probs.cli as cli
+
     _version_one_database(settings)
     _cli_environment(monkeypatch, settings)
     monkeypatch.setattr(sys, "argv", ["stock-probs", "migrate"])
@@ -373,6 +377,8 @@ def test_failed_pre_migration_backup_blocks_every_pending_migration(settings, mo
 def test_every_operational_cli_command_protects_pending_migration(
     settings, monkeypatch, arguments, method_name
 ):
+    import stock_probs.cli as cli
+
     _version_one_database(settings)
     _cli_environment(monkeypatch, settings)
     original = cli._migration_operations
@@ -620,6 +626,8 @@ def test_public_verify_and_non_promoting_restore_complete_normally(settings):
 
 
 def test_pre_migration_verification_delay_never_publishes_or_migrates(settings, monkeypatch):
+    import stock_probs.cli as cli
+
     _version_one_database(settings)
     # Observe the complete public backup call. Under load, the bounded worker may reach the
     # migration hook only after its deadline, before the private _create body starts.
@@ -659,6 +667,9 @@ def test_pre_migration_verification_delay_never_publishes_or_migrates(settings, 
 def test_serve_lifespan_runs_observable_due_check_and_surfaces_failure(
     settings, monkeypatch, capsys
 ):
+    import stock_probs.api as application_api
+    import stock_probs.cli as cli
+
     called = []
 
     async def application(scope, receive, send):
@@ -693,6 +704,9 @@ def test_serve_lifespan_runs_observable_due_check_and_surfaces_failure(
 
 
 def test_serve_lifespan_watchdog_bounds_a_non_cooperative_due_check(settings, monkeypatch, capsys):
+    import stock_probs.api as application_api
+    import stock_probs.cli as cli
+
     called = []
     completed = threading.Event()
 
@@ -728,6 +742,8 @@ def test_serve_lifespan_watchdog_bounds_a_non_cooperative_due_check(settings, mo
 
 
 def test_backup_key_rotate_command_resigns_all_verified_artifacts(settings, monkeypatch, capsys):
+    import stock_probs.cli as cli
+
     repository = Repository(settings.database_path)
     repository.migrate()
     _record_failure(repository, "retained-rotation-event")
@@ -887,6 +903,8 @@ def test_create_holds_the_lock_through_its_critical_section(settings, operation)
 def test_rotation_and_retirement_fail_closed_then_retirement_succeeds(
     settings, monkeypatch, capsys
 ):
+    import stock_probs.cli as cli
+
     repository = Repository(settings.database_path)
     repository.migrate()
     _record_failure(repository, "retained-key-event")
@@ -927,6 +945,8 @@ def test_rotation_and_retirement_fail_closed_then_retirement_succeeds(
 
 
 def test_backup_interval_validation_and_help_document_transfer(monkeypatch, capsys):
+    import stock_probs.cli as cli
+
     monkeypatch.setenv("STOCK_PROBS_BACKUP_INTERVAL_SECONDS", "3600")
     assert Settings.from_env().backup_interval_seconds == 3600
     monkeypatch.setenv("STOCK_PROBS_BACKUP_INTERVAL_SECONDS", "0")
