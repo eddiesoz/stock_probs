@@ -2463,7 +2463,7 @@ def create_assistant_router(
                     )
                     if (
                         closed is not None
-                        and closed.get("status") == "closed"
+                        and closed.get("status") in {"closed", "revoked"}
                         and closed.get("user_id") == current.user.id
                         and closed.get("conversation_id") == conversation_id
                         and closed.get("turn_id") == turn_id
@@ -2475,7 +2475,7 @@ def create_assistant_router(
         async def rechecked_stream_context() -> tuple[AuthContext, dict[str, object]]:
             """Re-read a normal completion transition with fresh authorization before emission."""
 
-            # A worker may see lease closure before the event loop commits terminal status.
+            # A reader may hold an older turn snapshot when an atomic finalization closes its lease.
             for _ in range(2):
                 current = await run_in_threadpool(authorize_stream_event)
                 if current is not None:

@@ -6,7 +6,8 @@ import hashlib
 import hmac
 import json
 import sqlite3
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Final, cast
 from urllib.parse import parse_qsl, urlencode, urlsplit
@@ -54,6 +55,10 @@ class AssistantStorageConflict(AssistantStorageError):
     """Report an owner-scoped revision, lease, or status conflict."""
 
 
+class AssistantStorageExecutionStale(AssistantStorageConflict):
+    """Reject a delayed runtime write whose durable execution authority has ended."""
+
+
 class AssistantStorageNotFound(AssistantStorageError):
     """Hide records that are missing or belong to another account."""
 
@@ -70,11 +75,99 @@ class AssistantStorageBusy(AssistantStorageError):
     """Report that an owner or the whole app already uses its bounded turn slot."""
 
 
+@dataclass(frozen=True)
+class AssistantRuntimeWriteGuard:
+    """Bind one runtime write to fresh durable authority without performing network work."""
+
+    execution_id: str
+    model_id: str
+    policy_version: str
+    context_version: str
+    now: Callable[[], datetime]
+    require_data_collection_opt_in: bool = False
+    canary_github_ids: tuple[int, ...] | None = None
+
+
 class AssistantStorage:
     """Persist conversations, consent, replay events and one-turn MCP leases by owner."""
 
     def __init__(self, repository: Repository):
         self._repository = repository
+
+    @classmethod
+    def _require_runtime_write(
+        cls,
+        connection: sqlite3.Connection,
+        user_id: int,
+        conversation_id: str,
+        turn_id: str,
+        guard: AssistantRuntimeWriteGuard | None,
+    ) -> None:
+        """Check fresh lease/session/consent state inside the same write transaction."""
+
+        if guard is None:
+            return
+        timestamp = cls._timestamp(guard.now())
+        row = connection.execute(
+            """SELECT 1
+            FROM assistant_execution_leases AS lease
+            JOIN assistant_turns AS turn_record ON turn_record.id = lease.turn_id
+              AND turn_record.conversation_id = lease.conversation_id
+              AND turn_record.user_id = lease.user_id
+            JOIN sessions AS session_record ON session_record.token_hash = lease.session_token_hash
+              AND session_record.session_id = lease.session_id
+              AND session_record.user_id = lease.user_id
+            JOIN users AS account ON account.id = lease.user_id
+            JOIN assistant_model_consents AS consent ON consent.rowid = (
+                SELECT latest.rowid FROM assistant_model_consents AS latest
+                WHERE latest.user_id = lease.user_id AND latest.model_id = turn_record.model_id
+                  AND latest.policy_version = turn_record.policy_version
+                ORDER BY latest.rowid DESC LIMIT 1
+            )
+            WHERE lease.execution_id = ? AND lease.user_id = ?
+              AND lease.conversation_id = ? AND lease.turn_id = ?
+              AND lease.status = 'active' AND lease.expires_at > ?
+              AND turn_record.status = 'running' AND turn_record.model_id = ?
+              AND turn_record.policy_version = ? AND turn_record.context_version = ?
+              AND lease.context_version = turn_record.context_version
+              AND session_record.revoked_at IS NULL AND session_record.idle_expires_at > ?
+              AND session_record.absolute_expires_at > ? AND account.status = 'active'
+              AND session_record.auth_method = 'github' AND session_record.mfa_method = 'totp'
+              AND session_record.mfa_verified_at IS NOT NULL
+              AND session_record.mfa_verified_at <= ?
+              AND EXISTS (
+                  SELECT 1 FROM totp_factors AS factor
+                  WHERE factor.id = session_record.mfa_factor_id
+                    AND factor.user_id = lease.user_id AND factor.confirmed_at IS NOT NULL
+              )
+              AND (? IS NULL OR (account.role = 'admin' AND account.github_user_id IN (
+                  SELECT value FROM json_each(?)
+              )))
+              AND consent.accepted_terms = 1
+              AND (? = 0 OR consent.data_collection_opt_in = 1)""",
+            (
+                guard.execution_id,
+                user_id,
+                conversation_id,
+                turn_id,
+                timestamp,
+                guard.model_id,
+                guard.policy_version,
+                guard.context_version,
+                timestamp,
+                timestamp,
+                timestamp,
+                json.dumps(guard.canary_github_ids)
+                if guard.canary_github_ids is not None
+                else None,
+                json.dumps(guard.canary_github_ids)
+                if guard.canary_github_ids is not None
+                else None,
+                int(guard.require_data_collection_opt_in),
+            ),
+        ).fetchone()
+        if row is None:
+            raise AssistantStorageExecutionStale("runtime_execution_stale")
 
     @staticmethod
     def _timestamp(value: datetime) -> str:
@@ -1438,6 +1531,113 @@ class AssistantStorage:
             connection.commit()
         return cursor.rowcount == 1
 
+    def finalize_turn(
+        self,
+        user_id: int,
+        conversation_id: str,
+        turn_id: str,
+        execution_id: str,
+        *,
+        status: str,
+        now: datetime,
+        error_code: str | None,
+        error_message: str | None,
+        write_guard: AssistantRuntimeWriteGuard | None = None,
+    ) -> bool:
+        """Commit lease closure, terminal status and replay events as one durable transition."""
+
+        owner_id = self._require_owner(user_id)
+        if status not in {"completed", "cancelled", "failed", "timed_out"}:
+            raise ValueError("assistant terminal status is not supported")
+        timestamp = self._timestamp(now)
+        events = []
+        if status != "completed":
+            events.append(("error", self._json({"code": error_code, "message": error_message})))
+        events.append(("complete", self._json({"status": status, "assistant_message_id": None})))
+        quota_error = None
+        with self._repository.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                """SELECT turn_record.status, lease.status AS lease_status, lease.expires_at
+                FROM assistant_turns AS turn_record
+                JOIN assistant_execution_leases AS lease ON lease.turn_id = turn_record.id
+                  AND lease.conversation_id = turn_record.conversation_id
+                  AND lease.user_id = turn_record.user_id
+                WHERE turn_record.id = ? AND turn_record.conversation_id = ?
+                  AND turn_record.user_id = ? AND lease.execution_id = ?""",
+                (turn_id, conversation_id, owner_id, execution_id),
+            ).fetchone()
+            if row is None:
+                raise AssistantStorageNotFound()
+            if row[0] in {"queued", "running"} and status == "completed":
+                if row["lease_status"] != "active" or row["expires_at"] <= timestamp:
+                    raise AssistantStorageExecutionStale("runtime_execution_stale")
+                self._require_runtime_write(
+                    connection, owner_id, conversation_id, turn_id, write_guard
+                )
+            effective_status = status if row[0] in {"queued", "running"} else row[0]
+            connection.execute(
+                """UPDATE assistant_execution_leases SET status = ?, closed_at = ?
+                WHERE execution_id = ? AND user_id = ? AND conversation_id = ?
+                  AND turn_id = ? AND status = 'active'""",
+                (
+                    "closed" if effective_status == "completed" else "revoked",
+                    timestamp,
+                    execution_id,
+                    owner_id,
+                    conversation_id,
+                    turn_id,
+                ),
+            )
+            if row[0] not in {"queued", "running"}:
+                connection.commit()
+                return False
+            connection.execute(
+                """UPDATE assistant_turns SET status = ?, completed_at = ?, error_code = ?
+                WHERE id = ? AND conversation_id = ? AND user_id = ?""",
+                (
+                    status,
+                    timestamp,
+                    error_code if status != "completed" else None,
+                    turn_id,
+                    conversation_id,
+                    owner_id,
+                ),
+            )
+            # History exhaustion must still retire the execution. Roll back only the terminal
+            # events if their bounded reservation fails; SSE retains its terminal-status fallback.
+            connection.execute("SAVEPOINT assistant_terminal_events")
+            try:
+                additional = sum(
+                    len(payload.encode()) + len(kind.encode()) + 64 for kind, payload in events
+                )
+                self._ensure_capacity(connection, owner_id, additional)
+                sequence = int(
+                    connection.execute(
+                        """SELECT COALESCE(MAX(sequence), 0) + 1 FROM assistant_events
+                        WHERE turn_id = ?""",
+                        (turn_id,),
+                    ).fetchone()[0]
+                )
+                for kind, payload in events:
+                    connection.execute(
+                        """INSERT INTO assistant_events
+                        (conversation_id, turn_id, user_id, sequence,
+                         event_type, payload_json, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        (conversation_id, turn_id, owner_id, sequence, kind, payload, timestamp),
+                    )
+                    sequence += 1
+                self._verify_database_limit(connection)
+            except AssistantStorageQuotaExceeded as exc:
+                connection.execute("ROLLBACK TO assistant_terminal_events")
+                quota_error = exc
+            connection.execute("RELEASE assistant_terminal_events")
+            connection.commit()
+        if quota_error is not None:
+            raise quota_error
+        return True
+
     def append_message(
         self,
         user_id: int,
@@ -1447,6 +1647,7 @@ class AssistantStorage:
         role: str,
         content: str,
         now: datetime,
+        write_guard: AssistantRuntimeWriteGuard | None = None,
     ) -> dict[str, object]:
         """Append one bounded assistant completion after all runtime events are normalized."""
 
@@ -1469,6 +1670,7 @@ class AssistantStorage:
             ).fetchone()
             if turn is None:
                 raise AssistantStorageConflict("turn_not_running")
+            self._require_runtime_write(connection, owner_id, conversation_id, turn_id, write_guard)
             sequence = int(
                 connection.execute(
                     """SELECT COALESCE(MAX(sequence), 0) + 1 FROM assistant_messages
@@ -1507,6 +1709,7 @@ class AssistantStorage:
         event_type: str,
         data: Mapping[str, object],
         now: datetime,
+        write_guard: AssistantRuntimeWriteGuard | None = None,
     ) -> dict[str, object]:
         """Persist one normalized SSE event under the current owner's turn sequence."""
 
@@ -1530,6 +1733,7 @@ class AssistantStorage:
             ).fetchone()
             if turn is None:
                 raise AssistantStorageNotFound()
+            self._require_runtime_write(connection, owner_id, conversation_id, turn_id, write_guard)
             sequence = int(
                 connection.execute(
                     "SELECT COALESCE(MAX(sequence), 0) + 1 FROM assistant_events WHERE turn_id = ?",
@@ -1560,6 +1764,7 @@ class AssistantStorage:
         data: Mapping[str, object],
         sources: Sequence[Mapping[str, object]],
         now: datetime,
+        write_guard: AssistantRuntimeWriteGuard | None = None,
     ) -> dict[str, object]:
         """Atomically persist a compact MCP receipt with its bounded public citations."""
 
@@ -1627,6 +1832,7 @@ class AssistantStorage:
         additional += len(event_json.encode("utf-8")) + len("tool") + 64
         with self._repository.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            self._require_runtime_write(connection, owner_id, conversation_id, turn_id, write_guard)
             self._ensure_capacity(connection, owner_id, additional)
             turn = connection.execute(
                 """SELECT 1 FROM assistant_turns
@@ -1939,6 +2145,7 @@ class AssistantStorage:
         retrieved_at: datetime,
         as_of: datetime | None,
         metadata: Mapping[str, object],
+        write_guard: AssistantRuntimeWriteGuard | None = None,
     ) -> dict[str, object]:
         """Append a bounded provenance receipt after tool-specific URL validation."""
 
@@ -1967,6 +2174,7 @@ class AssistantStorage:
         with self._repository.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             self._ensure_capacity(connection, owner_id, additional)
+            self._require_runtime_write(connection, owner_id, conversation_id, turn_id, write_guard)
             connection.execute(
                 """INSERT INTO assistant_sources
                 (id, conversation_id, turn_id, user_id, source_type, title, url, source_ref,
@@ -2007,6 +2215,7 @@ class AssistantStorage:
         confirmation_phrase: str,
         now: datetime,
         expires_at: datetime,
+        write_guard: AssistantRuntimeWriteGuard | None = None,
     ) -> dict[str, object]:
         """Persist an immutable typed proposal; only browser confirmation can move it forward."""
 
@@ -2045,6 +2254,7 @@ class AssistantStorage:
             ).fetchone()
             if lease is None:
                 raise AssistantStorageConflict("action_execution_stale")
+            self._require_runtime_write(connection, owner_id, conversation_id, turn_id, write_guard)
             connection.execute(
                 """INSERT INTO assistant_proposed_actions
                 (id, conversation_id, turn_id, user_id, session_id, context_version,
@@ -2427,6 +2637,7 @@ class AssistantStorage:
         context_version: str,
         confirmation_phrase: str,
         now: datetime,
+        write_guard: AssistantRuntimeWriteGuard | None = None,
         expires_at: datetime,
     ) -> dict[str, object]:
         """Hold one exact web query until the authenticated browser approves it."""
@@ -2442,6 +2653,7 @@ class AssistantStorage:
         additional = len(query_text.encode("utf-8")) + 256
         with self._repository.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            self._require_runtime_write(connection, owner_id, conversation_id, turn_id, write_guard)
             self._ensure_capacity(connection, owner_id, additional)
             lease = connection.execute(
                 """SELECT 1 FROM assistant_execution_leases

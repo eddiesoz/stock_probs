@@ -9894,3 +9894,142 @@ Selected immutable private evidence:
 - Reproductions, forecast profile and pre-edit raw-byte baselines: `/var/tmp/r12r/f6-browser-failure-diagnosis-20261022T1515Z/`.
 - Corrected independent scoped QA: `/var/tmp/r12r/f6-independent-webfetch-rerun-b7f36fb-20261022T1546Z-499a0b64424c4a5a859c6f72e778bc2a/independent-qa-receipt-v1.json`, SHA-256 `9c281eca9b7d16ab683c93f5c7bdd5299e94a3f542bec85c027c33245577bbf4`.
 - Parent integrated scoped review: `/var/tmp/r12r/f6-browser-failure-diagnosis-20261022T1515Z/parent-webfetch-integrated-review-v1.json`, SHA-256 `6045467488186d3e28c6f35d1be5535c2583563230e99b1def06b358ee9b04e2`.
+
+
+### R-ASTRA-121 F6 runtime persistence, atomic completion and search liveness repair checkpoint (2026-10-22)
+
+**Status: In progress; local repair scope only.** The free-Zen live restoration and the seven-feature
+release goal remain active. This extends the WebFetch checkpoint at `30be41e366912504d2118921804918c6ae78cd82`
+on `codex/signal-ledger-assistant-fix`, draft PR #9. Exact owned raw-byte baselines and SHA-256 records
+precede edits in `/var/tmp/r12r/f6-event-persistence-b315b706958842169326ce4ed63c3cf6/` on UUID
+`54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`. No shipped migration, UI asset, provider, account or budget changed.
+
+The held runtime-event persistence health/readiness reproduction retained its two original Fails.
+A second controlled reproduction at the clean 30be baseline Failed twice: a token released after
+session revocation or durable lease cancellation could still be stored. The repair moves turn
+preparation, runtime normalization/event writes, completion persistence and finalization to tracked
+thread work. Per-turn output serialization stays locked until the actual worker completes, even if
+its awaiting emitter is cancelled. Waiter/future mutation stays on its event loop. SQL write guards
+check fresh lease/turn identity, expiry, account/session/TOTP state, exact model/policy/context,
+latest consent, required training opt-in and configured owner-canary role/identity in the same
+transaction. Runtime events/messages/sources/proposals and separate MCP receipts/proposals/search
+previews carry that guard. No callback or provider/authentication operation is introduced inside
+these write transactions. This does **not** establish atomic synchronization with provider metadata
+or model caches outside SQLite; that separate source finding remains Unresolved and blocks security
+promotion.
+
+Independent static reviews first Failed missing canary checks, MCP/search propagation and the
+separate MCP proposal path; subsequent source repairs addressed those declared DB-backed paths.
+Parent integration then found and reproduced an off-loop finalization regression. The first complete
+affected runtime/storage run Failed: 71 passed, 10 failed, no errors/skips, 81 total, 302.361 seconds,
+with all 417 source pins stable. Eight assertions lacked terminal error events; two streams ended
+before their held storage read. A controlled one-case reproduction Failed after lease closure but
+before terminal publication. `finalize_turn` now commits lease closure, terminal status and replay
+error/complete events together. Its quota savepoint rolls back partial terminal events while still
+retiring the execution; terminal CAS losers do not overwrite status or duplicate events. The 18
+selected affected cases Passed after this repair; that does not rewrite the earlier aggregate Fail.
+
+A later independent CAS review Failed because completion could win after a separate lease
+revocation. The new exact revoked-lease regression Failed before repair. Completed finalization now
+requires the exact active, unexpired lease and supplied fresh write guard. A stale completion falls
+back to failed/session_revoked finalization without overwriting an existing terminal state. Seven
+initial transaction/CAS cases Passed; expiry coverage extended that scope. Parent review then found
+that this fallback did not propagate its failed status to timing/cache cleanup. Both added cache
+regressions Failed before repair and Passed after finalization returned the durable terminal status
+to the event loop. Timing now reports that status and the existing bounded cache purge runs for
+failed/cancelled outcomes. Six direct MCP held-write cases subsequently Passed across valid,
+revoked and cancelled authority. These are synthetic local cases, not native/provider acceptance.
+
+Search preview persistence had its own two-case health/readiness Fail, then Pass after grouped
+initial authorization/preview work moved off-loop. Search waiters remain on the event loop, and a
+fresh final check plus the original expiry/deadline prevents an approved query being released after
+a delayed check expires. Nine strengthened tracked cases Passed: initial/preview/final waits versus
+health/readiness, session revocation, HTTP cancellation and an explicitly already-approved future
+that expires at the true final check. Preserve the first nine-case exit-0 run, whose call-count
+trigger could select preview emission instead of the intended final check: its final-phase claims
+are Unavailable. The maintained tests use explicit preview-emitted/approval-sent/delayed-check flags
+and wait for the held write's actual completion before checking absence.
+
+Private test setup failures are retained separately: seven matrix cases used a projected lease
+without context_version before the full-lease fixture correction; one ordering assertion used the
+wrong SSE helper key before its correction; and four MCP cases had a missing exception import before
+its test-only repair. None is an application cause. Corrected individual selections are not combined
+into a manufactured aggregate Pass.
+
+The fresh attested independent selected run **Failed** with exit 1: 109 completed cases,
+104 passed, five failed, no errors or skips. The child ran from the exact worktree with
+CPython 3.11.15 on native x86_64, from `2026-10-22T17:16:21.512815Z` to
+`17:25:16.037785Z`. Import/terminal attestations, all 417 source pins, complete bounded output,
+child/process-group absence and exact owned-temp cleanup Passed. All five failures stopped at
+observers attached to `set_turn_status`; atomic runtime finalization now uses `finalize_turn`.
+These failures occurred before their durable-state assertions, so they establish neither passing
+finalization acceptance nor a demonstrated product status defect. The test-only observer repair
+moves the completion observer to the atomic finalizer and observes both paths for interruption
+cases, preserving cancellation controls and every existing wait/state/error/lease/no-generation/
+no-URL assertion. The focused nine-case parent and independent runs both Passed, each with exit 0,
+no errors or skips, unchanged 417 source pins and exact owned-temp cleanup. The parent run
+completed at `17:33:58.514793Z` (41.682 seconds); the independent run covered
+`17:36:45.212487Z`–`17:37:25.775720Z`. This does not rewrite the original 109-case Fail
+or manufacture a fresh aggregate from separate selections. The independent observer receipt is
+`observer-independent-qa-20261022T1734Z-352904e2-2cee-48ee-b0ea-15bb260f911e/independent-terminal-review-v1.json`
+under the repair directory, SHA-256
+`b7aaeba66f746c7f321c04c4e9e0ceaa67371f4fca527f76368d9a907bab6e38`.
+Its first private wrapper attempt Failed before dispatch on a variable-name typo; no child or test
+ran in that attempt. The corrected dispatch is the single independent nine-case execution.
+
+Independent receipt: `/var/tmp/r12r/f6-independent-mcp-write-guard-v6-20261022T171100Z-950ed174-3dd0-492a-8506-456dccbf5731/independent-final-review-v2.json`,
+SHA-256 `891f14e2011cb9e95ad1db2c9cb394af0f5b4a56258ec5b0386673d6788cddef`.
+Its final 417-pin snapshot has SHA-256
+`03d60edf22f46aac014debd0d60da1fcb42eba93ba994b4e35baf4ff6748aaa0`.
+Normal Ruff/format, S101-excluded security lint and diff checks Passed; strict security lint
+retained its three inherited S101 findings.
+
+The first independent QA supervisor failed after starting pytest's first fixture: JUnit recorded
+zero completed results, and the assertion extent is Unavailable. Its terminal/import/cleanup
+supplements remain separate; the original inline supervisor source bytes were not saved and are
+Unavailable. Held private launcher candidates exposed pipe-EOF/process-wait and JUnit-root-count
+issues before real execution. The reviewed corrected launcher reused unchanged process-control
+validation and separately checked parsing against the saved 81/10, 2/0 and empty/inconsistent JUnit
+fixtures. Normal test children retain umask 022; private receipts/logs/JUnit use 0600. The original
+first-attempt JUnit 0644-to-0600 correction is not initial-private-mode proof. Some intermediate
+scratch source copies were written before explicit chmod 0600 without a recorded initial umask;
+private directory/final file modes do not prove their initial file modes. The preserved original
+baselines and observer-repair baseline use explicit private creation. The three strict S101
+findings are pre-existing API assertions, confirmed against saved baseline bytes; this provenance
+does not turn the strict command into Pass or waive a security gate.
+
+A subsequent bounded synthetic cancellation/delete diagnostic **Failed** all four health/readiness
+cases: the public request reached the held `get_turn` (cancel) or
+`validate_conversation_delete` (delete), and the unrelated health response waited for that storage
+call to return. Exit 1, four failures, no errors/skips, 22.031 seconds,
+`2026-10-22T17:38:26.149826Z`–`17:38:48.180650Z`; 417 pins remained unchanged, output was complete,
+child/process group were absent and exact owned-temp cleanup Passed. Its explicit worktree/PYTHONPATH
+is recorded, but this diagnostic did not add in-process import attestation. Receipt:
+`cancel-delete-red-v1/terminal.json` under the repair directory. This reproduces the selected
+storage-wait liveness defect, not the cause of the original full-browser failure. The next bounded
+repair is to offload those synchronous storage phases while preserving authority checks,
+cancellation and exact deletion confirmation/cache-clear rules; no such repair is claimed here.
+
+The parent personally reviewed the integrated source diff and individual terminal/JUnit bindings.
+Provider-policy cross-store synchronization, remaining cancellation/delete liveness, forecast and
+full-browser failures remain open. Earlier full-browser/canonical Fails remain visible. No current
+image/native/owner-UI/release Pass follows from these repairs; f7 remains historical for the changed
+application source. Finish the known runtime repairs before a fresh bound image/native run, then
+rerun affected browser scopes and mandatory release gates. Do not rebuild unchanged UI or relabel
+old images. This partial checkpoint does not complete a feature, trigger a handoff or complete the
+active overall goal.
+
+No main merge, Docker build, native/provider trial, actual-host rehearsal, deployment, rollout,
+resize or email occurred in this repair scope. No active backup was removed; the last observed
+count is 32 pending the explicit retention decision. Preserve the existing 1 GB host/backups and
+US$15 monthly total cap including tax. Actual combined 1 GB, current security/native/recovery/
+rollback, authenticated free-Zen owner UI and release gates remain open. Physical mobile, actual
+screen reader, true zoom and PDF/UA remain Unavailable.
+
+Selected private evidence, with exact run artifacts and hashes retained in the parent reviews:
+
+- Baseline/reproductions/current manifests: `/var/tmp/r12r/f6-event-persistence-b315b706958842169326ce4ed63c3cf6/`.
+- Parent diagnostic review: `parent-local-diagnostic-review-v1.json`, SHA-256 `24a4775ca2a9e6e8f6706d604a2f1485c57cd100e511c1f1697fbdc9ec9257c4`.
+- Parent search/cleanup review: `parent-search-and-cleanup-review-v1.json`, SHA-256 `9634c28f9bbb2c2478ca1b518f99dea9c88013d5044f245b1721bd8475825276`.
+- Parent launcher review: `parent-v6-qa-launcher-review-v1.json`, SHA-256 `d391d34378a6bc2af886d0bc1e4a10d4b0d51d6bf30b04372656a2b21f923a12`.
+- Independent static Fail receipts: `guard-six-writers-independent-review-v1.json` and `atomic-finalization-independent-review-v1.json`; their scoped later repairs do not erase the original findings.

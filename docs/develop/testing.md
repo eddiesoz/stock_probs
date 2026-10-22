@@ -1071,3 +1071,38 @@ Preserve wrong-checkout/unbound checks as Unavailable for the target, retain pre
 and require a fresh correctly bound run before acceptance. Keep normal child umask `022` and create
 private receipts/logs with explicit `0600` mode; a later chmod is a metadata correction, not proof of
 initial mode. See the [F6 WebFetch liveness checkpoint](../../MVP-PLAN.md#r-astra-121-f6-full-browser-failure-and-webfetch-authorization-liveness-checkpoint-2026-10-22).
+
+
+Runtime output liveness tests must hold normalization, event/message persistence and finalization
+while checking application health/readiness in the same entered lifespan. Keep synchronous work in
+tracked thread tasks and retain its result through cancellation. Per-turn output ordering must stay
+locked until the worker finishes, even when its awaiting emitter is cancelled. Exercise live,
+revoked and cancelled writes through both runtime emission and the separate MCP proposal/receipt
+entry points. Check committed rows after the held worker returns; an early absence check is not
+late-write rejection evidence. Bind runtime writes to fresh durable lease/session/factor/consent,
+model/context and owner-canary authority inside their transaction. Keep provider metadata/cache
+synchronization outside SQLite explicitly unresolved until separately verified.
+
+Terminal lease closure, status and replay error/complete events must publish atomically. A separate
+SQLite reader should see the pre-transition state while the writer is held before commit. Cover
+quota failure before and after terminal-event insertion, no partial rows, losing terminal CAS,
+revoked/expired completion and duplicate finalization. A fallback from completed to failed must
+return the durable terminal status to timing and the existing bounded runtime-cache purge. Preserve
+the original split-finalizer and stale-completion failures beside their focused passing repairs.
+
+Search approval tests must cover held initial checks, preview persistence and the true final check,
+plus revocation/cancellation and delayed expiry of an already-approved query. Use explicit
+preview-emitted and approval-sent signals; runtime preview emission itself performs an execution
+check, so call-count assumptions can select the wrong phase. Keep waiter/future operations on the
+owning event loop and preserve exact-query, lease/deadline and tool-count bounds. Synthetic future
+approval is a fixture seam, not a production browser approval or native-search acceptance.
+
+Independent selected QA needs successful child termination, positive completed JUnit cases, no
+failures/errors, complete bounded output, exact import/cwd/source bindings and owned cleanup. A
+`testsuites` root need not carry count attributes; validate actual testcase counts against declared
+suite totals and reject empty/inconsistent results. Precreate private JUnit at 0600 while retaining
+normal child umask 022. Process supervision must remain bounded after stdout/stderr close and when
+a child retains pipes. A launcher failure after fixture startup establishes no test Pass; retain
+its unavailable assertion extent and source/metadata corrections. Reuse unchanged harness process
+validation when only its parser changes. See the
+[F6 runtime persistence checkpoint](../../MVP-PLAN.md#r-astra-121-f6-runtime-persistence-atomic-completion-and-search-liveness-repair-checkpoint-2026-10-22).
