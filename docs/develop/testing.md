@@ -1149,3 +1149,18 @@ Caller authorization occurs outside synchronous policy scopes for the bounded re
 output separately checks durable caller/consent/lease state in its write transaction and holds
 external model-policy authority through commit; no universal instantaneous cancellation of an
 already-authorized metadata request is inferred. See the [scoped repair record](../../MVP-PLAN.md#r-astra-121-f6-provider-policy-authority-repair-2026-10-22).
+
+## Free Zen inventory changes
+
+Before a native trial, require the explicit `zen.native_acceptance_model_id` to appear in the
+current public inventory and satisfy every reviewed free/no-training policy predicate. A missing
+selection must fail without choosing another model by sort order or enabling a paid fallback.
+Review new exact IDs against current official pricing, privacy and compatible-route documentation
+before adding them; live model names alone cannot grant eligibility. Retained unavailable rows
+must stay unavailable even if a stale upstream response echoes their IDs.
+
+The October 22 inventory failure occurred before either owner started a native turn. The current
+reviewed selection is GLM-5.3-Flash Free; DeepSeek V4.1 Flash Free is also reviewed, but is not an
+automatic fallback. LongCat remains documented upstream while absent from the observed endpoint;
+preserve that discrepancy and follow runtime availability. See the [catalog-review checkpoint](../../MVP-PLAN.md#r-astra-121-f6-native-inventory-failure-and-free-model-catalog-review-2026-10-22)
+for the failed trial, independent selected checks and remaining release gates.

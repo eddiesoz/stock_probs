@@ -1508,6 +1508,37 @@ def test_every_reviewed_free_no_training_zen_model_uses_current_policy_versions(
             )
 
 
+@pytest.mark.parametrize(
+    "native_model_id",
+    ("space-bunny-free", "longcat-2.5-preview-free", "minimax-m3.1-flash-free"),
+)
+def test_retired_zen_inventory_rows_cannot_reactivate_reviewed_models(native_model_id: str) -> None:
+    """A stale upstream echo cannot revive a model removed during policy reconciliation."""
+
+    assert AssistantModelCatalog()._parse_zen_rows([{"id": native_model_id}]) == ()
+
+
+def test_current_free_zen_review_accepts_only_the_exact_new_no_training_models() -> None:
+    """Live names cannot broaden the reviewed privacy, free billing, or compatible route."""
+
+    catalog = AssistantModelCatalog()
+    reviewed = {"glm-5.3-flash-free", "deepseek-v4.1-flash-free"}
+    upstream_ids = sorted(reviewed) + [
+        "glm-5.3-flash",
+        "deepseek-v4.1-flash",
+        "unreviewed-free-fixture",
+    ]
+    upstream_ids.extend(model_id for model_id, _reason in _zen_exclusion_fixtures())
+    models = catalog._parse_zen_rows([{"id": model_id} for model_id in upstream_ids])
+
+    assert {model.model_id for model in models} == {f"opencode-zen/{key}" for key in reviewed}
+    assert catalog._policy["zen"]["native_acceptance_model_id"] == "glm-5.3-flash-free"
+    assert all(model.free and not model.training for model in models)
+    assert all(
+        not model.data_collection_allowed and not model.data_collection_default for model in models
+    )
+
+
 def test_zen_longcat_disclosure_uses_current_hosting_regions() -> None:
     """Keep the LongCat privacy disclosure aligned with the maintained Zen policy."""
 

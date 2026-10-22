@@ -10258,3 +10258,98 @@ No image build, native/provider trial, production change, backup deletion, rollo
 occurred in this implementation scope. Preserve the existing 1 GB host, backups and US$15 monthly
 total cap. The complete goal and all seven features remain active; this is no feature completion
 or handoff.
+
+### R-ASTRA-121 F6 native inventory failure and free-model catalog review (2026-10-22)
+
+**Status: In progress.** The policy-authority implementation reached clean pushed
+`3d712f7f9021331681c4ca6352cd113520ac330e` on draft PR #9. Its local Linux/amd64 image build
+Passed at `19:57:59.286563Z`–`20:04:50.742842Z` (exit 0, 411.456 seconds), image
+`sha256:89495f469a1a66e5ecf7422716aae1482ac670b3cf8b19cc6bc10c35e5aa595f`, context
+`190e8b2da317898adf6a4f62f33f76e27e17e12485509ddb079c37aaea301f4a`. All 150 source inputs
+and 53 served/export pairs stayed bound. The exact owned controller was stopped after the build;
+its cgroup was absent. This is build/source/stage evidence, not native or resource acceptance.
+
+Build packet: `/var/tmp/r12r/f6-image-3d712f7-438677231bf948ad886e61b8cc200c4e/`;
+`parent-build-terminal-v2.json` SHA-256
+`7a84e2a01fdc37837886032694068e258d108beb2d5db2e9f47dcb2d601c667b`. The preceding f7 candidate
+was archived and checksummed before exact typed retirement; deployed/recovery images remained
+protected. The new build retained the 4 GiB start and 1 GiB stop guards, normal child umask 022,
+and UUID-verified SD scratch. No production or backup mutation followed.
+
+Independent prelaunch source/evidence review Passed for its static scope. Its manifest-count,
+timeout-cleanup and truncated-output findings were repaired before launch; earlier source and
+checker failures remain preserved. Final receipt:
+`/var/tmp/r12r/f6-native-prelaunch-review-2422037771e34ab284e9822947f57620/independent-prelaunch-static-review-final-v1.json`,
+SHA-256 `c797f0e1cfe0e7a600225ac0b74207e5a0b838cb64665aa072cbd38b8ce4488e`. The bounded outer
+launcher rejects incomplete/truncated output and requires separate exact fixture cleanup after
+timeout or process-group cleanup failure.
+
+The single genuine native functional attempt **Failed** at `20:12:39.356659Z`–`20:13:06.063206Z`,
+exit 2, before either owner started a turn. Readiness Passed after 26 attempts in 13.244 seconds.
+The protected inventory route returned HTTP 200 but omitted the exact reviewed
+`opencode-zen/minimax-m3.1-flash-free` selection (`reviewed_model_not_in_inventory`). Both owners
+had zero answers, messages, model events, search sources or fetch sources. No native inference or
+latency cause is established. The 768 MiB diagnostic peaked at 280,797,184 bytes with zero observed
+high/max/OOM deltas; this is not actual combined 1 GB acceptance.
+
+Native packet: `/var/tmp/r12r/f6-native-3d712f7-a21b0f8d103e4bee82abbdca1c3bfdc0/`.
+Output was complete, 153 input pins matched before the subsequent catalog edit, and 53
+served/export pairs matched. Independent exact container/network/volume, process-group and private
+Docker-config absence checks Passed. An independent port-refusal probe and a separate dispatch
+receipt are Unavailable. The initial reviewer-schema false Fail remains preserved beside correction
+`/var/tmp/r12r/f6-native-terminal-review-fa9ad318-d84a-469d-9824-3a7dbd98c55b/independent-terminal-integrity-correction-v1.json`,
+SHA-256 `b80e8d692fde6f3dd8ef282ba5a15933a060f2aa1b21094877a3cba094ebede3`. This integrity Pass
+does not change the native Fail.
+
+Focused fixed-endpoint public inventory reads returned HTTP 200/85 rows at
+`20:14:39.981973Z`–`20:14:40.128062Z` and `20:15:25.935081Z`–`20:15:26.186426Z`. MiniMax,
+Space Bunny and LongCat were absent; the only existing reviewed live rows were training-enabled
+Big Pickle and MiMo. This establishes the observed inventory mismatch, not why upstream changed. LongCat remains in the
+official documentation despite its absence from the live endpoint; this discrepancy is unresolved,
+and its local unavailable flag follows runtime discovery rather than a claim of permanent retirement.
+The [current official OpenCode model documentation](https://opencode.ai/v2/docs/console/models/)
+and [public inventory](https://opencode.ai/zen/v1/models) list GLM-5.3-Flash Free and DeepSeek V4.1
+Flash Free. OpenCode documents both as temporarily free, zero-retention and not used for training.
+The scoped policy update reviews those exact compatible-route IDs, marks the three vanished rows
+unavailable, and explicitly selects GLM for the next native check. It adds no automatic fallback,
+paid route, account requirement or consent bypass. Existing hard exclusions remain authoritative.
+
+The parent selected synthetic run Passed 94/94, no errors/skips, exit 0,
+`20:18:20.719567Z`–`20:18:25.668506Z`, with in-process exact-worktree imports, complete output,
+unchanged explicit source pins and owned temp/process cleanup. Command:
+`/usr/bin/python3 /var/tmp/r12r/f6-free-catalog-reconciliation-b73f30e638dd4bef90c3ed1d3e66e673/run-selected-v1.py`.
+Its child selects `zen or model_inventory or native_acceptance_selector or live_zen_discovery`
+from the provider and supervised-probe test files. Terminal SHA-256:
+`2a492ee67a49fe1c89619a7a563adcbc493b3aa54b8dc5b21fd71171e2d61885`. A changed-policy public
+read at `20:19:43.458819Z`–`20:19:43.621820Z` returned the exact GLM selection and both newly
+reviewed no-training rows. This proves discovery only; no model turn ran with that policy.
+
+Catalog baseline, tests, public-source bindings and parent failed-native review are retained in
+`/var/tmp/r12r/f6-free-catalog-reconciliation-b73f30e638dd4bef90c3ed1d3e66e673/`; the public
+observations are in `/var/tmp/r12r/f6-inventory-diagnostic-d33f9a585fe340668d8282dbeb9a98e2/`.
+Independent GPT-6 Luna xhigh catalog source review and selected QA Passed 94/94, exit 0,
+no errors/skips, `20:24:47.188648Z`–`20:24:52.235005Z`. All 418 explicit pins remained unchanged,
+with exact-worktree imports and temp/process cleanup verified. Ruff check, format-check, JSON parse
+and scoped diff-check Passed separately. Receipt:
+`/var/tmp/r12r/f6-free-catalog-independent-1d11dc21-bda9-4fd8-a1a4-ba135c99c2c1/independent-review-v1.json`,
+SHA-256 `e033c63d9b91133261c30cc6dbe3e2f5aed8d87b5a58cc8179f13ebec87c80db`. Its prelaunch
+bookkeeping setup Fail is preserved and launched no test child. The earlier implementation-checkpoint
+test digest predates formatting/readability changes; both successful test runs bind the final
+bytes through their own source manifests. The independent upstream consistency result remains
+Fail for the unresolved LongCat docs/API disagreement; this does not change selected local QA.
+
+The completed failed 3d candidate was then archived (183,519,049 bytes, SHA-256
+`aaad9445bcd00d22f338b6452a5dafd92eed97880ae8defea504fe432dacc8a5`) and retired by exact full
+ID with `--no-prune`, after checking archive checksum, registered receipt, unique tag, bounded
+115-image RootFS inventory, absence of descendants/equal-layer ambiguity, and no container
+reference. Typed retirement receipt SHA-256:
+`1a5c0f9472cc5c1be0b31582b7028e88cdec1ecb647d2b268e9fff2996861051`. The two protected
+deployed/recovery images remain; no application or production was started by the local-pointer
+selection. Archive/retirement packet:
+`/var/tmp/r12r/f6-image-glm-preparation-4c51109f64b14589a3e60eb20e470494/`.
+
+The parent reviewed the integrated diff and evidence. A new clean source checkpoint, bound image
+and real GLM native functional result remain pending. Current canonical, owner UI answers, shutdown, security/browser, actual combined
+1 GB, recovery/rollback and release gates remain open. The existing 1 GB host, backups and
+US$15/month including tax remain unchanged. No deployment, rollout, resize or email occurred.
+This is no feature completion or handoff; the complete goal and seven features remain active.
