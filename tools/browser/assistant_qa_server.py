@@ -12,7 +12,7 @@ import re
 import sys
 import threading
 import time
-from contextlib import contextmanager, suppress
+from contextlib import ExitStack, contextmanager, suppress
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -176,23 +176,24 @@ def _install_lock_failure_diagnostic(repository):
     @contextmanager
     def coordinated():
         nonlocal emitted
-        try:
-            with original():
-                yield
-        except RepositoryOperationalError as error:
-            if error.args == ("database coordination lock timed out",):
-                with diagnostic_lock:
-                    first = not emitted
-                    emitted = True
-                if first:
-                    with suppress(Exception):
-                        print(
-                            "Fixture repository coordination timeout stack:",
-                            file=sys.stderr,
-                            flush=True,
-                        )
-                        faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
-            raise
+        with ExitStack() as stack:
+            try:
+                stack.enter_context(original())
+            except RepositoryOperationalError as error:
+                if error.args == ("database coordination lock timed out",):
+                    with diagnostic_lock:
+                        first = not emitted
+                        emitted = True
+                    if first:
+                        with suppress(Exception):
+                            print(
+                                "Fixture repository coordination timeout stack:",
+                                file=sys.stderr,
+                                flush=True,
+                            )
+                            faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+                raise
+            yield
 
     repository._coordinated = coordinated
 

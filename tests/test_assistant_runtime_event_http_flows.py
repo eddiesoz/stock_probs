@@ -22,6 +22,7 @@ from stock_probs import api as application_api
 from stock_probs.api import create_app
 from stock_probs.assistant import api as assistant_api
 from stock_probs.assistant.schemas import AssistantTurnContext, AssistantTurnResult
+from stock_probs.assistant.service import AssistantUnavailable
 from stock_probs.auth import CSRF_COOKIE_NAME, SESSION_COOKIE_NAME
 from stock_probs.config import Settings
 from stock_probs.provider import FixtureProvider
@@ -1300,3 +1301,211 @@ def test_public_turn_history_wait_cannot_start_interrupted_runtime(
         assert stored["error_code"] == (
             "session_revoked" if interruption == "revoke" else "turn_cancelled"
         )
+
+
+@pytest.mark.parametrize("health_path", ["/api/v1/health", "/api/v1/readiness"])
+def test_public_turn_persistence_wait_preserves_application_health(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, health_path: str
+) -> None:
+    """Persisting a turn must not block unrelated HTTP health requests."""
+
+    app = _make_app(settings, _ScriptedRuntime())
+    entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80076)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        storage = app.state.assistant.storage
+        original = storage.create_turn
+
+        def held_create(*args: object, **kwargs: object) -> object:
+            entered.set()
+            release.wait(timeout=1.5)
+            returned.set()
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(storage, "create_turn", held_create)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            pending = executor.submit(_start_turn, browser, identity, context, conversation, model)
+            try:
+                assert entered.wait(timeout=3), "request did not reach turn persistence"
+                health = browser.get(health_path)
+                assert health.status_code == 200
+                assert not returned.is_set(), "health waited for turn persistence to return"
+            finally:
+                release.set()
+                pending.result(timeout=5)
+
+
+@pytest.mark.parametrize(
+    "interruption,phase",
+    [
+        ("revoke", "write"),
+        ("close", "write"),
+        ("cancel", "write"),
+        ("consent", "write"),
+        ("cancel", "authorization"),
+    ],
+)
+def test_interrupted_turn_persistence_closes_late_lease_without_generation(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, interruption: str, phase: str
+) -> None:
+    """A write returning after interruption must neither leak a slot nor dispatch a model."""
+
+    runtime = _ScriptedRuntime()
+    app = _make_app(settings, runtime)
+    entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+    finalized = threading.Event()
+    cancellation_seen = threading.Event()
+    cleanup_entered, cleanup_returned = threading.Event(), threading.Event()
+    cleanup_errors: list[str] = []
+    retirement_calls: list[dict[str, bool]] = []
+    records: list[dict[str, object]] = []
+    request_task: dict[str, object] = {}
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80077)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        assistant = app.state.assistant
+        storage = assistant.storage
+        original_create = storage.create_turn
+        original_status = storage.set_turn_status
+        original_request = assistant.create_turn
+        original_live = assistant._assistant_session_is_live
+        original_cleanup = assistant._cancel_unstarted_turn
+        original_retire = assistant._retire_created_turn
+        live_checks = 0
+
+        def held_create(*args: object, **kwargs: object) -> object:
+            if phase == "write":
+                entered.set()
+                release.wait(timeout=5)
+            try:
+                record = original_create(*args, **kwargs)
+                records.append(record)
+                return record
+            finally:
+                if phase == "write":
+                    returned.set()
+
+        def observe_live(*args: object, **kwargs: object) -> bool:
+            nonlocal live_checks
+            live_checks += 1
+            hold = phase == "authorization" and live_checks == 2
+            if hold:
+                entered.set()
+                release.wait(timeout=5)
+            try:
+                return original_live(*args, **kwargs)
+            finally:
+                if hold:
+                    returned.set()
+
+        def observe_cleanup(*args: object, **kwargs: object) -> None:
+            cleanup_entered.set()
+            try:
+                original_cleanup(*args, **kwargs)
+            except BaseException as error:
+                cleanup_errors.append(type(error).__name__)
+                raise
+            finally:
+                cleanup_returned.set()
+
+        def observe_retire(completed: asyncio.Task[object], *args: object) -> None:
+            retirement_calls.append({"done": completed.done(), "cancelled": completed.cancelled()})
+            original_retire(completed, *args)
+
+        def observe_status(*args: object, **kwargs: object) -> object:
+            result = original_status(*args, **kwargs)
+            if kwargs.get("status") == "cancelled":
+                finalized.set()
+            return result
+
+        async def observe_request(*args: object, **kwargs: object) -> object:
+            request_task["loop"] = asyncio.get_running_loop()
+            operation = asyncio.create_task(original_request(*args, **kwargs))
+            request_task["task"] = operation
+            try:
+                return await operation
+            except asyncio.CancelledError:
+                # Keep injected service cancellation observable through Starlette's response task.
+                cancellation_seen.set()
+                raise AssistantUnavailable("turn_cancelled", 409) from None
+
+        monkeypatch.setattr(storage, "create_turn", held_create)
+        monkeypatch.setattr(storage, "set_turn_status", observe_status)
+        monkeypatch.setattr(assistant, "create_turn", observe_request)
+        monkeypatch.setattr(assistant, "_assistant_session_is_live", observe_live)
+        monkeypatch.setattr(assistant, "_cancel_unstarted_turn", observe_cleanup)
+        monkeypatch.setattr(assistant, "_retire_created_turn", observe_retire)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            pending = executor.submit(
+                browser.post,
+                f"/api/v1/assistant/conversations/{conversation['id']}/turns",
+                headers={"x-csrf-token": str(identity["csrf"])},
+                json={
+                    "prompt": "Persist this synthetic turn safely.",
+                    "model_id": model["model_id"],
+                    "policy_version": model["policy_version"],
+                    "context": dict(context),
+                    "context_preview_accepted": True,
+                },
+            )
+            try:
+                assert entered.wait(timeout=3), "request did not reach turn persistence"
+                if interruption == "revoke":
+                    app.state.repository.auth_revoke_session(
+                        str(identity["token_hash"]), _NOW.isoformat()
+                    )
+                elif interruption == "consent":
+                    storage.create_consent(
+                        int(identity["user_id"]),
+                        model_id=str(model["model_id"]),
+                        policy_version=str(model["policy_version"]),
+                        accepted_terms=False,
+                        data_collection_opt_in=False,
+                        recorded_at=_NOW,
+                    )
+                elif interruption == "close":
+                    assert browser.portal is not None
+                    browser.portal.call(assistant.close)
+                else:
+                    loop = cast(asyncio.AbstractEventLoop, request_task["loop"])
+                    task = cast(asyncio.Task[object], request_task["task"])
+                    loop.call_soon_threadsafe(task.cancel)
+                    response = pending.result(timeout=2)
+                    assert response.status_code == 409
+                    assert response.json()["error"]["code"] == "turn_cancelled"
+                    assert cancellation_seen.is_set()
+                assert not returned.is_set(), "held operation returned before interruption"
+                assert not runtime.contexts
+            finally:
+                release.set()
+            if interruption != "cancel":
+                response = pending.result(timeout=5)
+                expected_status = {"revoke": 403, "close": 503, "consent": 428}[interruption]
+                assert response.status_code == expected_status
+            assert returned.wait(timeout=3)
+            assert finalized.wait(timeout=3), {
+                "message": "late persisted turn was not retired",
+                "records": len(records),
+                "retirement_calls": retirement_calls,
+                "cleanup_entered": cleanup_entered.is_set(),
+                "cleanup_returned": cleanup_returned.is_set(),
+                "cleanup_errors": cleanup_errors,
+                "storage_task_states": [
+                    {"done": task.done(), "cancelled": task.cancelled()}
+                    for task in assistant._storage_tasks
+                ],
+            }
+        assert len(records) == 1
+        record = records[0]
+        assert not runtime.contexts
+        assert not assistant._tasks
+        turn = storage.get_turn(
+            int(identity["user_id"]), str(conversation["id"]), str(record["id"])
+        )
+        assert turn["status"] == "cancelled"
+        assert turn["error_code"] == "turn_cancelled"
+        lease = storage.execution_lease(str(record["execution_id"]))
+        assert lease is not None and lease["status"] == "revoked"

@@ -90,6 +90,7 @@ def test_browser_runtime_preserves_delayed_mcp_success_and_http_failures(
     [
         ("0", "coordination", 0, False),
         ("1", "coordination", 1, False),
+        ("1", "body", 0, False),
         ("1", "other", 0, False),
         ("1", None, 0, False),
         pytest.param("1", "coordination", 1, True, id="dump_failure"),
@@ -104,7 +105,9 @@ def test_lock_failure_stack_diagnostic_is_opt_in_once_and_preserves_errors(
     monkeypatch.setenv("STOCK_PROBS_BROWSER_LOCK_DIAGNOSTIC", enabled)
     error = (
         fixture["RepositoryOperationalError"](
-            "database coordination lock timed out" if failure == "coordination" else "other"
+            "database coordination lock timed out"
+            if failure in {"coordination", "body"}
+            else "other"
         )
         if failure is not None
         else None
@@ -114,7 +117,7 @@ def test_lock_failure_stack_diagnostic_is_opt_in_once_and_preserves_errors(
     @contextmanager
     def original():
         entries.append("entered")
-        if error is not None:
+        if error is not None and failure != "body":
             raise error
         yield
 
@@ -136,7 +139,8 @@ def test_lock_failure_stack_diagnostic_is_opt_in_once_and_preserves_errors(
                 pass
         else:
             with pytest.raises(type(error)) as captured, repository._coordinated():
-                pass
+                if failure == "body":
+                    raise error
             assert captured.value is error
     assert entries == ["entered", "entered"]
     assert len(dumps) == expected_dumps

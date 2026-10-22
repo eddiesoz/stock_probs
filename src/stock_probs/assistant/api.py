@@ -2386,7 +2386,7 @@ def create_assistant_router(
         payload: AssistantTurnCreateRequest,
         request: Request,
     ) -> dict[str, object]:
-        auth = browser_context(request)
+        auth = await run_in_threadpool(browser_context, request)
         return await assistant.create_turn(
             auth,
             conversation_id,

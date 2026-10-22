@@ -9583,3 +9583,83 @@ Selected immutable receipts (private task-owned SD packets):
 - Desktop diagnostic terminal review: `/var/tmp/r12r/f6-lock-browser-relaunch-748b2bf6524242448bee7ec63a3b203f/parent-terminal-review-v1.json`, SHA-256 `003469b5b14c349a01ee1e97a2fc2399591b0efe753fd814b1c2e2844cdde017`.
 - Mobile failure terminal review: `/var/tmp/r12r/f6-lock-mobile-receipt-7ee978f0c7254bcb814104d59ebd1619/parent-terminal-review-v1.json`, SHA-256 `238419434b2cfc357efb1ed57a16b8fe59a7348c12a49b440a14e6f9e484c869`.
 - Mobile scoped pass terminal review: `/var/tmp/r12r/f6-pending-confirmation-fecc2ddac6824d0e9168e1679c397047/parent-terminal-review-v1.json`, SHA-256 `77bb115a5761b81d388f68589c836e21c15541dfdb971b52a88d03334412e629`.
+
+
+### R-ASTRA-121 F6 turn-persistence liveness repair checkpoint (2026-10-22)
+
+The maintained local build at clean pushed head `7e10ab53e5b3cc34d1e3c92e71d757eb4b4b43a2`
+Passed build/source/stage binding at `12:29:25.102Z`–`12:36:03.983Z`, exit 0. Image
+`sha256:c188b5a9f39dc237734d9cd93c135767cd791a35a4ab11594574773fc82bcfed`
+binds context `e1fb108fa0927d7e582f92c4266f86bdbca545160014fdfe8dedf9ca70798e02`,
+150 image inputs, three builder pins and 53 served/export pairs. The detached-process terminal
+envelope supplies actual process evidence; no systemd-run envelope is inferred. A contemporaneous
+pre-build setup-receipt digest was not saved. The exact retired e40 image was independently archived
+and verified, then removed by full ID with `--no-prune` after bounded ancestry/reference checks;
+production and recovery images remained. The managed-image ledger held three entries after build.
+
+The single authorized genuine native functional attempt Failed, `12:47:07.054299Z`–
+`12:47:54.020329Z`, exit 2. Schema-13 readiness passed after 33 attempts in 16.529 seconds.
+Both turn POSTs then hit approximately 8.013-second read timeouts; the driver reported
+`concurrent_turn_create` / `transport_readtimeout`. Both owners remained `not_started`, with no
+model-session event, answer, workspace summary, search or fetch. Completion-overlap evidence is
+unavailable; POSTs were sent. Sampled app and worker readiness each recorded five ready and four
+unavailable observations. The local 768 MiB sample peaked at 327,217,152 bytes with zero high/max/OOM
+deltas; this neither proves a cause nor establishes actual combined 1 GB acceptance. Independent
+result-integrity review Passed with 153 source/probe pins, 53 stage pairs and exact owned
+container/network/volume absence. The recorded loopback cleanup probe refused; its port number was
+not retained, so a separate global listener check is Unavailable. No retry or kill ran.
+
+A deterministic public-HTTP reproduction held real turn persistence for 1.5 seconds while requesting
+same-application health/readiness. Both baseline cases Failed: those responses waited for the held
+write. This establishes a blocking persistence path, not the native timeout cause. The repair moves
+browser authentication, context validation and persistence-related storage work off the event loop.
+It shields and retains the write's result future, rechecks session/CSRF and consent after persistence,
+and registers generation under the task lock only if the service lifecycle still matches. A request
+interrupted before dispatch retires its exact late-created execution lease without starting the model.
+Shutdown retains the existing two-second wait bound. A write completing after that bound relies on
+the loop remaining alive for callback cleanup or later startup reconciliation; indefinite I/O cleanup
+is not guaranteed. No quota, provider, turn, database-lock or browser deadline changed.
+
+The initial two liveness checks Passed after repair. An initial interruption matrix retained one
+fixture failure caused by cancelling the Starlette response task; the corrected fixture cancels the
+service child operation. Its five cases Passed. The expanded seven-case run then Failed one late
+cleanup observation; its cause remains Unproven. Added test-only callback/cleanup diagnostics did not
+reproduce it: the exact case Passed, then all seven Passed with 37 deselected and two warnings
+(terminal `13:10:40.078Z`). Those passes do not erase the earlier failure or establish its cause.
+The seven cases cover health/readiness, held-write revocation/close/cancel/consent and cancellation
+during post-write authorization. They assert no generation, revoked leases and cancelled records.
+Independent affected HTTP/authorization and fixture QA is pending at this checkpoint.
+
+Independent source review also found that the opt-in coordination diagnostic could mislabel an
+identical exception from its protected body as a lock-acquisition failure. A private red case Failed
+as expected; the ExitStack repair narrows the handler to context entry. A relocated private fixture
+first Failed at catalog-path setup; the corrected private eight-case run Passed. The actual source
+retains its project-relative catalog path and adds the body-exception regression. This changes
+fixture attribution only. Independent current-source execution is included in the pending QA.
+
+The application input changes make c188 historical for the repaired source. A new exact-head image
+and genuine functional run precede another canonical aggregate. Earlier browser/canonical failures
+remain Fail. Current security/accessibility, actual combined 1 GB, authenticated owner UI,
+PR-bound recovery/rollback, guide and release gates remain open. Host trials await the explicit
+backup-retention choice; all 32 active originals remain intact. No merge, deployment, resize,
+rollout or email occurred. The full goal, seven-feature order, 1 GB host, backups and US$15 monthly
+total cap remain unchanged.
+
+Selected private immutable receipts:
+
+- Build terminal: `/var/tmp/r12r/f6-image-7e10-preparation-38869ab72f1b484487dc82e31d6d47df/parent-build-terminal-v2.json`, SHA-256 `c120dd2d32fb8d99008d8e0115248497ecba3b9b735efb44b3c8a707834e0069`.
+- Native independent integrity review: `/var/tmp/r12r/f6-native-independent-prelaunch-7e10-20261022-001/native-functional-result-review-v3.json`, SHA-256 `31a8eedf029ba8b4529ab811cbaf299ea88f281dc02bdb3da43b02ef92e1289f`.
+- e40 exact retirement: `/home/james/.local/state/stock-probs/r120-buildkit-v1/retirements/f6-e40-555aeebc17e048119fa6f017bc681433.json`, SHA-256 `99250655c5991ceb52877cfbe6d0f62c72a570bfbb601cc743693b9f73adf866`.
+- Repair baselines and red/green diagnostics: `/var/tmp/r12r/f6-turn-create-liveness-77ab4f28286b4e88a0f687114138a808/`.
+- Attribution red/private green evidence: `/var/tmp/r12r/f6-lock-attribution-repair-a5c1a7f6d0ed44589bc6e6dd746138bc/`.
+
+
+Independent affected QA then Passed on native x86_64 / Python 3.11.15, child umask `0022`:
+55 HTTP/history/fixture tests (`13:13:14.698Z`–`13:14:51.571Z`) and seven selected API
+authorization/kill/timeout/policy cases (`13:14:58.587Z`–`13:15:19.249Z`), all with zero skips.
+Ruff security, format and scoped diff checks Passed; 22 explicit source/test/import pins matched
+before/after. Independent source review found no blocking issue and retained the bounded-shutdown
+limitation. Receipt `/var/tmp/r12r/f6-turn-create-independent-20261022T1312Z/independent-review-receipt.json`,
+SHA-256 `365e38e03fc385b63da09704c532c95778285f48ccd9cfc80d2ea6380c473a1d`.
+This supersedes only the pending affected-QA status above. The earlier late-cleanup Fail remains
+unresolved; no browser, native, provider, Docker or release acceptance follows from these tests.

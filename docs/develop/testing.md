@@ -1024,3 +1024,19 @@ Keep logs private, preserve failed/interrupted results, and distinguish a scoped
 an original cause or aggregate acceptance. A temporary pending-request probe that did not fire
 was preserved separately and removed from the maintained fixture; no application fix follows.
 See the [F6 coordination diagnostic checkpoint](../../MVP-PLAN.md#r-astra-121-f6-recovered-resource-browser-and-coordination-diagnostic-checkpoint-2026-10-22).
+
+
+Turn-creation liveness checks hold real persistence while querying health/readiness through the
+same entered application lifespan. Off-loop writes must retain their result future across request
+cancellation so an exact late-created lease can be retired. Recheck session/CSRF and consent before
+dispatch, and serialize lifecycle validation with task registration. Test cancellation during both
+persistence and post-write authorization, plus revocation and close; assert no model generation and
+exact lease/record retirement. Preserve bounded shutdown and report cleanup limits when I/O outlives
+that bound. Cancel the service operation in controlled fixtures, distinguishing this from browser
+connection-disconnect acceptance. Keep a non-reproduced late-cleanup failure unresolved beside later
+passes. These checks prove the held-write path, not an earlier native timeout's cause.
+
+The coordination diagnostic must catch acquisition failures only around context entry. An identical
+exception raised by the protected body must propagate without a lock-acquisition dump. Retain exact
+exception identity, output-error suppression and the default-off flag. See the
+[F6 persistence checkpoint](../../MVP-PLAN.md#r-astra-121-f6-turn-persistence-liveness-repair-checkpoint-2026-10-22).

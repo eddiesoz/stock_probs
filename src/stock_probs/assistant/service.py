@@ -216,6 +216,8 @@ class AssistantService:
         self.backups = backups
         self.clock = clock or (lambda: datetime.now(UTC))
         self._tasks: dict[str, asyncio.Task[None]] = {}
+        self._storage_tasks: set[asyncio.Task[Any]] = set()
+        self._lifecycle_generation = 0
         self._execution_by_turn: dict[str, str] = {}
         self._emitters: dict[str, Any] = {}
         self._search_waiters: dict[str, asyncio.Future[str | None]] = {}
@@ -373,11 +375,13 @@ class AssistantService:
     async def close(self) -> None:
         """Cancel active local work and erase ephemeral runtime conversation references."""
 
+        self._lifecycle_generation += 1
         tasks = list(self._tasks.values())
         for task in tasks:
             task.cancel()
-        if tasks:
-            await asyncio.wait(tasks, timeout=2.0)
+        pending = [*tasks, *self._storage_tasks]
+        if pending:
+            await asyncio.wait(pending, timeout=2.0)
         closer = getattr(self.runtime, "close", None)
         if callable(closer):
             await self._bounded_runtime_call(closer, timeout=2.0)
@@ -2357,76 +2361,149 @@ class AssistantService:
     ) -> dict[str, object]:
         """Persist an explicitly requested turn and run it only in isolated local runtime."""
 
+        generation = self._lifecycle_generation
         self.require_access(context)
         await self._ensure_runtime_ready()
         prompt = self._validate_prompt(prompt)
-        canonical_context = self.validate_context(context.user.id, page_context)
+        canonical_context = await asyncio.to_thread(
+            self.validate_context, context.user.id, page_context
+        )
         if not context_preview_accepted:
             raise AssistantUnavailable("context_preview_required", 409)
-        inventory = await self.ensure_model_inventory(
-            minimum_validity_seconds=120.0,
-            owner_id=context.user.id,
-            authorization_check=lambda: self._assistant_session_is_live(
+
+        async def session_is_live() -> bool:
+            return await asyncio.to_thread(
+                self._assistant_session_is_live,
                 context.user.id,
                 context.session_id,
                 context.token_hash,
                 expected_csrf_hash=context.csrf_token_hash,
-            ),
+            )
+
+        inventory = await self.ensure_model_inventory(
+            minimum_validity_seconds=120.0,
+            owner_id=context.user.id,
+            authorization_check=session_is_live,
         )
-        policy = self.policy(model_id, model_inventory=inventory, owner_id=context.user.id)
-        if policy.policy_version != policy_version:
-            raise AssistantStorageConflict("policy_version")
-        consent = self.storage.current_consent(context.user.id, model_id, policy_version)
-        if not consent or not consent.get("accepted_terms"):
-            raise AssistantConsentRequired()
-        if policy.training and not consent.get("data_collection_opt_in"):
-            raise AssistantConsentRequired()
-        if bool(consent.get("data_collection_opt_in")) and not policy.data_collection_allowed:
-            raise AssistantStorageConflict("policy_changed")
         capability = secrets.token_urlsafe(36)
-        now = self.now()
-        # Readiness and inventory refresh can await; bind persistence to the still-live session.
-        if not self._assistant_session_is_live(
-            context.user.id,
-            context.session_id,
-            context.token_hash,
-            expected_csrf_hash=context.csrf_token_hash,
-        ):
-            raise AssistantUnavailable("assistant_authorization_required", 403)
-        record = self.storage.create_turn(
-            context.user.id,
-            conversation_id,
-            prompt=prompt,
-            model_id=model_id,
-            policy_version=policy_version,
-            context=canonical_context,
-            context_version=str(canonical_context["context_version"]),
-            session_id=context.session_id,
-            session_token_hash=context.token_hash,
-            capability=capability,
-            now=now,
-            expires_at=now + timedelta(seconds=ASSISTANT_TURN_SECONDS),
-        )
-        turn_id = str(record["id"])
-        execution_id = str(record["execution_id"])
-        task = asyncio.create_task(
-            self._run_turn(
-                context=context,
-                conversation_id=conversation_id,
-                turn_id=turn_id,
-                execution_id=execution_id,
-                capability=capability,
-                model_id=model_id,
-                policy=policy,
+
+        def persist_turn() -> tuple[dict[str, object], AssistantModelPolicy]:
+            policy = self.policy(model_id, model_inventory=inventory, owner_id=context.user.id)
+            if policy.policy_version != policy_version:
+                raise AssistantStorageConflict("policy_version")
+            consent = self.storage.current_consent(context.user.id, model_id, policy_version)
+            if not consent or not consent.get("accepted_terms"):
+                raise AssistantConsentRequired()
+            if policy.training and not consent.get("data_collection_opt_in"):
+                raise AssistantConsentRequired()
+            if bool(consent.get("data_collection_opt_in")) and not policy.data_collection_allowed:
+                raise AssistantStorageConflict("policy_changed")
+            now = self.now()
+            # Readiness and inventory refresh can await; bind persistence to the still-live session.
+            if not self._assistant_session_is_live(
+                context.user.id,
+                context.session_id,
+                context.token_hash,
+                expected_csrf_hash=context.csrf_token_hash,
+            ):
+                raise AssistantUnavailable("assistant_authorization_required", 403)
+            record = self.storage.create_turn(
+                context.user.id,
+                conversation_id,
                 prompt=prompt,
-                canonical_context=canonical_context,
-            ),
-            name=f"assistant-turn-{execution_id}",
-        )
-        async with self._task_lock:
-            self._tasks[execution_id] = task
-        task.add_done_callback(lambda _: self._tasks.pop(execution_id, None))
+                model_id=model_id,
+                policy_version=policy_version,
+                context=canonical_context,
+                context_version=str(canonical_context["context_version"]),
+                session_id=context.session_id,
+                session_token_hash=context.token_hash,
+                capability=capability,
+                now=now,
+                expires_at=now + timedelta(seconds=ASSISTANT_TURN_SECONDS),
+            )
+            return record, policy
+
+        pending = asyncio.create_task(asyncio.to_thread(persist_turn))
+        self._track_storage_operation(pending)
+        try:
+            # Shield the write so cancellation cannot lose the returned lease identity.
+            record, policy = await asyncio.shield(pending)
+            if not await session_is_live():
+                raise AssistantUnavailable("assistant_authorization_required", 403)
+            if not await asyncio.to_thread(
+                self.policy_still_authorized, context.user.id, model_id, policy_version
+            ):
+                raise AssistantConsentRequired()
+            turn_id = str(record["id"])
+            execution_id = str(record["execution_id"])
+            async with self._task_lock:
+                if generation != self._lifecycle_generation:
+                    raise AssistantUnavailable("assistant_worker_unavailable", 503)
+                task = asyncio.create_task(
+                    self._run_turn(
+                        context=context,
+                        conversation_id=conversation_id,
+                        turn_id=turn_id,
+                        execution_id=execution_id,
+                        capability=capability,
+                        model_id=model_id,
+                        policy=policy,
+                        prompt=prompt,
+                        canonical_context=canonical_context,
+                    ),
+                    name=f"assistant-turn-{execution_id}",
+                )
+                self._tasks[execution_id] = task
+                task.add_done_callback(lambda _: self._tasks.pop(execution_id, None))
+        except BaseException:
+            pending.add_done_callback(
+                lambda completed: self._retire_created_turn(
+                    completed, context.user.id, conversation_id
+                )
+            )
+            raise
         return {"turn": {key: value for key, value in record.items() if key != "execution_id"}}
+
+    def _track_storage_operation(self, task: asyncio.Task[Any]) -> None:
+        """Retain in-flight database work without cancelling a write's result future."""
+
+        self._storage_tasks.add(task)
+        task.add_done_callback(self._storage_tasks.discard)
+        task.add_done_callback(lambda done: done.exception() if not done.cancelled() else None)
+
+    def _retire_created_turn(
+        self,
+        pending: asyncio.Task[tuple[dict[str, object], AssistantModelPolicy]],
+        user_id: int,
+        conversation_id: str,
+    ) -> None:
+        """Retire a late persisted lease when its request was interrupted before dispatch."""
+
+        try:
+            record, _policy = pending.result()
+        except (Exception, asyncio.CancelledError):
+            return
+        cleanup = asyncio.create_task(
+            asyncio.to_thread(self._cancel_unstarted_turn, user_id, conversation_id, record)
+        )
+        self._track_storage_operation(cleanup)
+
+    def _cancel_unstarted_turn(
+        self, user_id: int, conversation_id: str, record: Mapping[str, object]
+    ) -> None:
+        """Close the exact newly claimed slot without ever starting model generation."""
+
+        try:
+            self.storage.close_execution(str(record["execution_id"]), now=self.now(), revoked=True)
+        finally:
+            self.storage.set_turn_status(
+                user_id,
+                conversation_id,
+                str(record["id"]),
+                status="cancelled",
+                now=self.now(),
+                error_code="turn_cancelled",
+            )
 
     async def _run_turn(
         self,
