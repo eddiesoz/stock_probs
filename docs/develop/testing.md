@@ -1132,3 +1132,20 @@ callbacks inside SQL. Test event-loop health under contention, coherent catalog/
 publication, stale in-flight refresh rejection and expiry during database-lock waits. Locks freeze
 mutations, not time. Keep fresh publication authorization outside held synchronous scopes and
 preserve original deadlines. See the [F6 policy-race record](../../MVP-PLAN.md#r-astra-121-f6-reproduced-provider-policy-persistence-race-2026-10-22).
+
+
+The maintained authority regressions also cover bounded admission while a policy write owns the
+lock, executor availability after expired waiters, queued-dispatch abandonment, and retained
+admitted writes through repeated cancellation. Use real manager/catalog objects for model state;
+keep synthetic generation, transports and expiry controls explicit. Observe request dispatch
+before releasing a held authority scope, rather than waiting for code that correctly runs only
+after admission. Model policy `revision` and Console `review_revision` are separate CAS values.
+
+OAuth tests must distinguish cancellation before publication from an already-admitted vault write.
+After a one-time handoff is consumed, failed admission, expiry or disconnect must retire the attempt
+and revoke its transport; repeated cancellation must not detach that cleanup. Publication checks
+expiry and payload again, while an admitted completed write keeps its matching connected status.
+Caller authorization occurs outside synchronous policy scopes for the bounded request. Runtime
+output separately checks durable caller/consent/lease state in its write transaction and holds
+external model-policy authority through commit; no universal instantaneous cancellation of an
+already-authorized metadata request is inferred. See the [scoped repair record](../../MVP-PLAN.md#r-astra-121-f6-provider-policy-authority-repair-2026-10-22).

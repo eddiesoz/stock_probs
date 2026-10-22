@@ -92,7 +92,11 @@ async def _require_stream_authorization(
     if not callable(check):
         raise PublicHTTPError("provider_authorization_required")
     try:
-        result = check()
+        result = (
+            check()
+            if inspect.iscoroutinefunction(check)
+            else await asyncio.wait_for(asyncio.to_thread(check), timeout=_remaining(deadline))
+        )
         if not inspect.isawaitable(result):
             raise TypeError("authorization check must be awaitable")
         authorized = await asyncio.wait_for(result, timeout=_remaining(deadline))
@@ -116,7 +120,11 @@ async def _require_request_authorization(
     if not callable(check):
         raise PublicHTTPError("provider_authorization_required")
     try:
-        result = check()
+        result = (
+            check()
+            if inspect.iscoroutinefunction(check)
+            else await asyncio.wait_for(asyncio.to_thread(check), timeout=_remaining(deadline))
+        )
         if inspect.isawaitable(result):
             result = await asyncio.wait_for(result, timeout=_remaining(deadline))
     except asyncio.CancelledError:

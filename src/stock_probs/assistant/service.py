@@ -11,8 +11,8 @@ import math
 import re
 import secrets
 import threading
-from collections.abc import Awaitable, Callable, Mapping
-from contextlib import suppress
+from collections.abc import Awaitable, Callable, Iterator, Mapping
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
@@ -307,7 +307,7 @@ class AssistantService:
             if not isinstance(model_id, str) or model_id in seen:
                 continue
             try:
-                model = get_owner_model(model_id, owner_id=owner_id)
+                model = await self._policy_projection(get_owner_model, model_id, owner_id=owner_id)
             except ProviderUnavailable:
                 model = None
             if model is None:
@@ -1784,6 +1784,7 @@ class AssistantService:
                     runtime_context.model_id,
                     policy,
                     runtime_context.context_version,
+                    owner_id=runtime_context.user_id,
                 ),
                 now=self.now(),
                 expires_at=min(
@@ -2403,7 +2404,11 @@ class AssistantService:
             data=event_data,
             sources=source_candidates,
             write_guard=self._runtime_write_guard(
-                str(lease["execution_id"]), str(turn["model_id"]), policy, context_version
+                str(lease["execution_id"]),
+                str(turn["model_id"]),
+                policy,
+                context_version,
+                owner_id=user_id,
             ),
             now=self.now(),
         )
@@ -2544,6 +2549,19 @@ class AssistantService:
             raise
         return {"turn": {key: value for key, value in record.items() if key != "execution_id"}}
 
+    async def _policy_projection(
+        self, function: Callable[..., Any], *args: object, **kwargs: object
+    ) -> Any:
+        """Admit known provider projections before dispatching work to the executor."""
+
+        authority = getattr(self.providers, "_policy_call", None)
+        if callable(authority):
+            return await authority(
+                lambda: function(*args, **kwargs),
+                authorization_check=kwargs.get("authorization_check"),
+            )
+        return await self._storage_call(function, *args, **kwargs)
+
     async def _storage_call(self, function: Any, *args: object, **kwargs: object) -> Any:
         """Keep synchronous storage work off-loop and retain its result through cancellation."""
 
@@ -2592,8 +2610,35 @@ class AssistantService:
                 error_code="turn_cancelled",
             )
 
+    @contextmanager
+    def _runtime_policy_scope(
+        self, owner_id: int, model_id: str, policy_version: str
+    ) -> Iterator[tuple[tuple[Callable[[], float], float], ...]]:
+        """Validate external policy before storage enters a transaction, never from SQL."""
+
+        scope = getattr(self.providers, "runtime_policy_scope", None)
+        if not callable(scope):
+            if callable(getattr(self.providers, "model_policy_state", None)):
+                raise AssistantStorageExecutionStale("runtime_policy_authority_unavailable")
+            # Static offline catalogs have no provider administration surface to serialize.
+            if self.policy(model_id, owner_id=owner_id).policy_version != policy_version:
+                raise AssistantStorageExecutionStale("runtime_policy_changed")
+            yield ()
+            return
+        try:
+            with scope(model_id, policy_version, owner_id=owner_id) as deadlines:
+                yield deadlines
+        except ProviderUnavailable:
+            raise AssistantStorageExecutionStale("runtime_policy_changed") from None
+
     def _runtime_write_guard(
-        self, execution_id: str, model_id: str, policy: AssistantModelPolicy, context_version: str
+        self,
+        execution_id: str,
+        model_id: str,
+        policy: AssistantModelPolicy,
+        context_version: str,
+        *,
+        owner_id: int,
     ) -> AssistantRuntimeWriteGuard:
         """Bind durable output checks to the turn's exact policy and configured rollout."""
 
@@ -2610,6 +2655,9 @@ class AssistantService:
             now=self.now,
             require_data_collection_opt_in=policy.training,
             canary_github_ids=canary_ids,
+            policy_scope=lambda: self._runtime_policy_scope(
+                owner_id, model_id, policy.policy_version
+            ),
         )
 
     async def _run_turn(
@@ -2626,7 +2674,11 @@ class AssistantService:
         canonical_context: Mapping[str, object],
     ) -> None:
         write_guard = self._runtime_write_guard(
-            execution_id, model_id, policy, str(canonical_context["context_version"])
+            execution_id,
+            model_id,
+            policy,
+            str(canonical_context["context_version"]),
+            owner_id=context.user.id,
         )
         generated: list[str] = []
         output_tail = ""

@@ -1058,7 +1058,11 @@ class AssistantToolGateway:
             if policy.policy_version != turn["policy_version"]:
                 raise AssistantUnavailable("session_revoked", 403)
             write_guard = self.assistant._runtime_write_guard(
-                str(execution_id), str(turn["model_id"]), policy, str(turn["context_version"])
+                str(execution_id),
+                str(turn["model_id"]),
+                policy,
+                str(turn["context_version"]),
+                owner_id=user_id,
             )
             event_type, card = self.assistant._normalize_runtime_event(
                 "proposed_action",

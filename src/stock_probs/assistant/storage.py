@@ -5,11 +5,14 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 import sqlite3
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from contextlib import AbstractContextManager
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from typing import Final, cast
+from functools import wraps
+from typing import Final, ParamSpec, TypeVar, cast
 from urllib.parse import parse_qsl, urlencode, urlsplit
 from uuid import uuid4
 
@@ -86,6 +89,42 @@ class AssistantRuntimeWriteGuard:
     now: Callable[[], datetime]
     require_data_collection_opt_in: bool = False
     canary_github_ids: tuple[int, ...] | None = None
+    policy_scope: (
+        Callable[[], AbstractContextManager[tuple[tuple[Callable[[], float], float], ...]]] | None
+    ) = None
+    policy_deadlines: tuple[tuple[Callable[[], float], float], ...] = ()
+
+
+_PolicyArgs = ParamSpec("_PolicyArgs")
+_PolicyResult = TypeVar("_PolicyResult")
+
+
+def _runtime_policy_write(
+    method: Callable[_PolicyArgs, _PolicyResult],
+) -> Callable[_PolicyArgs, _PolicyResult]:
+    """Acquire external policy authority before any SQLite connection or transaction."""
+
+    @wraps(method)
+    def guarded(*args: _PolicyArgs.args, **kwargs: _PolicyArgs.kwargs) -> _PolicyResult:
+        guard = kwargs.get("write_guard")
+        # A revoked model must still allow an execution to retire and publish its safe error.
+        terminal_retirement = (
+            method.__name__ == "finalize_turn" and kwargs.get("status") != "completed"
+        )
+        if (
+            not isinstance(guard, AssistantRuntimeWriteGuard)
+            or guard.policy_scope is None
+            or terminal_retirement
+        ):
+            return method(*args, **kwargs)
+        with guard.policy_scope() as deadlines:
+            amended = dict(kwargs)
+            amended["write_guard"] = replace(
+                guard, policy_scope=None, policy_deadlines=guard.policy_deadlines + deadlines
+            )
+            return method(*args, **amended)
+
+    return guarded
 
 
 class AssistantStorage:
@@ -107,6 +146,10 @@ class AssistantStorage:
 
         if guard is None:
             return
+        for clock, deadline in guard.policy_deadlines:
+            current = clock()
+            if not math.isfinite(current) or not math.isfinite(deadline) or current >= deadline:
+                raise AssistantStorageExecutionStale("runtime_policy_expired")
         timestamp = cls._timestamp(guard.now())
         row = connection.execute(
             """SELECT 1
@@ -1531,6 +1574,7 @@ class AssistantStorage:
             connection.commit()
         return cursor.rowcount == 1
 
+    @_runtime_policy_write
     def finalize_turn(
         self,
         user_id: int,
@@ -1638,6 +1682,7 @@ class AssistantStorage:
             raise quota_error
         return True
 
+    @_runtime_policy_write
     def append_message(
         self,
         user_id: int,
@@ -1700,6 +1745,7 @@ class AssistantStorage:
             "created_at": timestamp,
         }
 
+    @_runtime_policy_write
     def append_event(
         self,
         user_id: int,
@@ -1755,6 +1801,7 @@ class AssistantStorage:
             "created_at": timestamp,
         }
 
+    @_runtime_policy_write
     def append_tool_receipt(
         self,
         user_id: int,
@@ -2132,6 +2179,7 @@ class AssistantStorage:
             connection.commit()
         return interrupted
 
+    @_runtime_policy_write
     def create_source(
         self,
         user_id: int,
@@ -2200,6 +2248,7 @@ class AssistantStorage:
             "metadata": dict(metadata)
         }
 
+    @_runtime_policy_write
     def create_action(
         self,
         user_id: int,
@@ -2626,6 +2675,7 @@ class AssistantStorage:
             connection.commit()
         return len(rows)
 
+    @_runtime_policy_write
     def create_search_preview(
         self,
         user_id: int,

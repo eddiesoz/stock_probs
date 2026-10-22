@@ -18,13 +18,14 @@ import tempfile
 import threading
 import time
 import unicodedata
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
-from contextlib import suppress
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from functools import wraps
 from importlib.resources import files
 from pathlib import Path
-from typing import Any
+from typing import Any, ParamSpec, TypeVar, cast
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 from cryptography.hazmat.primitives import hashes
@@ -36,6 +37,7 @@ from stock_probs.assistant.model_catalog import (
     AssistantModelCatalog,
     ModelCatalogAuthorizationError,
     known_model_exclusion_reason,
+    run_policy_authority,
 )
 from stock_probs.assistant.native_provider_adapters import (
     NATIVE_WEBFETCH_DESCRIPTION_SHA256,
@@ -147,7 +149,11 @@ async def _stream_with_authorization(
         raise CredentialRejected("oauth_authorization_required")
 
     async def check_transport_authorization() -> bool:
-        result = authorization_check()
+        result = (
+            authorization_check()
+            if inspect.iscoroutinefunction(authorization_check)
+            else await asyncio.to_thread(authorization_check)
+        )
         if inspect.isawaitable(result):
             allowed = await result
             if allowed is not None and allowed is not True:
@@ -263,6 +269,24 @@ class _OpenCodeModelRecord:
     config_fingerprint: str
 
 
+_PolicyArgs = ParamSpec("_PolicyArgs")
+_PolicyResult = TypeVar("_PolicyResult")
+
+
+def _policy_locked(
+    method: Callable[_PolicyArgs, _PolicyResult],
+) -> Callable[_PolicyArgs, _PolicyResult]:
+    """Keep one synchronous state projection or publication in the shared authority scope."""
+
+    @wraps(method)
+    def locked(*args: _PolicyArgs.args, **kwargs: _PolicyArgs.kwargs) -> _PolicyResult:
+        manager = cast("AssistantProviderManager", args[0])
+        with manager._lock:
+            return method(*args, **kwargs)
+
+    return locked
+
+
 class AssistantProviderManager:
     """Manage only fixed provider adapters and encrypted durable credentials."""
 
@@ -295,10 +319,35 @@ class AssistantProviderManager:
         self._oauth_transport_register: Callable[..., object] | None = None
         self._oauth_transport_revoke: Callable[..., object] | None = None
         # Endpoint syntax is checked here; actual requests pin and revalidate DNS at connect time.
-        self._lock = threading.RLock()
+        self._lock = (
+            catalog.policy_lock if isinstance(catalog, AssistantModelCatalog) else threading.RLock()
+        )
         self._config_path = self.vault_dir / "providers.json"
         self._definitions = self._load_definitions()
         self._publish_provider_models()
+
+    async def _policy_call(
+        self,
+        function: Callable[..., _PolicyResult],
+        *args: object,
+        authorization_check: Callable[[], Awaitable[bool] | bool] | None = None,
+        **kwargs: object,
+    ) -> _PolicyResult:
+        """Wait off-loop, reauthorize, then attempt one synchronous authority operation."""
+
+        async def authorize() -> None:
+            if authorization_check is not None:
+                await _require_live_authorization(authorization_check)
+
+        try:
+            return await run_policy_authority(
+                self._lock,
+                lambda: function(*args, **kwargs),
+                authorize,
+                admission_seconds=_MODEL_DISCOVERY_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            raise ProviderUnavailable("provider_config_unavailable") from None
 
     def attach_runtime(self, runtime: Any) -> None:
         """Attach the one supervised OpenCode server after constructing both facades."""
@@ -402,29 +451,35 @@ class AssistantProviderManager:
         self._validate_oauth_owner(owner_id)
         output: list[dict[str, object]] = []
         async with self._oauth_lock:
-            with self._lock:
-                for integration_id, method_id in sorted(_NATIVE_OAUTH_UI_METHODS):
-                    credential = self._read_oauth_credential(integration_id, method_id, owner_id)
-                    if credential is None:
-                        continue
-                    if (
-                        credential.get("type") != "oauth"
-                        or credential.get("methodID") != method_id
-                        or not isinstance(credential.get("access"), str)
-                        or not isinstance(credential.get("refresh"), str)
-                    ):
-                        raise ProviderUnavailable("oauth_vault_unavailable")
-                    supported = integration_id == "openai"
-                    output.append(
-                        {
-                            "integration_id": integration_id,
-                            "method_id": method_id,
-                            "status": "connected",
-                            "model_access_supported": supported,
-                            "availability_reason": None if supported else "oauth_proxy_pending",
-                        }
-                    )
-                    del credential
+
+            def policy_operation_1() -> None:
+                with self._lock:
+                    for integration_id, method_id in sorted(_NATIVE_OAUTH_UI_METHODS):
+                        credential = self._read_oauth_credential(
+                            integration_id, method_id, owner_id
+                        )
+                        if credential is None:
+                            continue
+                        if (
+                            credential.get("type") != "oauth"
+                            or credential.get("methodID") != method_id
+                            or not isinstance(credential.get("access"), str)
+                            or not isinstance(credential.get("refresh"), str)
+                        ):
+                            raise ProviderUnavailable("oauth_vault_unavailable")
+                        supported = integration_id == "openai"
+                        output.append(
+                            {
+                                "integration_id": integration_id,
+                                "method_id": method_id,
+                                "status": "connected",
+                                "model_access_supported": supported,
+                                "availability_reason": None if supported else "oauth_proxy_pending",
+                            }
+                        )
+                        del credential
+
+            await self._policy_call(policy_operation_1)
         return tuple(output)
 
     @staticmethod
@@ -469,12 +524,16 @@ class AssistantProviderManager:
             if len(self._oauth_attempts) >= _NATIVE_OAUTH_ATTEMPT_LIMIT:
                 raise ProviderUnavailable("oauth_unavailable")
             if integration_id == "openai":
-                with self._lock:
-                    if any(
-                        self._read_oauth_credential("openai", method, owner_id) is not None
-                        for method in _CHATGPT_OAUTH_METHODS
-                    ):
-                        raise CredentialRejected("oauth_connection_already_exists")
+
+                def policy_operation_1() -> None:
+                    with self._lock:
+                        if any(
+                            self._read_oauth_credential("openai", method, owner_id) is not None
+                            for method in _CHATGPT_OAUTH_METHODS
+                        ):
+                            raise CredentialRejected("oauth_connection_already_exists")
+
+                await self._policy_call(policy_operation_1)
             attempt_id = secrets.token_hex(16)
             _label, listed_mode = _NATIVE_OAUTH_UI_METHODS[(integration_id, method_id)]
             attempt = _ManagedOAuthAttempt(
@@ -629,34 +688,56 @@ class AssistantProviderManager:
                 owner_id=owner_id,
                 session_id=session_id,
             )
-            self._validate_native_oauth_payload(credential, attempt)
-            try:
-                authorized = authorization_check()
-                if inspect.isawaitable(authorized):
-                    authorized = await authorized
-            except Exception:
-                authorized = False
-            if authorized is not True:
-                await self._cancel_runtime_oauth(attempt)
-                attempt.status = "cancelled"
+
+            def publish_connection(payload: Mapping[str, object]) -> None:
+                # The async OAuth mutex remains owned until this retained operation
+                # completes, so vault publication and plain attempt fields advance together.
+                if attempt.expires_at <= time.time():
+                    raise ProviderUnavailable("oauth_unavailable")
+                self._validate_native_oauth_payload(payload, attempt)
+                self._write_oauth_credential(
+                    attempt.integration_id, attempt.method_id, owner_id, payload
+                )
+                attempt.status = "connected"
                 attempt.authorization_url = None
                 attempt.instructions = None
                 attempt.callback_state = None
-                await self._revoke_oauth_transport(attempt)
+
+            try:
+                await self._policy_call(
+                    publish_connection, credential, authorization_check=authorization_check
+                )
+            except (Exception, asyncio.CancelledError) as failure:
+                cancelled = isinstance(failure, asyncio.CancelledError)
+                if attempt.status != "connected":
+                    # The native handoff is single-use. Every abandoned publication must
+                    # retire it, even when admission expires or its request disconnects.
+                    attempt.status = "expired" if attempt.expires_at <= time.time() else "cancelled"
+                    attempt.authorization_url = None
+                    attempt.instructions = None
+                    attempt.callback_state = None
+
+                    async def retire_handoff() -> None:
+                        try:
+                            await self._cancel_runtime_oauth(attempt)
+                        finally:
+                            await self._revoke_oauth_transport(attempt)
+
+                    cleanup = asyncio.create_task(retire_handoff())
+                    while not cleanup.done():
+                        try:
+                            await asyncio.shield(cleanup)
+                        except asyncio.CancelledError:
+                            cancelled = True
+                        except Exception:
+                            break
+                    cleanup.result()
+                if cancelled:
+                    raise asyncio.CancelledError from None
+                raise
+            finally:
+                # _policy_call drains admitted writes before cancellation can discard the handoff.
                 del credential
-                raise CredentialRejected("oauth_authorization_required")
-            self._write_oauth_credential(
-                attempt.integration_id,
-                attempt.method_id,
-                owner_id,
-                credential,
-            )
-            attempt.status = "connected"
-            attempt.authorization_url = None
-            attempt.instructions = None
-            attempt.callback_state = None
-            # Drop the only manager reference to the transient bearer/refresh values promptly.
-            del credential
             return self._managed_oauth_public(attempt)
 
     async def submit_native_oauth_callback(
@@ -1126,20 +1207,29 @@ class AssistantProviderManager:
             raise CredentialRejected("oauth_authorization_required")
         async with self._oauth_lock:
             try:
-                authorized = authorization_check()
+                authorized = (
+                    authorization_check()
+                    if inspect.iscoroutinefunction(authorization_check)
+                    else await asyncio.to_thread(authorization_check)
+                )
                 if inspect.isawaitable(authorized):
                     authorized = await authorized
             except Exception:
                 authorized = False
             if authorized is not True:
                 raise CredentialRejected("oauth_authorization_required")
-            with self._lock:
-                try:
-                    path.unlink(missing_ok=True)
-                except OSError as exc:
-                    raise ProviderUnavailable("oauth_vault_unavailable") from exc
+
+            def policy_operation_1() -> None:
+                with self._lock:
+                    try:
+                        path.unlink(missing_ok=True)
+                    except OSError as exc:
+                        raise ProviderUnavailable("oauth_vault_unavailable") from exc
+
+            await self._policy_call(policy_operation_1, authorization_check=authorization_check)
         return True
 
+    @_policy_locked
     def list_providers(self) -> tuple[ProviderSummary, ...]:
         """Return provider configuration and credential presence without disclosing secrets."""
 
@@ -1234,6 +1324,7 @@ class AssistantProviderManager:
             )
         return tuple(output)
 
+    @_policy_locked
     def update_provider(
         self,
         provider_id: str,
@@ -1317,6 +1408,7 @@ class AssistantProviderManager:
             raise ProviderUnavailable("custom_endpoint_not_supported")
         raise ProviderUnavailable("custom_policy_review_required")
 
+    @_policy_locked
     def configure_custom_endpoint(
         self,
         *,
@@ -1432,6 +1524,7 @@ class AssistantProviderManager:
 
         return self.update_provider(provider_id, credential=secret)
 
+    @_policy_locked
     def clear_credential(self, provider_id: str) -> ProviderSummary:
         """Clear this provider's encrypted credential, endpoint, and selected model."""
 
@@ -1473,10 +1566,14 @@ class AssistantProviderManager:
             )
             if authorization_check is not None:
                 await _require_live_authorization(authorization_check)
-            return next(item for item in self.list_providers() if item.provider_id == provider_id)
+            return next(
+                item
+                for item in (await self._policy_call(self.list_providers))
+                if item.provider_id == provider_id
+            )
         if definition["adapter_supported"] is not True and provider_id != "opencode-zen":
             raise ProviderUnavailable("provider_adapter_unsupported")
-        state = self._read_metadata().get(provider_id, {})
+        state = (await self._policy_call(self._read_metadata)).get(provider_id, {})
         base_url = _provider_base_url(provider_id, state, definition)
         if provider_id == "opencode-zen":
             if self.catalog is None:
@@ -1492,7 +1589,11 @@ class AssistantProviderManager:
                 await _require_live_authorization(authorization_check)
             if not refreshed:
                 raise ProviderUnavailable("provider_unavailable")
-            return next(item for item in self.list_providers() if item.provider_id == provider_id)
+            return next(
+                item
+                for item in (await self._policy_call(self.list_providers))
+                if item.provider_id == provider_id
+            )
         if not isinstance(base_url, str):
             raise ProviderUnavailable("endpoint_not_configured")
         secret = self._read_credential(provider_id)
@@ -1536,7 +1637,11 @@ class AssistantProviderManager:
             raise ProviderUnavailable("provider_unavailable") from exc
         if authorization_check is not None:
             await _require_live_authorization(authorization_check)
-        return next(item for item in self.list_providers() if item.provider_id == provider_id)
+        return next(
+            item
+            for item in (await self._policy_call(self.list_providers))
+            if item.provider_id == provider_id
+        )
 
     async def ensure_model_inventory(
         self, *, minimum_validity_seconds: float = 0.0
@@ -1589,7 +1694,7 @@ class AssistantProviderManager:
             and loaded_at > 0
             and self._clock() - loaded_at + minimum_validity_seconds < _MODEL_CACHE_SECONDS
         ):
-            return self._opencode_public_inventory(owner_id)
+            return await self._policy_call(self._opencode_public_inventory, owner_id)
 
         async with self._opencode_refresh_lock:
             await _require_live_authorization(authorization_check)
@@ -1599,8 +1704,8 @@ class AssistantProviderManager:
                 and loaded_at > 0
                 and self._clock() - loaded_at + minimum_validity_seconds < _MODEL_CACHE_SECONDS
             ):
-                return self._opencode_public_inventory(owner_id)
-            credential = self._owned_opencode_credential(owner_id)
+                return await self._policy_call(self._opencode_public_inventory, owner_id)
+            credential = await self._policy_call(self._owned_opencode_credential, owner_id)
             if credential is None:
                 raise CredentialRejected("oauth_connection_required")
             credential = await self._refresh_opencode_credential_if_needed(
@@ -1650,59 +1755,68 @@ class AssistantProviderManager:
             if not isinstance(provider_rows, Mapping):
                 raise ProviderUnavailable("opencode_inventory_unavailable")
 
-            reviews = self._read_opencode_reviews(owner_id)
-            records: list[_OpenCodeModelRecord] = []
-            for candidate in candidates:
-                try:
-                    endpoint = self._opencode_candidate_endpoint(provider_rows, candidate)
-                except ProviderUnavailable:
-                    unsupported_count += 1
-                    continue
-                if (
-                    self._known_model_exclusion_reason(
-                        "opencode-console", endpoint, candidate.native_model_id
+            def publish_inventory() -> tuple[dict[str, object], ...]:
+                current_credential = self._owned_opencode_credential(owner_id)
+                if current_credential != credential:
+                    raise CredentialRejected("oauth_connection_required")
+                unsupported = unsupported_count
+                reviews = self._read_opencode_reviews(owner_id)
+                records: list[_OpenCodeModelRecord] = []
+                for candidate in candidates:
+                    try:
+                        endpoint = self._opencode_candidate_endpoint(provider_rows, candidate)
+                    except ProviderUnavailable:
+                        unsupported += 1
+                        continue
+                    if (
+                        self._known_model_exclusion_reason(
+                            "opencode-console", endpoint, candidate.native_model_id
+                        )
+                        is not None
+                    ):
+                        unsupported += 1
+                        continue
+                    config_fingerprint = _opencode_config_fingerprint(
+                        candidate.config_provider_id,
+                        candidate.config_model_id,
+                        candidate.native_model_id,
+                        candidate.display_name,
+                        candidate.adapter,
+                        endpoint,
                     )
-                    is not None
-                ):
-                    unsupported_count += 1
-                    continue
-                config_fingerprint = _opencode_config_fingerprint(
-                    candidate.config_provider_id,
-                    candidate.config_model_id,
-                    candidate.native_model_id,
-                    candidate.display_name,
-                    candidate.adapter,
-                    endpoint,
-                )
-                model_id = self._opencode_model_id(owner_id, config_fingerprint)
-                review = reviews.get(model_id)
-                if (
-                    not isinstance(review, Mapping)
-                    or review.get("config_fingerprint") != config_fingerprint
-                ):
-                    review = None
-                model = self._opencode_assistant_model(model_id, candidate, endpoint, review)
-                records.append(
-                    _OpenCodeModelRecord(
-                        owner_id=owner_id,
-                        model=model,
-                        config_provider_id=candidate.config_provider_id,
-                        config_model_id=candidate.config_model_id,
-                        native_model_id=candidate.native_model_id,
-                        adapter=candidate.adapter,
-                        package_id=candidate.package_id,
-                        endpoint=endpoint,
-                        config_fingerprint=config_fingerprint,
+                    model_id = self._opencode_model_id(owner_id, config_fingerprint)
+                    review = reviews.get(model_id)
+                    if (
+                        not isinstance(review, Mapping)
+                        or review.get("config_fingerprint") != config_fingerprint
+                    ):
+                        review = None
+                    model = self._opencode_assistant_model(model_id, candidate, endpoint, review)
+                    records.append(
+                        _OpenCodeModelRecord(
+                            owner_id=owner_id,
+                            model=model,
+                            config_provider_id=candidate.config_provider_id,
+                            config_model_id=candidate.config_model_id,
+                            native_model_id=candidate.native_model_id,
+                            adapter=candidate.adapter,
+                            package_id=candidate.package_id,
+                            endpoint=endpoint,
+                            config_fingerprint=config_fingerprint,
+                        )
                     )
-                )
-            if len(records) > _MAX_OPENCODE_MODELS_PER_OWNER:
-                raise ProviderUnavailable("opencode_inventory_unavailable")
-            await _require_live_authorization(authorization_check)
-            self._opencode_models[owner_id] = tuple(records)
-            self._opencode_loaded_at[owner_id] = self._clock()
-            self._opencode_unsupported_counts[owner_id] = min(2048, unsupported_count)
-            return self._opencode_public_inventory(owner_id)
+                if len(records) > _MAX_OPENCODE_MODELS_PER_OWNER:
+                    raise ProviderUnavailable("opencode_inventory_unavailable")
+                self._opencode_models[owner_id] = tuple(records)
+                self._opencode_loaded_at[owner_id] = self._clock()
+                self._opencode_unsupported_counts[owner_id] = min(2048, unsupported)
+                return self._opencode_public_inventory(owner_id)
 
+            return await self._policy_call(
+                publish_inventory, authorization_check=authorization_check
+            )
+
+    @_policy_locked
     def opencode_inventory_summary(self, *, owner_id: int) -> dict[str, object]:
         """Return counts only for the owner-scoped current Console inventory."""
 
@@ -1720,12 +1834,14 @@ class AssistantProviderManager:
         record = self._opencode_record(model_id, owner_id=owner_id)
         return record.model
 
+    @_policy_locked
     def _opencode_public_inventory(self, owner_id: int) -> tuple[dict[str, object], ...]:
         return tuple(
             self._opencode_public_model(record)
             for record in self._opencode_models.get(owner_id, ())
         )
 
+    @_policy_locked
     def _opencode_public_model(self, record: _OpenCodeModelRecord) -> dict[str, object]:
         review = self._read_opencode_reviews(record.owner_id).get(record.model.model_id)
         reviewed = (
@@ -1861,6 +1977,7 @@ class AssistantProviderManager:
             cost_disclosure=billing,
         )
 
+    @_policy_locked
     def _opencode_record(self, model_id: str, *, owner_id: int) -> _OpenCodeModelRecord:
         self._validate_oauth_owner(owner_id)
         if (
@@ -1892,6 +2009,7 @@ class AssistantProviderManager:
         self._validate_oauth_owner(owner_id)
         return self.vault_dir / f"opencode-model-reviews-{owner_id}.json"
 
+    @_policy_locked
     def _read_opencode_reviews(self, owner_id: int) -> dict[str, dict[str, object]]:
         try:
             raw = _read_private_file(
@@ -1970,6 +2088,7 @@ class AssistantProviderManager:
             result[model_id] = {**dict(row), **versions}
         return result
 
+    @_policy_locked
     def _write_opencode_reviews(
         self, owner_id: int, reviews: Mapping[str, Mapping[str, object]]
     ) -> None:
@@ -2004,7 +2123,7 @@ class AssistantProviderManager:
             force=True,
         )
         async with self._opencode_refresh_lock:
-            record = self._opencode_record(model_id, owner_id=owner_id)
+            record = await self._policy_call(self._opencode_record, model_id, owner_id=owner_id)
             return await self._review_opencode_model_current(
                 record,
                 terms_url=terms_url,
@@ -2057,51 +2176,60 @@ class AssistantProviderManager:
             raise CredentialRejected("oauth_authorization_required")
         async with self._oauth_lock:
             await _require_live_authorization(authorization_check)
-            with self._lock:
-                reviews = self._read_opencode_reviews(owner_id)
-                previous = reviews.get(model_id)
-                previous_revision = int(previous["revision"]) if previous else 0
-                if previous_revision != expected_revision:
-                    raise ProviderUnavailable("model_policy_conflict")
-                if previous_revision >= _MAX_POLICY_REVISION:
-                    raise ProviderUnavailable("model_policy_revision_exhausted")
-                reviewed_at = (
-                    datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+            def publish_review() -> dict[str, object]:
+                current_record = self._opencode_record(model_id, owner_id=owner_id)
+                if current_record.config_fingerprint != record.config_fingerprint:
+                    raise ProviderUnavailable("model_inventory_changed")
+                with self._lock:
+                    reviews = self._read_opencode_reviews(owner_id)
+                    previous = reviews.get(model_id)
+                    previous_revision = int(previous["revision"]) if previous else 0
+                    if previous_revision != expected_revision:
+                        raise ProviderUnavailable("model_policy_conflict")
+                    if previous_revision >= _MAX_POLICY_REVISION:
+                        raise ProviderUnavailable("model_policy_revision_exhausted")
+                    reviewed_at = (
+                        datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+                    )
+                    versions = _opencode_policy_versions(
+                        model_id,
+                        record.config_fingerprint,
+                        canonical_terms,
+                        clean_privacy,
+                        clean_billing,
+                        billing_class,
+                        training_policy,
+                        confidential_data_policy,
+                    )
+                    row: dict[str, object] = {
+                        "config_fingerprint": record.config_fingerprint,
+                        "terms_url": canonical_terms,
+                        "privacy_disclosure": clean_privacy,
+                        "billing_disclosure": clean_billing,
+                        "billing_class": billing_class,
+                        "training_policy": training_policy,
+                        "confidential_data_policy": confidential_data_policy,
+                        "endpoint_policy_reviewed": True,
+                        "terms_reviewed_at": reviewed_at,
+                        **versions,
+                        "revision": previous_revision + 1,
+                    }
+                    reviews[model_id] = row
+                    self._write_opencode_reviews(owner_id, reviews)
+                updated_record = self._opencode_record(model_id, owner_id=owner_id)
+                candidate = self._find_opencode_candidate(updated_record)
+                updated_model = self._opencode_assistant_model(
+                    model_id, candidate, updated_record.endpoint, row
                 )
-                versions = _opencode_policy_versions(
-                    model_id,
-                    record.config_fingerprint,
-                    canonical_terms,
-                    clean_privacy,
-                    clean_billing,
-                    billing_class,
-                    training_policy,
-                    confidential_data_policy,
+                self._replace_opencode_record(
+                    owner_id, model_id, lambda item: _replace_opencode_model(item, updated_model)
                 )
-                row: dict[str, object] = {
-                    "config_fingerprint": record.config_fingerprint,
-                    "terms_url": canonical_terms,
-                    "privacy_disclosure": clean_privacy,
-                    "billing_disclosure": clean_billing,
-                    "billing_class": billing_class,
-                    "training_policy": training_policy,
-                    "confidential_data_policy": confidential_data_policy,
-                    "endpoint_policy_reviewed": True,
-                    "terms_reviewed_at": reviewed_at,
-                    **versions,
-                    "revision": previous_revision + 1,
-                }
-                reviews[model_id] = row
-                self._write_opencode_reviews(owner_id, reviews)
-        updated_record = self._opencode_record(model_id, owner_id=owner_id)
-        candidate = self._find_opencode_candidate(updated_record)
-        updated_model = self._opencode_assistant_model(
-            model_id, candidate, updated_record.endpoint, row
-        )
-        self._replace_opencode_record(
-            owner_id, model_id, lambda item: _replace_opencode_model(item, updated_model)
-        )
-        return self._opencode_public_model(self._opencode_record(model_id, owner_id=owner_id))
+                return self._opencode_public_model(
+                    self._opencode_record(model_id, owner_id=owner_id)
+                )
+
+            return await self._policy_call(publish_review, authorization_check=authorization_check)
 
     async def clear_opencode_model_review(
         self,
@@ -2119,7 +2247,7 @@ class AssistantProviderManager:
             force=True,
         )
         async with self._opencode_refresh_lock:
-            self._opencode_record(model_id, owner_id=owner_id)
+            (await self._policy_call(self._opencode_record, model_id, owner_id=owner_id))
             return await self._clear_opencode_model_review_current(
                 model_id,
                 owner_id=owner_id,
@@ -2141,30 +2269,34 @@ class AssistantProviderManager:
             raise CredentialRejected("oauth_authorization_required")
         async with self._oauth_lock:
             await _require_live_authorization(authorization_check)
-            with self._lock:
-                reviews = self._read_opencode_reviews(owner_id)
-                previous = reviews.get(model_id)
-                if previous is None:
-                    raise ProviderUnavailable("model_unavailable")
-                if previous.get("revision") != expected_revision:
-                    raise ProviderUnavailable("model_policy_conflict")
-                if expected_revision >= _MAX_POLICY_REVISION:
-                    raise ProviderUnavailable("model_policy_revision_exhausted")
-                tombstone = dict(previous)
-                tombstone["endpoint_policy_reviewed"] = False
-                tombstone["revision"] = expected_revision + 1
-                reviews[model_id] = tombstone
-                self._write_opencode_reviews(owner_id, reviews)
-                state = self._read_metadata()
-                policies = dict(state.get(_MODEL_POLICY_KEY, {}))
-                policies.pop(model_id, None)
-                if policies:
-                    state[_MODEL_POLICY_KEY] = policies
-                else:
-                    state.pop(_MODEL_POLICY_KEY, None)
-                self._write_metadata(state)
-        self._refresh_cached_opencode_review(owner_id, model_id, tombstone)
-        return True
+
+            def publish_clear() -> bool:
+                with self._lock:
+                    reviews = self._read_opencode_reviews(owner_id)
+                    previous = reviews.get(model_id)
+                    if previous is None:
+                        raise ProviderUnavailable("model_unavailable")
+                    if previous.get("revision") != expected_revision:
+                        raise ProviderUnavailable("model_policy_conflict")
+                    if expected_revision >= _MAX_POLICY_REVISION:
+                        raise ProviderUnavailable("model_policy_revision_exhausted")
+                    tombstone = dict(previous)
+                    tombstone["endpoint_policy_reviewed"] = False
+                    tombstone["revision"] = expected_revision + 1
+                    reviews[model_id] = tombstone
+                    self._write_opencode_reviews(owner_id, reviews)
+                    state = self._read_metadata()
+                    policies = dict(state.get(_MODEL_POLICY_KEY, {}))
+                    policies.pop(model_id, None)
+                    if policies:
+                        state[_MODEL_POLICY_KEY] = policies
+                    else:
+                        state.pop(_MODEL_POLICY_KEY, None)
+                    self._write_metadata(state)
+                self._refresh_cached_opencode_review(owner_id, model_id, tombstone)
+                return True
+
+            return await self._policy_call(publish_clear, authorization_check=authorization_check)
 
     def _find_opencode_candidate(self, record: _OpenCodeModelRecord) -> NativeConfiguredModel:
         # The public cache intentionally keeps only reviewed model metadata. Reconstruct the
@@ -2178,6 +2310,7 @@ class AssistantProviderManager:
             adapter=record.adapter,
         )
 
+    @_policy_locked
     def _replace_opencode_record(
         self,
         owner_id: int,
@@ -2190,6 +2323,7 @@ class AssistantProviderManager:
             for record in rows
         )
 
+    @_policy_locked
     def _refresh_cached_opencode_review(
         self,
         owner_id: int,
@@ -2213,7 +2347,9 @@ class AssistantProviderManager:
             inventory_is_stale = not self._provider_inventory_fresh(
                 provider_id, minimum_validity_seconds
             )
-            if self._provider_inventory_configured(provider_id) and inventory_is_stale:
+            if (
+                await self._policy_call(self._provider_inventory_configured, provider_id)
+            ) and inventory_is_stale:
                 configured.append(provider_id)
         if not configured:
             return
@@ -2221,7 +2357,7 @@ class AssistantProviderManager:
             pending = [
                 provider_id
                 for provider_id in configured
-                if self._provider_inventory_configured(provider_id)
+                if (await self._policy_call(self._provider_inventory_configured, provider_id))
                 and not self._provider_inventory_fresh(provider_id, minimum_validity_seconds)
                 and self._clock() >= self._provider_inventory_retry_at.get(provider_id, 0.0)
             ]
@@ -2259,6 +2395,12 @@ class AssistantProviderManager:
                 provider_id, authorization_check=authorization_check
             )
 
+    @_policy_locked
+    def _provider_inventory_source(self, provider_id: str) -> tuple[dict[str, object], str | None]:
+        """Bind discovery to the exact endpoint/review state and credential it fetched from."""
+
+        return dict(self._read_metadata().get(provider_id, {})), self._read_credential(provider_id)
+
     async def _refresh_provider_inventory_locked(
         self,
         provider_id: str,
@@ -2271,19 +2413,46 @@ class AssistantProviderManager:
             await _require_live_authorization(authorization_check)
         definition = self._require_provider(provider_id)
         if definition.get("adapter_supported") is not True:
-            self._replace_provider_models(provider_id, ())
+            (await self._policy_call(self._replace_provider_models, provider_id, ()))
             raise ProviderUnavailable("provider_adapter_unsupported")
-        state = self._read_metadata().get(provider_id, {})
+        state, secret = await self._policy_call(self._provider_inventory_source, provider_id)
         base_url = _provider_base_url(provider_id, state, definition)
-        secret = self._read_credential(provider_id)
-        if not isinstance(base_url, str):
+
+        def source_is_current() -> bool:
+            current_state, current_secret = self._provider_inventory_source(provider_id)
+            return current_state == state and current_secret == secret
+
+        def clear_source() -> None:
+            if source_is_current():
+                self._replace_provider_models(provider_id, ())
+
+        def invalidate_source(status: str) -> None:
+            if not source_is_current():
+                return
             self._replace_provider_models(provider_id, ())
+            self._provider_inventory_status[provider_id] = status
+            self._provider_inventory_retry_at[provider_id] = (
+                self._clock() + _MODEL_REFRESH_FAILURE_RETRY_SECONDS
+            )
+
+        def publish_source(rows: list[object]) -> None:
+            if not source_is_current():
+                raise ProviderUnavailable("model_inventory_changed")
+            models = self._parse_provider_model_rows(provider_id, rows)
+            self._provider_models[provider_id] = models
+            self._provider_inventory_loaded_at[provider_id] = self._clock()
+            self._provider_inventory_status[provider_id] = "connected"
+            self._provider_inventory_retry_at.pop(provider_id, None)
+            self._publish_provider_models()
+
+        if not isinstance(base_url, str):
+            await self._policy_call(clear_source, authorization_check=authorization_check)
             raise ProviderUnavailable("endpoint_not_configured")
         if provider_id == "custom" and not _custom_review_fields_present(state):
-            self._replace_provider_models(provider_id, ())
+            await self._policy_call(clear_source, authorization_check=authorization_check)
             raise ProviderUnavailable("custom_policy_review_required")
         if secret is None and definition.get("credential_required") is True:
-            self._replace_provider_models(provider_id, ())
+            await self._policy_call(clear_source, authorization_check=authorization_check)
             raise CredentialRejected("credential_required")
         endpoint, _query = _provider_inventory_target(provider_id, base_url)
         try:
@@ -2316,25 +2485,21 @@ class AssistantProviderManager:
             rows = payload.get(rows_key) if isinstance(payload, Mapping) else None
             if not isinstance(rows, list) or len(rows) > 4096:
                 raise ProviderUnavailable("provider_response_invalid")
-            models = self._parse_provider_model_rows(provider_id, rows)
+            await self._policy_call(publish_source, rows, authorization_check=authorization_check)
         except CredentialRejected as exc:
             if authorization_check is not None:
                 await _require_live_authorization(authorization_check)
                 if exc.code == "oauth_authorization_required":
                     raise
-            self._replace_provider_models(provider_id, ())
-            self._provider_inventory_status[provider_id] = "validation_failed"
-            self._provider_inventory_retry_at[provider_id] = (
-                self._clock() + _MODEL_REFRESH_FAILURE_RETRY_SECONDS
+            await self._policy_call(
+                invalidate_source, "validation_failed", authorization_check=authorization_check
             )
             raise
         except ProviderUnavailable:
             if authorization_check is not None:
                 await _require_live_authorization(authorization_check)
-            self._replace_provider_models(provider_id, ())
-            self._provider_inventory_status[provider_id] = "unavailable"
-            self._provider_inventory_retry_at[provider_id] = (
-                self._clock() + _MODEL_REFRESH_FAILURE_RETRY_SECONDS
+            await self._policy_call(
+                invalidate_source, "unavailable", authorization_check=authorization_check
             )
             raise
         except (TimeoutError, PublicHTTPError, OSError, ValueError, TypeError) as exc:
@@ -2345,19 +2510,10 @@ class AssistantProviderManager:
                     "provider_authorization_timeout",
                 }:
                     raise CredentialRejected("oauth_authorization_required") from None
-            self._replace_provider_models(provider_id, ())
-            self._provider_inventory_status[provider_id] = "unavailable"
-            self._provider_inventory_retry_at[provider_id] = (
-                self._clock() + _MODEL_REFRESH_FAILURE_RETRY_SECONDS
+            await self._policy_call(
+                invalidate_source, "unavailable", authorization_check=authorization_check
             )
             raise ProviderUnavailable("provider_unavailable") from exc
-        if authorization_check is not None:
-            await _require_live_authorization(authorization_check)
-        self._provider_models[provider_id] = models
-        self._provider_inventory_loaded_at[provider_id] = self._clock()
-        self._provider_inventory_status[provider_id] = "connected"
-        self._provider_inventory_retry_at.pop(provider_id, None)
-        self._publish_provider_models()
 
     def _parse_provider_model_rows(
         self, provider_id: str, rows: list[object]
@@ -2458,6 +2614,7 @@ class AssistantProviderManager:
             _MODEL_CACHE_SECONDS
         )
 
+    @_policy_locked
     def _replace_provider_models(
         self, provider_id: str, models: tuple[AssistantModel, ...]
     ) -> None:
@@ -2469,6 +2626,7 @@ class AssistantProviderManager:
             self._provider_inventory_loaded_at[provider_id] = self._clock()
         self._publish_provider_models()
 
+    @_policy_locked
     def _publish_provider_models(self) -> None:
         """Expose only the current provider snapshots to the shared model catalog."""
 
@@ -2539,6 +2697,7 @@ class AssistantProviderManager:
             )
         return tuple(models)
 
+    @_policy_locked
     def _invalidate_provider_inventory(self, provider_id: str) -> None:
         """Expire discovery immediately after endpoint, credential, or model changes."""
 
@@ -2546,6 +2705,45 @@ class AssistantProviderManager:
             self._replace_provider_models(provider_id, ())
             self._provider_inventory_retry_at.pop(provider_id, None)
 
+    @contextmanager
+    def runtime_policy_scope(
+        self, model_id: str, policy_version: str, *, owner_id: int
+    ) -> Iterator[tuple[tuple[Callable[[], float], float], ...]]:
+        """Hold fresh external policy authority before a runtime storage transaction opens."""
+
+        with self._lock:
+            policy = self.model_policy_state(model_id, owner_id=owner_id)
+            if (
+                policy.get("policy_version") != policy_version
+                or policy.get("enabled") is not True
+                or policy.get("usable") is not True
+            ):
+                raise ProviderUnavailable("model_unavailable")
+            deadlines = (
+                self.catalog.policy_deadlines(model_id)
+                if isinstance(self.catalog, AssistantModelCatalog)
+                else ()
+            )
+            model = self._reviewed_model(model_id, owner_id=owner_id)
+            provider_id = getattr(model, "provider_id", None)
+            if provider_id == "opencode-console":
+                deadlines += (
+                    (
+                        self._clock,
+                        self._opencode_loaded_at.get(owner_id, 0.0) + _MODEL_CACHE_SECONDS,
+                    ),
+                )
+            elif provider_id in _MODEL_DISCOVERY_PROVIDERS:
+                deadlines += (
+                    (
+                        self._clock,
+                        self._provider_inventory_loaded_at.get(provider_id, 0.0)
+                        + _MODEL_CACHE_SECONDS,
+                    ),
+                )
+            yield deadlines
+
+    @_policy_locked
     def model_policy_state(
         self, model_id: str, *, owner_id: int | None = None
     ) -> dict[str, object]:
@@ -2592,7 +2790,17 @@ class AssistantProviderManager:
         policy_generation = self._consent_policy_version(summary, record, endpoint_identity)
         provider_id = str(getattr(model, "provider_id", ""))
         definition = self._definitions.get(provider_id, {})
-        model_available = getattr(model, "available", False) is True
+        review_current = not is_opencode or (
+            isinstance(review, Mapping)
+            and opencode_record is not None
+            and review.get("endpoint_policy_reviewed") is True
+            and review.get("config_fingerprint") == opencode_record.config_fingerprint
+            and review.get("privacy_policy_version")
+            == getattr(model, "privacy_policy_version", None)
+            and review.get("billing_policy_version")
+            == getattr(model, "billing_policy_version", None)
+        )
+        model_available = getattr(model, "available", False) is True and review_current
         acknowledgements_current = (
             record["acknowledged_privacy_policy_version"] == current["privacy_policy_version"]
             and record["acknowledged_billing_policy_version"] == current["billing_policy_version"]
@@ -2650,6 +2858,31 @@ class AssistantProviderManager:
             "availability_reason": availability_reason,
         }
 
+    async def update_model_policy_async(
+        self,
+        model_id: str,
+        *,
+        enabled: bool,
+        acknowledged_privacy_policy_version: str | None,
+        acknowledged_billing_policy_version: str | None,
+        expected_revision: int,
+        owner_id: int,
+        authorization_check: Callable[[], Awaitable[bool] | bool],
+    ) -> dict[str, object]:
+        """Reauthorize after authority contention before an administrator policy update."""
+
+        return await self._policy_call(
+            self.update_model_policy,
+            model_id,
+            enabled=enabled,
+            acknowledged_privacy_policy_version=acknowledged_privacy_policy_version,
+            acknowledged_billing_policy_version=acknowledged_billing_policy_version,
+            expected_revision=expected_revision,
+            owner_id=owner_id,
+            authorization_check=authorization_check,
+        )
+
+    @_policy_locked
     def update_model_policy(
         self,
         model_id: str,
@@ -3114,17 +3347,23 @@ class AssistantProviderManager:
                 authorization_check=authorization_check,
                 force=True,
             )
-            current_record = self._opencode_record(record.model.model_id, owner_id=record.owner_id)
+            current_record = await self._policy_call(
+                self._opencode_record, record.model.model_id, owner_id=record.owner_id
+            )
             if (
                 current_record.config_fingerprint != record.config_fingerprint
                 or current_record.adapter != descriptor
-                or self.model_policy_state(record.model.model_id, owner_id=record.owner_id).get(
-                    "policy_version"
-                )
+                or (
+                    await self._policy_call(
+                        self.model_policy_state, record.model.model_id, owner_id=record.owner_id
+                    )
+                ).get("policy_version")
                 != policy_version
             ):
                 raise ProviderUnavailable("model_inventory_changed")
-            if not self._opencode_execution_usable(record, policy_version):
+            if not (
+                await self._policy_call(self._opencode_execution_usable, record, policy_version)
+            ):
                 raise ProviderUnavailable("model_unavailable")
 
             secret = self._read_credential(upstream_provider)
@@ -3142,7 +3381,9 @@ class AssistantProviderManager:
 
             async def check_current() -> None:
                 await _require_live_authorization(authorization_check)
-                if not self._opencode_execution_usable(record, policy_version):
+                if not (
+                    await self._policy_call(self._opencode_execution_usable, record, policy_version)
+                ):
                     raise CredentialRejected("oauth_authorization_required")
                 if not secrets.compare_digest(
                     self._provider_secret_identity(self._read_credential(upstream_provider)),
@@ -3393,10 +3634,12 @@ class AssistantProviderManager:
             oauth_credential: dict[str, object] | None = None
             if oauth_backed:
                 assert owner_id is not None and authorization_check is not None
-                if self.model_policy_state(model_id, owner_id=owner_id).get("usable") is not True:
+                if (
+                    await self._policy_call(self.model_policy_state, model_id, owner_id=owner_id)
+                ).get("usable") is not True:
                     raise ProviderUnavailable("model_unavailable")
                 await _require_live_authorization(authorization_check)
-                selected = self._owned_chatgpt_credential(owner_id)
+                selected = await self._policy_call(self._owned_chatgpt_credential, owner_id)
                 if selected is None:
                     raise CredentialRejected("oauth_connection_required")
                 method_id, oauth_credential = selected
@@ -3885,7 +4128,7 @@ class AssistantProviderManager:
 
         async with self._oauth_refresh_lock:
             await _require_live_authorization(authorization_check)
-            current = self._owned_opencode_credential(owner_id)
+            current = await self._policy_call(self._owned_opencode_credential, owner_id)
             if current is None:
                 raise CredentialRejected("oauth_connection_required")
             now_ms = int(time.time() * 1000)
@@ -3973,15 +4216,19 @@ class AssistantProviderManager:
             }
             async with self._oauth_lock:
                 await _require_live_authorization(authorization_check)
-                with self._lock:
-                    latest = self._owned_opencode_credential(owner_id)
-                    if (
-                        latest is None
-                        or not isinstance(latest.get("refresh"), str)
-                        or not secrets.compare_digest(latest["refresh"], refresh_token)
-                    ):
-                        raise CredentialRejected("oauth_connection_required")
-                    self._write_oauth_credential("opencode", "device", owner_id, updated)
+
+                def policy_operation_1() -> None:
+                    with self._lock:
+                        latest = self._owned_opencode_credential(owner_id)
+                        if (
+                            latest is None
+                            or not isinstance(latest.get("refresh"), str)
+                            or not secrets.compare_digest(latest["refresh"], refresh_token)
+                        ):
+                            raise CredentialRejected("oauth_connection_required")
+                        self._write_oauth_credential("opencode", "device", owner_id, updated)
+
+                await self._policy_call(policy_operation_1, authorization_check=authorization_check)
             return updated
 
     async def _refresh_chatgpt_credential_if_needed(
@@ -3998,8 +4245,15 @@ class AssistantProviderManager:
             # A prior waiter may have rotated the refresh token while this call was queued.
             # Reread only after the serialization lock, and recheck the live lease there.
             await _require_live_authorization(authorization_check)
-            with self._lock:
-                current = self._read_oauth_credential("openai", method_id, owner_id)
+
+            def policy_operation_1() -> dict[str, object] | None:
+                with self._lock:
+                    current = self._read_oauth_credential("openai", method_id, owner_id)
+                    return current
+
+            current = await self._policy_call(
+                policy_operation_1, authorization_check=authorization_check
+            )
             if (
                 current is None
                 or current.get("type") != "oauth"
@@ -4078,17 +4332,20 @@ class AssistantProviderManager:
             }
             self._validate_oauth_credential_for_provider(updated, method_id)
             async with self._oauth_lock:
-                with self._lock:
-                    latest = self._read_oauth_credential("openai", method_id, owner_id)
-                    if (
-                        latest is None
-                        or latest.get("type") != "oauth"
-                        or not isinstance(latest.get("refresh"), str)
-                        or not secrets.compare_digest(latest["refresh"], refresh_token)
-                    ):
-                        raise CredentialRejected("oauth_connection_required")
-                    await _require_live_authorization(authorization_check)
-                    self._write_oauth_credential("openai", method_id, owner_id, updated)
+
+                def policy_operation_2() -> None:
+                    with self._lock:
+                        latest = self._read_oauth_credential("openai", method_id, owner_id)
+                        if (
+                            latest is None
+                            or latest.get("type") != "oauth"
+                            or not isinstance(latest.get("refresh"), str)
+                            or not secrets.compare_digest(latest["refresh"], refresh_token)
+                        ):
+                            raise CredentialRejected("oauth_connection_required")
+                        self._write_oauth_credential("openai", method_id, owner_id, updated)
+
+                await self._policy_call(policy_operation_2, authorization_check=authorization_check)
             return updated
 
     @staticmethod
@@ -4232,6 +4489,7 @@ class AssistantProviderManager:
         }
         return definitions
 
+    @_policy_locked
     def _read_metadata(self) -> dict[str, dict[str, Any]]:
         try:
             self._ensure_vault()
@@ -4329,6 +4587,7 @@ class AssistantProviderManager:
             result[_MODEL_POLICY_KEY] = policies
         return result
 
+    @_policy_locked
     def _write_metadata(self, state: dict[str, dict[str, Any]]) -> None:
         self._ensure_vault()
         content = json.dumps(state, separators=(",", ":"), sort_keys=True).encode("utf-8")
@@ -4842,7 +5101,11 @@ async def _require_live_authorization(
     """Fail closed when the app lease, account session, or policy is no longer current."""
 
     try:
-        allowed = authorization_check()
+        allowed = (
+            authorization_check()
+            if inspect.iscoroutinefunction(authorization_check)
+            else await asyncio.to_thread(authorization_check)
+        )
         if inspect.isawaitable(allowed):
             allowed = await allowed
     except Exception:

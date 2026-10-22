@@ -2056,9 +2056,14 @@ def create_assistant_router(
             owner_id=context.user.id,
             authorization_check=lambda: live_assistant_session(request, context) is not None,
         )
-        if live_assistant_session(request, context) is None:
+        if (await assistant._storage_call(live_assistant_session, request, context)) is None:
             raise AssistantUnavailable("assistant_authorization_required", 403)
-        return assistant.model_response(context.user.id, model_inventory=inventory)
+        response = await assistant._policy_projection(
+            assistant.model_response, context.user.id, model_inventory=inventory
+        )
+        if (await assistant._storage_call(live_assistant_session, request, context)) is None:
+            raise AssistantUnavailable("assistant_authorization_required", 403)
+        return response
 
     @router.get("/providers/opencode/models")
     async def opencode_models(request: Request) -> dict[str, object]:
@@ -2077,7 +2082,7 @@ def create_assistant_router(
 
         try:
             values = await ensure(owner_id=auth.user.id, authorization_check=authorization_check)
-            summary = summary_fn(owner_id=auth.user.id)
+            summary = await assistant._policy_projection(summary_fn, owner_id=auth.user.id)
         except Exception as exc:
             raise_opencode_inventory_failure(exc)
         if (
@@ -2090,7 +2095,11 @@ def create_assistant_router(
         rows = [_opencode_model_review_response(value) for value in values]
         if any(row is None for row in rows):
             raise AssistantUnavailable("opencode_inventory_unavailable", 503)
-        if live_assistant_session(request, auth, admin=True, step_up=True) is None:
+        if (
+            await assistant._storage_call(
+                live_assistant_session, request, auth, admin=True, step_up=True
+            )
+        ) is None:
             raise AssistantUnavailable("assistant_authorization_required", 403)
         return {
             "models": rows,
@@ -2144,7 +2153,11 @@ def create_assistant_router(
         projected = _opencode_model_review_response(updated)
         if projected is None:
             raise AssistantUnavailable("opencode_inventory_unavailable", 503)
-        if live_assistant_session(request, auth, admin=True, step_up=True, check_csrf=True) is None:
+        if (
+            await assistant._storage_call(
+                live_assistant_session, request, auth, admin=True, step_up=True, check_csrf=True
+            )
+        ) is None:
             raise AssistantUnavailable("assistant_authorization_required", 403)
         return {"model": projected}
 
@@ -2186,7 +2199,7 @@ def create_assistant_router(
             raise
         except Exception as exc:
             raise_opencode_inventory_failure(exc)
-        if cleared is not True or not authorization_check():
+        if cleared is not True or not (await assistant._storage_call(authorization_check)):
             raise AssistantUnavailable("assistant_authorization_required", 403)
         return {"model_id": model_id, "reviewed": False, "usable": False}
 
@@ -2213,19 +2226,35 @@ def create_assistant_router(
         if not callable(updater):
             raise AssistantUnavailable("model_policy_admin_unavailable", 503)
         # Inventory refresh can await after its own live-session check.
-        if not authorization_check():
+        if not (await assistant._storage_call(authorization_check)):
             raise AssistantUnavailable("assistant_authorization_required", 403)
         try:
-            updated = updater(
-                model_id,
-                enabled=payload.enabled,
-                acknowledged_privacy_policy_version=payload.acknowledged_privacy_policy_version,
-                acknowledged_billing_policy_version=payload.acknowledged_billing_policy_version,
-                expected_revision=payload.expected_revision,
-                owner_id=context.user.id,
-            )
+            async_updater = getattr(manager, "update_model_policy_async", None)
+            values = {
+                "enabled": payload.enabled,
+                "acknowledged_privacy_policy_version": payload.acknowledged_privacy_policy_version,
+                "acknowledged_billing_policy_version": payload.acknowledged_billing_policy_version,
+                "expected_revision": payload.expected_revision,
+                "owner_id": context.user.id,
+            }
+            if callable(async_updater):
+                updated = await async_updater(
+                    model_id, **values, authorization_check=authorization_check
+                )
+            else:
+
+                def update_static_provider():
+                    if not authorization_check():
+                        raise AssistantUnavailable("assistant_authorization_required", 403)
+                    return updater(model_id, **values)
+
+                updated = await assistant._storage_call(update_static_provider)
+        except AssistantUnavailable:
+            raise
         except Exception as exc:
             code = getattr(exc, "code", "model_policy_update_failed")
+            if code == "oauth_authorization_required":
+                raise AssistantUnavailable("assistant_authorization_required", 403) from None
             if code == "model_policy_conflict":
                 raise AssistantStorageConflict("model_policy_conflict") from None
             if not isinstance(code, str) or not re.fullmatch(r"[a-z0-9_]{1,64}", code):
@@ -2234,7 +2263,9 @@ def create_assistant_router(
 
         # The provider manager returns only its closed reviewed DTO. Join it with the user's
         # current consent projection, then whitelist the exact browser-visible fields again.
-        response = assistant.model_response(context.user.id, model_inventory=inventory)
+        response = await assistant._policy_projection(
+            assistant.model_response, context.user.id, model_inventory=inventory
+        )
         models = response.get("items", [])
         model_row = next(
             (
@@ -2251,7 +2282,7 @@ def create_assistant_router(
                     model_row[key] = value
         if not model_row or model_row.get("model_id") != model_id:
             raise AssistantUnavailable("model_unavailable", 404)
-        if not authorization_check():
+        if not (await assistant._storage_call(authorization_check)):
             raise AssistantUnavailable("assistant_authorization_required", 403)
         return {"model": _json_safe_model_policy(model_row)}
 
@@ -2272,16 +2303,25 @@ def create_assistant_router(
         )
         if not assistant.has_model_in_inventory(model_id, inventory):
             raise AssistantUnavailable("model_unavailable", 503)
-        if not authorization_check():
+        if not (await assistant._storage_call(authorization_check)):
             raise AssistantUnavailable("assistant_authorization_required", 403)
-        return assistant.consent_response(
-            context.user.id,
-            model_id,
-            policy_version=payload.policy_version,
-            accepted_terms=payload.accepted_terms,
-            data_collection_opt_in=payload.data_collection_opt_in,
-            model_inventory=inventory,
-        )
+
+        def record_current_consent():
+            if not authorization_check():
+                raise AssistantUnavailable("assistant_authorization_required", 403)
+            return assistant.consent_response(
+                context.user.id,
+                model_id,
+                policy_version=payload.policy_version,
+                accepted_terms=payload.accepted_terms,
+                data_collection_opt_in=payload.data_collection_opt_in,
+                model_inventory=inventory,
+            )
+
+        response = await assistant._storage_call(record_current_consent)
+        if not (await assistant._storage_call(authorization_check)):
+            raise AssistantUnavailable("assistant_authorization_required", 403)
+        return response
 
     @router.get("/context")
     def context_preview(request: Request) -> dict[str, object]:
@@ -2678,7 +2718,11 @@ def create_assistant_router(
         connections = [_oauth_connection_response(value) for value in values]
         if any(value is None for value in connections):
             raise AssistantUnavailable("oauth_unavailable", 503)
-        if live_oauth_admin(request, auth, step_up=False, check_csrf=False) is None:
+        if (
+            await assistant._storage_call(
+                live_oauth_admin, request, auth, step_up=False, check_csrf=False
+            )
+        ) is None:
             raise AssistantUnavailable("oauth_session_expired", 403)
         return {"connections": connections}
 
@@ -2698,7 +2742,11 @@ def create_assistant_router(
         attempts = [_oauth_attempt_response(value) for value in values]
         if any(value is None for value in attempts):
             raise AssistantUnavailable("oauth_unavailable", 503)
-        if live_oauth_admin(request, auth, step_up=False, check_csrf=False) is None:
+        if (
+            await assistant._storage_call(
+                live_oauth_admin, request, auth, step_up=False, check_csrf=False
+            )
+        ) is None:
             raise AssistantUnavailable("oauth_session_expired", 403)
         return {"attempts": attempts}
 
@@ -2731,7 +2779,7 @@ def create_assistant_router(
             if isinstance(value, Mapping) and isinstance(value.get("attempt_id"), str):
                 await cancel_oauth_after_rejection(manager, value["attempt_id"], auth)
             raise AssistantUnavailable("oauth_unavailable", 503)
-        if live_oauth_admin(request, auth, step_up=True) is None:
+        if (await assistant._storage_call(live_oauth_admin, request, auth, step_up=True)) is None:
             await cancel_oauth_after_rejection(manager, attempt["attempt_id"], auth)
             raise AssistantUnavailable("oauth_authorization_required", 403)
         return {"attempt": attempt}
@@ -2756,7 +2804,11 @@ def create_assistant_router(
         attempt = _oauth_attempt_response(value, expected_attempt_id=attempt_id)
         if attempt is None:
             raise AssistantUnavailable("not_found", 404)
-        if live_oauth_admin(request, auth, step_up=False, check_csrf=False) is None:
+        if (
+            await assistant._storage_call(
+                live_oauth_admin, request, auth, step_up=False, check_csrf=False
+            )
+        ) is None:
             await cancel_oauth_after_rejection(manager, attempt_id, auth)
             raise AssistantUnavailable("oauth_session_expired", 403)
         return {"attempt": attempt}
@@ -2774,7 +2826,9 @@ def create_assistant_router(
             raise AssistantUnavailable("oauth_unavailable", 503)
 
         async def authorization_check() -> bool:
-            return live_oauth_admin(request, auth, step_up=True) is not None
+            return (
+                await assistant._storage_call(live_oauth_admin, request, auth, step_up=True)
+            ) is not None
 
         try:
             value = await complete(
@@ -2785,7 +2839,9 @@ def create_assistant_router(
                 authorization_check=authorization_check,
             )
         except Exception as exc:
-            if live_oauth_admin(request, auth, step_up=True) is None:
+            if (
+                await assistant._storage_call(live_oauth_admin, request, auth, step_up=True)
+            ) is None:
                 await cancel_oauth_after_rejection(manager, attempt_id, auth)
                 raise AssistantUnavailable("oauth_authorization_required", 403) from None
             raise_oauth_failure(exc)
@@ -2793,7 +2849,7 @@ def create_assistant_router(
         if attempt is None:
             await cancel_oauth_after_rejection(manager, attempt_id, auth)
             raise AssistantUnavailable("oauth_unavailable", 503)
-        if live_oauth_admin(request, auth, step_up=True) is None:
+        if (await assistant._storage_call(live_oauth_admin, request, auth, step_up=True)) is None:
             raise AssistantUnavailable("oauth_authorization_required", 403)
         return {"attempt": attempt}
 
@@ -2816,7 +2872,9 @@ def create_assistant_router(
                 callback_url=payload.callback_url,
             )
         except Exception as exc:
-            if live_oauth_admin(request, auth, step_up=True) is None:
+            if (
+                await assistant._storage_call(live_oauth_admin, request, auth, step_up=True)
+            ) is None:
                 await cancel_oauth_after_rejection(manager, attempt_id, auth)
                 raise AssistantUnavailable("oauth_authorization_required", 403) from None
             raise_oauth_failure(exc)
@@ -2824,7 +2882,7 @@ def create_assistant_router(
         if attempt is None:
             await cancel_oauth_after_rejection(manager, attempt_id, auth)
             raise AssistantUnavailable("oauth_unavailable", 503)
-        if live_oauth_admin(request, auth, step_up=True) is None:
+        if (await assistant._storage_call(live_oauth_admin, request, auth, step_up=True)) is None:
             await cancel_oauth_after_rejection(manager, attempt_id, auth)
             raise AssistantUnavailable("oauth_authorization_required", 403)
         return {"attempt": attempt}
@@ -2849,7 +2907,7 @@ def create_assistant_router(
         attempt = _oauth_attempt_response(value, expected_attempt_id=attempt_id)
         if attempt is None or attempt["status"] != "cancelled":
             raise AssistantUnavailable("oauth_unavailable", 503)
-        if live_oauth_admin(request, auth, step_up=True) is None:
+        if (await assistant._storage_call(live_oauth_admin, request, auth, step_up=True)) is None:
             raise AssistantUnavailable("oauth_authorization_required", 403)
         return {"attempt": attempt}
 
@@ -2870,7 +2928,9 @@ def create_assistant_router(
             raise AssistantUnavailable("oauth_unavailable", 503)
 
         async def authorization_check() -> bool:
-            return live_oauth_admin(request, auth, step_up=True) is not None
+            return (
+                await assistant._storage_call(live_oauth_admin, request, auth, step_up=True)
+            ) is not None
 
         try:
             cleared = await clear(
@@ -2880,12 +2940,14 @@ def create_assistant_router(
                 authorization_check=authorization_check,
             )
         except Exception as exc:
-            if live_oauth_admin(request, auth, step_up=True) is None:
+            if (
+                await assistant._storage_call(live_oauth_admin, request, auth, step_up=True)
+            ) is None:
                 raise AssistantUnavailable("oauth_authorization_required", 403) from None
             raise_oauth_failure(exc)
         if cleared is not True:
             raise AssistantUnavailable("oauth_unavailable", 503)
-        if live_oauth_admin(request, auth, step_up=True) is None:
+        if (await assistant._storage_call(live_oauth_admin, request, auth, step_up=True)) is None:
             raise AssistantUnavailable("oauth_authorization_required", 403)
         return {
             "connection": {
@@ -3111,16 +3173,16 @@ def create_assistant_router(
         def authorization_check() -> bool:
             return live_assistant_session(request, auth, admin=True, step_up=True) is not None
 
-        if not authorization_check():
+        if not (await assistant._storage_call(authorization_check)):
             raise AssistantUnavailable("oauth_authorization_required", 403)
         manager = provider_manager()
         try:
             result = await manager.validate(provider_id, authorization_check=authorization_check)
         except Exception:
-            if not authorization_check():
+            if not (await assistant._storage_call(authorization_check)):
                 raise AssistantUnavailable("oauth_authorization_required", 403) from None
             raise
-        if not authorization_check():
+        if not (await assistant._storage_call(authorization_check)):
             raise AssistantUnavailable("oauth_authorization_required", 403)
         return {"provider": _json_safe_provider(result)}
 
@@ -3253,7 +3315,8 @@ def create_assistant_router(
             )
 
         try:
-            upstream = proxy(
+            upstream = await assistant._policy_projection(
+                proxy,
                 policy.provider_id,
                 policy.model_id,
                 body,
@@ -3455,7 +3518,8 @@ def create_assistant_router(
                 provider_context["native_session_id_alias"] = native_identity["x-session-id"]
             if not await authorization_check():
                 return denied
-            upstream = proxy(
+            upstream = await assistant._policy_projection(
+                proxy,
                 policy.provider_id,
                 policy.model_id,
                 bounded,

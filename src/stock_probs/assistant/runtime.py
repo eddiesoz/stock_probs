@@ -2157,7 +2157,7 @@ class OpenCodeV2Runtime:
                     "provider_unavailable",
                 )
                 return AssistantTurnResult("failed", "provider_unavailable")
-        model = self._model_for_turn(context)
+        model = await self._resolve_turn_model(context)
         if model is None or getattr(model, "available", False) is not True:
             self._record_pre_session_timing_failure(
                 context.execution_id,
@@ -2169,7 +2169,9 @@ class OpenCodeV2Runtime:
         policy_reader = getattr(self.providers, "model_policy_state", None)
         if callable(policy_reader):
             try:
-                model_state = policy_reader(context.model_id, owner_id=context.user_id)
+                model_state = await self._policy_projection(
+                    policy_reader, context.model_id, owner_id=context.user_id
+                )
             except Exception as exc:
                 self._record_pre_session_timing_failure(
                     context.execution_id,
@@ -2200,7 +2202,7 @@ class OpenCodeV2Runtime:
             )
             return AssistantTurnResult("failed", "provider_unavailable")
         try:
-            native_adapter = self._native_adapter_for_model(
+            native_adapter = await self._resolve_native_adapter(
                 context.model_id, owner_id=context.user_id
             )
         except _AssistantRuntimeFailure as exc:
@@ -2695,6 +2697,40 @@ class OpenCodeV2Runtime:
         # execution. Mutating shared OpenCode configuration here would leak between users.
         del provider_id, definition, state
 
+    async def _policy_projection(
+        self, function: Callable[..., Any], *args: object, **kwargs: object
+    ) -> Any:
+        """Use bounded authority admission for real policy reads; keep fixtures off-loop."""
+
+        authority = getattr(self.providers, "_policy_call", None)
+        if callable(authority):
+            return await authority(lambda: function(*args, **kwargs))
+        return await asyncio.to_thread(function, *args, **kwargs)
+
+    async def _resolve_turn_model(self, context: AssistantTurnContext) -> object | None:
+        """Retain the existing unavailable-model outcome when authority admission expires."""
+
+        try:
+            return await self._policy_projection(self._model_for_turn, context)
+        except Exception:
+            return None
+
+    async def _resolve_native_adapter(
+        self, model_id: str, *, owner_id: int
+    ) -> NativeAdapterDescriptor:
+        """Resolve the package off-loop with the existing closed setup-failure category."""
+
+        try:
+            return await self._policy_projection(
+                self._native_adapter_for_model, model_id, owner_id=owner_id
+            )
+        except _AssistantRuntimeFailure:
+            raise
+        except Exception:
+            raise _AssistantRuntimeFailure(
+                "native_adapter_unavailable", "prepare_location"
+            ) from None
+
     def _native_adapter_for_model(self, model_id: str, *, owner_id: int) -> NativeAdapterDescriptor:
         """Resolve one model's exact runtime package from the maintained adapter registry."""
 
@@ -2751,11 +2787,13 @@ class OpenCodeV2Runtime:
         descriptor: NativeAdapterDescriptor | None = None,
     ) -> str:
         execution_id = context.execution_id
-        model = self._model_for_turn(context)
+        model = await self._resolve_turn_model(context)
         if model is None:
             raise _AssistantRuntimeFailure("native_adapter_unavailable", "prepare_location")
         if descriptor is None:
-            descriptor = self._native_adapter_for_model(context.model_id, owner_id=context.user_id)
+            descriptor = await self._resolve_native_adapter(
+                context.model_id, owner_id=context.user_id
+            )
         proxy_url = f"{_APP_BASE_URL}/api/v1/assistant/internal/provider/{execution_id}"
         mcp_url = f"{_APP_BASE_URL}/api/v1/assistant/internal/mcp/{execution_id}"
         response = await self._get_supervisor().prepare_location(
@@ -3046,7 +3084,9 @@ class OpenCodeV2Runtime:
         turn_deadline: float | None = None,
     ) -> Mapping[str, str]:
         if descriptor is None:
-            descriptor = self._native_adapter_for_model(context.model_id, owner_id=context.user_id)
+            descriptor = await self._resolve_native_adapter(
+                context.model_id, owner_id=context.user_id
+            )
         loop = asyncio.get_running_loop()
         location_started = loop.time()
         location_deadline = location_started + _LOCATION_DISCOVERY_SECONDS

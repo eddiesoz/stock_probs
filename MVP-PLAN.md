@@ -10166,3 +10166,95 @@ startup/full-browser/aggregate failures remain visible. The existing 1 GB host, 
 monthly total cap are unchanged; the complete free-Zen/owner-UI/security/resource/recovery/rollback/
 canonical/release goal and all seven approved features remain active. This is no feature completion
 or handoff.
+
+
+### R-ASTRA-121 F6 provider-policy authority repair (2026-10-22)
+
+**Status: Implemented and independently verified for selected local scope; native/live release remains open.**
+This follows the reproduced persistence race above at PR #9 head
+`91fac4eeb9996ca97c2bfce1adbbf3fcbfae5703`. The implementation was dirty parent-owned source
+at that head during these checks. The final application/test input set is bound by
+`/var/tmp/r12r/f6-policy-authority-implementation-20261022-v1/source-pins-authority-v5.json`
+(SHA-256 `92489013a852b5a62e7aca0eb5e7cf1c619f29f3823aae00e604257caa72f4b0`, 418 inputs).
+No clean-head, image, native or release claim follows from these local checks.
+
+The real manager and catalog share one authority lock. Runtime storage obtains that scope before
+opening SQLite, validates the exact usable policy, and holds it through commit. The SQL guard
+retains fresh session, account, TOTP, consent, canary, lease and context checks, with pure cache
+clock/deadline checks after database-lock waits. Failed/cancelled terminal retirement remains
+possible after policy revocation. Immutable catalog snapshots publish rows and freshness together;
+Console review/cache and provider metadata publications share authority. In-flight vendor results
+bind to the fetched source configuration/credential, so stale success and failure cannot replace
+or clear newer settings/cache. Console usability also requires the current matching review.
+
+Known async projections, native model/adapter setup and proxy construction use bounded authority
+admission. Availability polling never blocks the event loop or consumes a worker waiting for the
+lock. The existing seven-second admission limit covers queued dispatch; a gate prevents an
+abandoned queued worker from starting publication. Once an atomic operation is admitted, its
+actual result is retained through timeout/cancellation before the caller retires. Authentication
+callbacks run outside held synchronous policy scopes. The callback is caller authorization for
+that bounded request; instantaneous revocation of an already-authorized metadata operation is not
+claimed. Runtime output separately has commit-bound durable authorization and external policy
+serialization. OAuth publication rechecks attempt expiry/payload; a consumed handoff retires and
+revokes on abandoned publication, while an admitted credential write retains its matching connected
+attempt state through cancellation.
+
+Parent commands were the bounded `run_authority_v*.py` and `run_compatibility_v*.py` launchers in
+`/var/tmp/r12r/f6-policy-authority-implementation-20261022-v1/`. Each exact child argv, source
+manifest, JUnit, UTC window, bounded stdout/stderr and terminal facts are retained in that run's
+`terminal.json`; the compatibility and V3–V5 authority children also attest imports in process.
+The earlier 12-case run did not add an in-process attestation. Outcomes are separate executions:
+
+| Run | Result | Completed cases | UTC window (2026-10-22) |
+| --- | --- | --- | --- |
+| `authority-regressions-v1` | Pass | 12/12 | 18:45:47.773649–18:46:20.780984 |
+| `compatibility-v1` | Pass | 431/431 | 18:50:19.677578–18:51:22.208225 |
+| `authority-regressions-v2` | Fail | 14 passed, 2 failed | 18:59:44.805880–19:00:38.993668 |
+| `authority-regressions-v3` | Fail | 17 passed, 1 failed | 19:04:31.202975–19:05:19.320973 |
+| `compatibility-v3` | Pass | 453/453 | 19:06:02.752478–19:07:32.357222 |
+| `authority-regressions-v4` | Pass | 21/21 | 19:14:29.114861–19:14:56.611273 |
+| `compatibility-v4` | Pass | 481/481 | 19:16:06.645407–19:18:51.288228 |
+| `authority-regressions-v5` | Pass | 24/24 | 19:26:54.338903–19:27:30.073036 |
+
+V2's two new slow-write fixtures used Console `review_revision` instead of policy `revision`, so
+neither reached its write. V3's liveness observer waited inside authority before releasing its
+holder; the repair observes request dispatch. Both failed runs remain Fail. Original policy-race,
+startup, browser and aggregate failures remain preserved. The compatibility passes belong to their
+original bindings; V5 changed only OAuth completion/retirement and its tests after V4. These rows
+do not manufacture one aggregate or establish a native timeout cause. Each listed run had complete
+JUnit without errors/skips, fixed 418 inputs, complete bounded output, process/group absence and
+owned-temp cleanup. Children used normal umask 022; private files/directories used 0600/0700 on
+the UUID-verified SD mount.
+
+Independent source reviews found and drove repairs to event-loop lock acquisition, abandoned
+worker writes, executor wait amplification, queued-dispatch admission and OAuth handoff retirement.
+Their original Fail receipts remain intact. The proposed cross-thread async-authorization bridge
+was reviewed but not implemented. A later narrow contract audit withdrew an unsupported
+post-queue reauthorization requirement and an incorrect OpenCode recursive-call claim; it did not
+waive the actual provider-policy persistence invariant. Correction receipt:
+`/var/tmp/r12r/f6-policy-authority-contract-review-20261022T192900Z-798c8639-6968-42db-98f9-b7da2119e0d2/independent-contract-review.json`,
+SHA-256 `cfe9798abeb8477aacd82b9da9c654a96ec6781c0c4e760f32c3e0a9026a8ae2`.
+
+Independent GPT-6 Luna xhigh source review found no remaining blocker for the selected V5 scope.
+One independently attested run Passed 38/38 (24 authority cases plus 14 selected mocked OAuth
+transport/refresh, handoff, API and real-manager cases), zero failures/errors/skips, exit 0,
+`19:33:44.648939Z`–`19:34:32.070119Z` (47.421 seconds), native x86_64/CPython 3.11.15.
+All 418 V5 pins and in-process imports matched before/after; process and exact temporary cleanup
+Passed. Command: `/usr/bin/python3 /var/tmp/r12r/f6-policy-authority-independent-20261022T193305Z-798c8639-6968-42db-98f9-b7da2119e0d3/run-selected-v1.py`.
+Receipt: `independent-review-v1.json` in that packet, SHA-256
+`159cfbfda6d9d66e55311d2134bae69d382df576a9701e9e8c2e723ed4a95db4`.
+Its original static-command path typo is preserved; a separate supplement records exact static
+invocations at `19:38:48.599972Z`–`19:38:48.878890Z` with nine Python/config inputs fixed:
+`/var/tmp/r12r/f6-static-command-provenance-20261022T193847849368Z-b40c75f0-c2d2-4503-a974-3aa5a347b130/static-command-provenance-supplement-v1.json`,
+SHA-256 `501b85260cf02293197876d3ede5dabf09df28154e1a3bb98451da4ef91ede9b`.
+Ruff check, format-check and scoped diff-check Passed separately. Exact original static-command UTC windows were Unavailable. This is selected
+synthetic/local evidence, not live provider, native OpenCode, browser or production acceptance.
+
+The parent reviewed the integrated source and exact evidence. The next bounded action is a clean
+PR-bound source checkpoint, fresh image binding and real free-Zen native functional verification
+before a new canonical release aggregate. Authenticated owner UI, current-image shutdown,
+full browser/security, actual combined 1 GB, recovery/rollback, canonical and release remain open.
+No image build, native/provider trial, production change, backup deletion, rollout, resize or email
+occurred in this implementation scope. Preserve the existing 1 GB host, backups and US$15 monthly
+total cap. The complete goal and all seven features remain active; this is no feature completion
+or handoff.
