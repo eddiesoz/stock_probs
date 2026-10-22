@@ -2448,22 +2448,26 @@ class AssistantService:
         result_status = "failed"
         error_code = "worker_unavailable"
         runtime_task: asyncio.Future[Any] | None = None
-        runtime_context = AssistantTurnContext(
-            user_id=context.user.id,
-            app_id="signal-ledger",
-            conversation_id=conversation_id,
-            turn_id=turn_id,
-            execution_id=execution_id,
-            capability=capability,
-            model_id=model_id,
-            policy_version=policy.policy_version,
-            context_version=str(canonical_context["context_version"]),
-            page_context=dict(canonical_context),
-            history=self.storage.conversation_history(
-                context.user.id, conversation_id, exclude_turn_id=turn_id
-            ),
-        )
         try:
+            history = await asyncio.to_thread(
+                self.storage.conversation_history,
+                context.user.id,
+                conversation_id,
+                exclude_turn_id=turn_id,
+            )
+            runtime_context = AssistantTurnContext(
+                user_id=context.user.id,
+                app_id="signal-ledger",
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                execution_id=execution_id,
+                capability=capability,
+                model_id=model_id,
+                policy_version=policy.policy_version,
+                context_version=str(canonical_context["context_version"]),
+                page_context=dict(canonical_context),
+                history=history,
+            )
             self.storage.set_turn_status(
                 context.user.id,
                 conversation_id,
@@ -2471,6 +2475,10 @@ class AssistantService:
                 status="running",
                 now=self.now(),
             )
+            if not self._execution_current(
+                context.user.id, execution_id, model_id, policy.policy_version
+            ):
+                raise AssistantUnavailable("session_revoked", 403)
 
             async def emit(event: Mapping[str, object]) -> None:
                 nonlocal generated_size, output_tail, useful_event_seen

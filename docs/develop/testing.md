@@ -1002,3 +1002,15 @@ include it in the existing bounded attachment allowlist; an omitted consumer sta
 reconstructed into a delivered attachment. Distinguish fixture-start, pre-MCP and later context
 failures before assigning a shared cause. See the
 [F6 backup/browser checkpoint](../../MVP-PLAN.md#r-astra-121-f6-backup-spawn-imports-and-focused-browser-failure-checkpoint-2026-10-21).
+
+
+Turn-history liveness checks must hold the real service's storage read while requesting health
+through the same entered application lifespan. Preserve cancellation and session-revocation
+interleavings before releasing that read, and assert that generation never starts afterward.
+An off-loop read must remain inside the turn's cancellation/finalization boundary and recheck
+execution authorization before runtime entry. These synthetic checks establish only the held-I/O
+path; they do not prove the cause of an earlier browser timeout. A changed application image input
+requires a newly bound image/runtime result. Keep backup-capacity failures separate from native
+failures, retain all archives pending an explicit retention decision, and distinguish restored
+production state from a failed rehearsal. See the
+[F6 capacity/liveness checkpoint](../../MVP-PLAN.md#r-astra-121-f6-backup-capacity-and-turn-history-liveness-checkpoint-2026-10-22).

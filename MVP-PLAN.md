@@ -9421,3 +9421,77 @@ head `7f`; current canonical/full-browser/security/accessibility, genuine authen
 combined 1 GB, PR-bound recovery/rollback, final guide and release gates remain open. No candidate
 promotion, merge, resize or email occurred. The active overall goal, seven-feature dependency order,
 existing 1 GB host, backups and US$15 monthly total cap remain unchanged.
+
+
+### R-ASTRA-121 F6 backup capacity and turn-history liveness checkpoint (2026-10-22)
+
+Helper PR #11 head `bae829a1224d9219ea8a03feae4a243f183d490f` merged reviewed application
+PR #9 head `8622e303d63a6d2bc419ef6a97a2fb9601a63f7e`. Its maintained local/public lineage
+checks passed, including 16 bounded public requests. Manifest SHA-256
+`fa689551716cc4f9e71f704fa3a179a8255992a5df5a93f7eae2f874d7861bf5` binds the unchanged e40
+candidate and original 5ad recovery archives. The exact reviewed comparison alone now permits
+128 KiB after its actual 96,297-byte response exceeded 64 KiB; other routes retain 64 KiB.
+Independent affected reader QA passed 35 cases; earlier lineage/bootstrap QA passed 212 and
+lifecycle QA passed nine under their separate earlier bindings. The helper installed and its
+root-owned readback matched. These are checker scopes, not application or release acceptance.
+
+The one subsequent actual-host attempt **Failed**, `00:39:34.310Z`–`00:40:29.845Z`, exit 2,
+before the maintained pair call: `DeployError/remote_operation_failed`. The exact temporary
+operation `2748da0c148b605efb45cb97dc8cf210` records `host_command_failed`. A bounded audit
+readback locates the failure during `verifying_backup`, before the original-app stop or native
+execution. The backup container exited 2. Read-only metadata then found exactly 32 managed
+archives, matching the application's fixed limit, with zero unsafe entries and 6,684,258,304
+available filesystem bytes. This strongly supports a retention-limit diagnosis; the raw child
+error was not retained, so its precise error remains unavailable. No unchanged retry occurred.
+
+Exact-operation restoration and the original 5ad image's disabled→owner_canary→invited
+transitions passed. Final inspection reports schema 13, app/assistant ready, enabled/invited and
+loopback-only. Independent saved-terminal review verified its declared integrity/restoration
+scope while retaining overall trial **Fail**; receipt SHA-256
+`b5f4342be26b8a7f462bdcd4159193558f163e4030b5a22727c2b5bd76f36e61`.
+It did not query live cleanup. The separate October 13 failed record is historical. The earlier
+independent prelaunch overall **Fail** for a prohibited read-only Git query is preserved; the
+parent personally reviewed and accepted its otherwise passing substantive static findings.
+All existing backups remain untouched. A user retention decision is pending before any active-
+store copy is removed; the proposed path preserves and verifies an exact task-created archive.
+
+A separate deterministic HTTP diagnostic held the turn's conversation-history read and **Failed**
+both health/readiness liveness assertions: health returned only after storage returned. Its source
+pins were unchanged; this establishes that held-I/O path, not the cause of prior browser failures.
+The narrow application repair awaits that read off the event loop, keeps it inside turn cleanup,
+and rechecks current execution/session/consent before starting generation. Parent regressions
+passed 4/4 (`00:46:48.885Z`–`00:47:06.117Z`, two deprecation warnings), covering both health paths
+and revocation/cancellation before the read completes. Independent source/security and affected
+HTTP review passed 40/40 cases with two warnings, 10 unchanged pins, and Ruff lint/security/format;
+receipt SHA-256 `798633d3009ba36ed65c7100bfa854d116701de3172db3b8962f4363d856482b`.
+Parent integrated source/evidence review passed its declared scope. An already-running read-only
+thread cannot be forcibly stopped by coroutine cancellation; cleanup is verified after controlled
+release, not indefinitely blocked storage. Two reviewer diff files initially had mode 0664; their
+0600 correction retained byte-identical digests and the original receipt, documented separately.
+No browser, native, image or release acceptance follows.
+
+The service repair changes an image input. Earlier e40 native/shutdown/build results retain their
+original bindings and cannot be relabelled as current-source runtime acceptance. A newly bound
+image and real functional result precede the next release aggregate. Current canonical/full-browser,
+security/accessibility, authenticated UI, actual combined 1 GB, PR-bound recovery/rollback, guide
+and release gates remain open. The active overall goal, free-Zen-first dependency, seven-feature
+plan, original 1 GB host, backups and US$15 monthly total cap are unchanged. No candidate promotion,
+merge to main, resize or email occurred.
+
+
+The subsequent four-case browser run **Failed** all four cases, `00:53:50.063Z`–`00:56:57.379Z`,
+exit 1, no skips/retries/flaky. Desktop receipt timed out during initial `/overview` navigation,
+before its history request; desktop WebFetch failed waiting for the assistant launcher; mobile
+receipt exhausted its case budget and its failure diagnostic then found a closed page; mobile
+WebFetch timed out during initial navigation. The desktop trace's 14 observed document/asset
+responses were HTTP 200 and the parent-reviewed screenshot was blank. This does not establish a
+cause. The earlier parent progress wording mentioning a pre-turn history-request failure was
+imprecise for this run: the exact trace locates desktop failure before that request. All 416
+explicit source pins and 53 served/export pairs matched; all four recorded fixture PIDs were
+absent and five known ports refused connections. No broader descendant/temp cleanup is inferred.
+Concurrent MemAvailable 409,288 KiB, SwapFree 212 KiB and memory pressure are correlation only.
+The config case default remains 30 seconds and the existing WebFetch override remains 180 seconds;
+a supplemental receipt clarifies the launch envelope's default-only wording. No bounds changed.
+The next browser diagnosis should distinguish unused base-server overhead from the per-case real
+fixture without changing product behavior or deadlines. Host trials remain held for the backup
+retention decision. No application fix is inferred from the browser failure.

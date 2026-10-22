@@ -1204,3 +1204,99 @@ def test_public_event_stream_stops_after_live_session_revocation(settings: Setti
         assert not any("must-not-reach-revoked-browser" in token for token in stored_tokens)
         assert detail["turns"][0]["status"] == "failed"
         assert _persisted_error_codes(detail)[-1] == "session_revoked"
+
+
+@pytest.mark.parametrize("health_path", ["/api/v1/health", "/api/v1/readiness"])
+def test_public_turn_history_wait_preserves_application_health(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, health_path: str
+) -> None:
+    """A pending read for turn history must not delay unrelated health requests."""
+
+    app = _make_app(settings, _ScriptedRuntime())
+    entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80074)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        storage = app.state.assistant.storage
+        original = storage.conversation_history
+
+        def held_history(*args: object, **kwargs: object) -> object:
+            entered.set()
+            release.wait(timeout=1.5)
+            returned.set()
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(storage, "conversation_history", held_history)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            pending = executor.submit(_start_turn, browser, identity, context, conversation, model)
+            try:
+                assert entered.wait(timeout=3), "turn did not reach history storage"
+                health = browser.get(health_path)
+                assert health.status_code == 200
+                assert not returned.is_set(), "health waited for turn-history storage to return"
+            finally:
+                release.set()
+                pending.result(timeout=5)
+
+
+@pytest.mark.parametrize("interruption", ["revoke", "cancel"])
+def test_public_turn_history_wait_cannot_start_interrupted_runtime(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, interruption: str
+) -> None:
+    """A read completing after revocation or cancellation must never start generation."""
+
+    runtime = _ScriptedRuntime()
+    app = _make_app(settings, runtime)
+    entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+    finalized = threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80075)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        storage = app.state.assistant.storage
+        original_history = storage.conversation_history
+        original_status = storage.set_turn_status
+
+        def held_history(*args: object, **kwargs: object) -> object:
+            entered.set()
+            release.wait(timeout=3)
+            try:
+                return original_history(*args, **kwargs)
+            finally:
+                returned.set()
+
+        def observe_terminal(*args: object, **kwargs: object) -> object:
+            result = original_status(*args, **kwargs)
+            if kwargs.get("status") in {"cancelled", "failed"}:
+                finalized.set()
+            return result
+
+        monkeypatch.setattr(storage, "conversation_history", held_history)
+        monkeypatch.setattr(storage, "set_turn_status", observe_terminal)
+        try:
+            turn = _start_turn(browser, identity, context, conversation, model)
+            assert entered.wait(timeout=3), "turn did not reach history storage"
+            if interruption == "revoke":
+                app.state.repository.auth_revoke_session(
+                    str(identity["token_hash"]), _NOW.isoformat()
+                )
+            else:
+                response = browser.post(
+                    f"/api/v1/assistant/conversations/{conversation['id']}"
+                    f"/turns/{turn['id']}/cancel",
+                    headers={"x-csrf-token": str(identity["csrf"])},
+                )
+                assert response.status_code == 200, response.text
+                assert response.json()["status"] == "cancelled"
+            assert not returned.is_set(), "history was released before interruption"
+        finally:
+            release.set()
+        assert returned.wait(timeout=3)
+        assert finalized.wait(timeout=3)
+        assert not runtime.contexts
+        stored = storage.get_turn(int(identity["user_id"]), str(conversation["id"]), turn["id"])
+        assert stored["status"] == ("failed" if interruption == "revoke" else "cancelled")
+        assert stored["error_code"] == (
+            "session_revoked" if interruption == "revoke" else "turn_cancelled"
+        )
