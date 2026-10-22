@@ -1124,11 +1124,14 @@ class AssistantService:
     ) -> dict[str, object]:
         """Stop one owner turn and close its durable slot even when the worker is unavailable."""
 
-        self.require_access(context)
-        turn = self.storage.get_turn(context.user.id, conversation_id, turn_id)
-        if turn["status"] not in {"queued", "running"}:
-            raise AssistantStorageConflict("turn_not_active")
-        lease = self.storage.execution_for_turn(context.user.id, conversation_id, turn_id)
+        def prepare_cancellation():
+            self.require_access(context)
+            turn = self.storage.get_turn(context.user.id, conversation_id, turn_id)
+            if turn["status"] not in {"queued", "running"}:
+                raise AssistantStorageConflict("turn_not_active")
+            return self.storage.execution_for_turn(context.user.id, conversation_id, turn_id)
+
+        lease = await self._storage_call(prepare_cancellation)
         if lease and lease.get("status") == "active":
             execution_id = str(lease["execution_id"])
             self._cancel_webfetch_waiters(execution_id)
@@ -1139,16 +1142,22 @@ class AssistantService:
             if task is not None and not task.done():
                 task.cancel()
                 await asyncio.wait({task}, timeout=2.0)
-            self.storage.close_execution(execution_id, now=self.now(), revoked=True)
-            self.storage.set_turn_status(
-                context.user.id,
-                conversation_id,
-                turn_id,
-                status="cancelled",
-                now=self.now(),
-                error_code="turn_cancelled",
-            )
-        updated = self.storage.get_turn(context.user.id, conversation_id, turn_id)
+
+            def retire_cancelled_execution():
+                self.storage.close_execution(execution_id, now=self.now(), revoked=True)
+                self.storage.set_turn_status(
+                    context.user.id,
+                    conversation_id,
+                    turn_id,
+                    status="cancelled",
+                    now=self.now(),
+                    error_code="turn_cancelled",
+                )
+
+            await self._storage_call(retire_cancelled_execution)
+        updated = await self._storage_call(
+            self.storage.get_turn, context.user.id, conversation_id, turn_id
+        )
         return {"turn_id": turn_id, "status": updated["status"]}
 
     async def delete_conversation(
@@ -1161,19 +1170,23 @@ class AssistantService:
     ) -> dict[str, object]:
         """Stop ephemeral work, clear its runtime cache, then purge the exact owner chat."""
 
-        self.require_access(context)
-        # Reject stale requests before cancelling a turn or asking the native worker to purge.
-        # The storage deletion transaction repeats this owner/revision/phrase check after the
-        # asynchronous cache-clear boundary to protect against concurrent changes.
-        self.storage.validate_conversation_delete(
-            context.user.id,
-            conversation_id,
-            expected_revision=expected_revision,
-            confirmation_phrase=confirmation_phrase,
-        )
-        execution_ids = self.storage.active_conversation_executions(
-            context.user.id, conversation_id
-        )
+        def prepare_deletion():
+            self.require_access(context)
+            # Reject stale requests before cancelling a turn or asking the native worker to purge.
+            # The storage deletion transaction repeats this owner/revision/phrase check after the
+            # asynchronous cache-clear boundary to protect against concurrent changes.
+            self.storage.validate_conversation_delete(
+                context.user.id,
+                conversation_id,
+                expected_revision=expected_revision,
+                confirmation_phrase=confirmation_phrase,
+            )
+            execution_ids = self.storage.active_conversation_executions(
+                context.user.id, conversation_id
+            )
+            return execution_ids
+
+        execution_ids = await self._storage_call(prepare_deletion)
         for execution_id in execution_ids:
             cancel_runtime = getattr(self.runtime, "cancel_execution", None)
             if callable(cancel_runtime):
@@ -1186,23 +1199,31 @@ class AssistantService:
             for task in active_tasks:
                 task.cancel()
             await asyncio.wait(active_tasks, timeout=2.0)
-        for execution_id in execution_ids:
-            lease = self.storage.execution_lease(execution_id)
-            if lease is None:
-                continue
-            with suppress(AssistantStorageError):
-                self.storage.close_execution(execution_id, now=self.now(), revoked=True)
-                self.storage.set_turn_status(
-                    int(lease["user_id"]),
-                    conversation_id,
-                    str(lease["turn_id"]),
-                    status="cancelled",
-                    now=self.now(),
-                    error_code="turn_cancelled",
-                )
+
+        def retire_deleted_executions():
+            for execution_id in execution_ids:
+                lease = self.storage.execution_lease(execution_id)
+                if lease is None:
+                    continue
+                with suppress(AssistantStorageError):
+                    self.storage.close_execution(execution_id, now=self.now(), revoked=True)
+                    self.storage.set_turn_status(
+                        int(lease["user_id"]),
+                        conversation_id,
+                        str(lease["turn_id"]),
+                        status="cancelled",
+                        now=self.now(),
+                        error_code="turn_cancelled",
+                    )
+
+        await self._storage_call(retire_deleted_executions)
+
         # Cancellation can await; don't start a native cache purge after authority expires.
-        current = self._require_live_action_context(context, requires_admin_step_up=False)
-        self.require_access(current)
+        def require_current_access():
+            current = self._require_live_action_context(context, requires_admin_step_up=False)
+            self.require_access(current)
+
+        await self._storage_call(require_current_access)
         clear = getattr(self.runtime, "clear_conversation_cache", None)
         if (
             not callable(clear)
@@ -1217,16 +1238,20 @@ class AssistantService:
             is not True
         ):
             raise AssistantUnavailable("assistant_cache_clear_pending", 503)
+
         # Cache clearing is an await boundary; recheck live access before deleting persistent chat.
-        current = self._require_live_action_context(context, requires_admin_step_up=False)
-        self.require_access(current)
-        return self.storage.delete_conversation(
-            context.user.id,
-            conversation_id,
-            expected_revision=expected_revision,
-            confirmation_phrase=confirmation_phrase,
-            deleted_at=self.now(),
-        )
+        def delete_current_conversation():
+            current = self._require_live_action_context(context, requires_admin_step_up=False)
+            self.require_access(current)
+            return self.storage.delete_conversation(
+                context.user.id,
+                conversation_id,
+                expected_revision=expected_revision,
+                confirmation_phrase=confirmation_phrase,
+                deleted_at=self.now(),
+            )
+
+        return await self._storage_call(delete_current_conversation)
 
     def _validate_action_target(
         self, user_id: int, action_type: str, payload: Mapping[str, object]

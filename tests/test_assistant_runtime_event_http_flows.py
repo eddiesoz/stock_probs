@@ -2377,3 +2377,73 @@ def test_search_delayed_final_authorization_cannot_release_expired_query(setting
         assert runtime.preview_emitted.is_set() and runtime.approval_sent.is_set()
         assert delayed_check_seen.is_set()
         assert runtime.approved_query is None
+
+
+@pytest.mark.parametrize("operation", ["cancel", "delete"])
+@pytest.mark.parametrize("health_path", ["/api/v1/health", "/api/v1/readiness"])
+def test_public_interruption_storage_wait_preserves_application_health(
+    settings, monkeypatch, operation, health_path
+):
+    runtime = _PausedRuntime()
+    app = _make_app(settings, runtime)
+    entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80101)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        assert runtime.ready_for_first_event.wait(timeout=3)
+        detail = browser.get(f"/api/v1/assistant/conversations/{conversation['id']}")
+        assert detail.status_code == 200
+        conversation = detail.json()["conversation"]
+        monkeypatch.setattr(runtime, "clear_conversation_cache", lambda *_: True, raising=False)
+        storage = app.state.assistant.storage
+        method = "get_turn" if operation == "cancel" else "validate_conversation_delete"
+        original = getattr(storage, method)
+
+        def held(*args, **kwargs):
+            entered.set()
+            release.wait(timeout=1.5)
+            returned.set()
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(storage, method, held)
+        headers = {"x-csrf-token": str(identity["csrf"])}
+
+        def request():
+            if operation == "cancel":
+                return browser.post(
+                    f"/api/v1/assistant/conversations/{conversation['id']}/turns/{turn['id']}/cancel",
+                    headers=headers,
+                )
+            return browser.request(
+                "DELETE",
+                f"/api/v1/assistant/conversations/{conversation['id']}",
+                headers=headers,
+                json={
+                    "expected_revision": conversation["revision"],
+                    "confirmation_phrase": conversation["delete_confirmation_phrase"],
+                },
+            )
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pending = pool.submit(request)
+            try:
+                assert entered.wait(timeout=3), "request did not reach selected storage seam"
+                response = browser.get(health_path)
+                assert response.status_code == 200
+                assert not returned.is_set(), "health waited for interruption storage"
+            finally:
+                release.set()
+                result = pending.result(timeout=8)
+            assert result.status_code == 200, result.text
+            if operation == "cancel":
+                assert result.json()["status"] == "cancelled"
+                stored = storage.get_turn(int(identity["user_id"]), conversation["id"], turn["id"])
+                assert stored["status"] == "cancelled"
+                assert stored["error_code"] == "turn_cancelled"
+            else:
+                assert (
+                    browser.get(f"/api/v1/assistant/conversations/{conversation['id']}").status_code
+                    == 404
+                )

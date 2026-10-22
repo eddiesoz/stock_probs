@@ -10033,3 +10033,66 @@ Selected private evidence, with exact run artifacts and hashes retained in the p
 - Parent search/cleanup review: `parent-search-and-cleanup-review-v1.json`, SHA-256 `9634c28f9bbb2c2478ca1b518f99dea9c88013d5044f245b1721bd8475825276`.
 - Parent launcher review: `parent-v6-qa-launcher-review-v1.json`, SHA-256 `d391d34378a6bc2af886d0bc1e4a10d4b0d51d6bf30b04372656a2b21f923a12`.
 - Independent static Fail receipts: `guard-six-writers-independent-review-v1.json` and `atomic-finalization-independent-review-v1.json`; their scoped later repairs do not erase the original findings.
+
+
+### R-ASTRA-121 F6 cancellation and deletion storage liveness repair (2026-10-22)
+
+**Status: In progress; scoped local repair.** Pushed draft PR #9 checkpoint
+`eaff8e6bc673ccee7cc74bef978f380ff373312d` records the preceding runtime persistence repair.
+The next controlled four-case diagnostic Failed because cancellation `get_turn` and deletion
+`validate_conversation_delete` waits blocked unrelated health/readiness requests. Source recovery
+bytes and hashes precede the new service/test edits in
+`/var/tmp/r12r/f6-cancel-delete-repair-20261022T1740Z/` on the previously UUID-verified SD mount.
+
+Cancellation and deletion now group synchronous storage/access phases through the existing tracked
+`_storage_call` helper. Runtime cancellation and task/waiter mutation stay on the event loop.
+Deletion keeps its exact owner/revision/phrase preflight, bounded cache purge and fresh live-access
+checks before and after that await. The final deletion transaction retains its repeated confirmation
+check. This scope changes no schema, UI, provider, turn deadline or cache-purge limit.
+
+The original private four-case reproduction Passed after repair, exit 0, four completed cases,
+no errors/skips, `2026-10-22T17:41:13.436990Z`–`17:41:27.220333Z` (13.783 seconds), with 417 stable
+source pins, complete output and exact owned-temp/process cleanup. This diagnostic has explicit
+worktree/PYTHONPATH bindings but no added in-process import attestation. The tracked regression is
+stronger: it also checks cancelled durable status/error and successful exact confirmed deletion
+with a synthetic successful native-cache purge.
+
+The parent attested 17-case focused run **Failed**, exit 1: 16 passed, one failed, no errors/skips,
+`17:42:43.419933Z`–`17:44:09.039236Z` (85.619 seconds). Its new four cases and selected delete/cancel
+boundary controls passed. The failure was WebFetch `[revoke-initial]` at
+`runtime.ready.wait(timeout=3)`, before the interruption/held check and before any repaired
+cancel/delete call. Cause remains Unresolved. No deadline was increased and no unchanged failed
+trial was repeated. Import/terminal bindings, 417 stable source pins, bounded output, child/group
+absence and exact 58-entry temp cleanup Passed. Receipt: `parent-focused-v1/terminal.json` and
+`parent-focused-v1/parent-result-cleanup-review-v1.json` in the repair directory.
+
+Independent source review Passed its scoped comparison, preserving authority and confirmation
+checks; receipt `independent-review-e425db975af44a5ba51bf6d08f6d6c2c/source-review.json`, SHA-256
+`04195b79d53317e4570308a1d87436f8f92bec7ef7378b52f3e096b044b657c2`.
+Independent affected-path verification **Passed** all 11 cases, exit 0, no failures/errors/skips,
+`2026-10-22T17:49:54.357347Z`–`17:50:32.038857Z` (37.514 seconds). It covered the new four cases,
+history cancellation, both WebFetch cancellation phases, two deletion boundary functions and two
+pending-WebFetch interruption cases. All 417 pins, actual in-process import/terminal bindings,
+complete bounded output, process absence and exact temp cleanup Passed. This is a selected scope,
+not a replacement aggregate. A private selector-construction SyntaxError occurred before dispatch;
+no child ran in that setup attempt. Final receipt:
+`/var/tmp/r12r/f6-cancel-delete-independent-qa-20261022-0d5152467c314cd7a14044d18c756da6/independent-terminal-review-v1.json`,
+SHA-256 `48d11251ed958218188210b4a641deeb8a7ef4517e2fbe889495fc39c5e16814`;
+independent integrity supplement SHA-256
+`e503eb09193d73a3b8aac469c89e8e7154cc9150035d12d95534c1d51a75b713`.
+
+A separate parent-only anonymous startup-timing diagnostic Passed the single failed selector with
+its original three-second wait, exit 0, `17:51:22.524615Z`–`17:51:29.267250Z` (6.743 seconds).
+In this passing attempt only, fixture entry followed service-turn entry by 63.741 ms: history
+storage took 5.646 ms and runtime preparation 57.869 ms. No identifiers, raw values, deadline
+changes or application-source edits were introduced. Source/import bindings and exact cleanup
+Passed. It does not reproduce or explain the earlier failure. Receipts are
+`startup-diagnostic-v1/terminal.json`, `startup-timing-v1.json` and
+`parent-diagnostic-review-v1.json` in the repair directory.
+
+The original startup failure remains Unresolved; the instrumented passing attempt cannot establish
+its cause or rewrite the 17-case Fail. Provider-policy
+cross-store synchronization, forecast/full-browser failures, current-source native/owner UI,
+actual combined 1 GB, recovery/rollback, final canonical/security and release remain open. No
+Docker build, native/provider trial, production change, rollout, resize or email occurred here.
+Keep the existing host/backups and US$15 monthly total cap. This is no feature completion or handoff.

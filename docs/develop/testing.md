@@ -1106,3 +1106,16 @@ a child retains pipes. A launcher failure after fixture startup establishes no t
 its unavailable assertion extent and source/metadata corrections. Reuse unchanged harness process
 validation when only its parser changes. See the
 [F6 runtime persistence checkpoint](../../MVP-PLAN.md#r-astra-121-f6-runtime-persistence-atomic-completion-and-search-liveness-repair-checkpoint-2026-10-22).
+
+
+Cancellation/deletion liveness checks must hold their synchronous preparation reads while requesting
+health/readiness through the same entered lifespan. Keep storage/access phases in tracked thread
+work and task/waiter mutation on the event loop. Verify durable cancelled status/error and a fully
+confirmed deletion with an explicitly synthetic successful cache-purge seam; separately retain
+stale confirmation, live authorization and cache-clear failure boundary controls. Do not move a
+native await or event-loop mutation into a storage worker.
+
+A fixture failing its runtime-ready signal before the selected action is an unresolved startup
+failure, not evidence that later cancellation/deletion assertions failed. Preserve the exact failed
+aggregate and wait bound. A later affected-path selection cannot replace it; use a bounded anonymous
+startup-stage diagnostic before repeating that path, and do not raise timeouts to make it pass.
