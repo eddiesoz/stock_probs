@@ -2724,3 +2724,19 @@ For rebuilt archive binaries with a changed size, retain existing exact scanner 
 
 
 Before admitting another installed helper predecessor, verify the exact root-owned receipt, every installed file digest/mode, its public Git source bytes and ancestry, and the immutable original backup. Register only that complete prior-state tuple; retain strict unknown-drift rejection, transaction locks and rollback. A generic failed preparation and a later component diagnostic remain separate results; no native/resource acceptance follows from source transfer or bootstrap tests.
+
+
+For a later format-3 test checkpoint, merge the reviewed application PR ancestry into the helper
+branch before claiming image-to-PR-to-helper lineage. Pin the complete fixed commit sequence,
+regular-file blobs and line counts; keep the public compare page bounded to that sequence plus
+one overflow slot. A generated installed_at timestamp may differ only under the existing strict
+UTC timestamp validation; every other registered predecessor receipt field, file digest/mode and
+immutable original helper backup must match. Preserve failed literal-timestamp comparisons and
+missing checker-worktree build artifacts; reuse image/stage evidence only from its actual bound
+build worktree. None of these bindings establishes a host resource, rollback or release Pass.
+
+For the exact reviewed e40-to-8622 public comparison only, the metadata reader uses a 128 KiB
+response envelope because the observed five-commit/twelve-file response is 96,297 bytes. Other
+comparison and Git-tree routes retain 64 KiB. Keep the exact-route match, cap-plus-one overflow
+read/rejection, strict duplicate-key rejection, closed connections and existing timeouts; this
+metadata envelope does not change native, resource, recovery, rollback or release acceptance.

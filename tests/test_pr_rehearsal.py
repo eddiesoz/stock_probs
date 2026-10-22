@@ -2846,7 +2846,7 @@ def _valid_host_v3_lineage_responses() -> dict[str, object]:
             )
         files.append(changed_file)
     responses[
-        f"/repos/{host_helper.REPOSITORY}/compare/{image_source}...{reviewed_head}?per_page=3"
+        f"/repos/{host_helper.REPOSITORY}/compare/{image_source}...{reviewed_head}?per_page=6"
     ] = {
         "status": "ahead",
         "ahead_by": len(host_helper.HOTFIX_V3_REVIEWED_PR9_COMMITS),
@@ -2891,8 +2891,8 @@ def test_host_v3_lineage_binds_exact_delta_to_regular_commit_tree_blobs(
         host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA,
         "a" * 40,
     )
-    assert len(requests) == 14
-    assert requests[0].endswith("?per_page=3")
+    assert len(requests) == 16
+    assert requests[0].endswith("?per_page=6")
     assert requests[1].endswith("?per_page=1&page=2")
     assert all("/git/trees/" in request for request in requests[2:])
 
@@ -2930,7 +2930,7 @@ def test_host_v3_lineage_rejects_inconsistent_diff_or_tree_proof(
     compare_path = (
         f"/repos/{host_helper.REPOSITORY}/compare/"
         f"{host_helper.HOTFIX_V3_IMAGE_SOURCE_REVISION}..."
-        f"{host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA}?per_page=3"
+        f"{host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA}?per_page=6"
     )
     helper_path = (
         f"/repos/{host_helper.REPOSITORY}/compare/"
@@ -3052,11 +3052,13 @@ def test_host_v3_lineage_rejects_unpinned_head_before_api(
 def test_host_v3_github_reader_rejects_duplicate_json_keys_and_routes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    expected_limits = [host_helper.MAX_V3_COMPARE_RESPONSE + 1, host_helper.MAX_PR_RESPONSE + 1]
+
     class Response:
         status = 200
 
         def read(self, maximum: int) -> bytes:
-            assert maximum == host_helper.MAX_PR_RESPONSE + 1
+            assert maximum == expected_limits.pop(0)
             return b'{"status":"ahead","status":"behind"}'
 
     class Connection:
@@ -3065,7 +3067,7 @@ def test_host_v3_github_reader_rejects_duplicate_json_keys_and_routes(
 
         def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
             assert method == "GET"
-            assert path.endswith(("?per_page=3", "?per_page=1&page=2"))
+            assert path.endswith(("?per_page=6", "?per_page=1&page=2"))
             assert "Authorization" not in headers
 
         def getresponse(self) -> Response:
@@ -3078,7 +3080,7 @@ def test_host_v3_github_reader_rejects_duplicate_json_keys_and_routes(
     route = (
         f"/repos/{host_helper.REPOSITORY}/compare/"
         f"{host_helper.HOTFIX_V3_IMAGE_SOURCE_REVISION}..."
-        f"{host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA}?per_page=3"
+        f"{host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA}?per_page=6"
     )
     with pytest.raises(host_helper.RehearsalError, match="v3_lineage_invalid"):
         host_helper._read_v3_github_json(route)
@@ -3103,7 +3105,7 @@ def test_host_v3_github_reader_rejects_oversized_response(
         status = 200
 
         def read(self, maximum: int) -> bytes:
-            assert maximum == host_helper.MAX_PR_RESPONSE + 1
+            assert maximum == host_helper.MAX_V3_COMPARE_RESPONSE + 1
             return b" " * maximum
 
     class Connection:
@@ -3128,7 +3130,7 @@ def test_host_v3_github_reader_rejects_oversized_response(
     route = (
         f"/repos/{host_helper.REPOSITORY}/compare/"
         f"{host_helper.HOTFIX_V3_IMAGE_SOURCE_REVISION}..."
-        f"{host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA}?per_page=3"
+        f"{host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA}?per_page=6"
     )
     with pytest.raises(host_helper.RehearsalError, match="v3_lineage_unavailable"):
         host_helper._read_v3_github_json(route)
@@ -3225,21 +3227,31 @@ def test_v3_lineage_pins_match_all_four_consumers() -> None:
     expected_commits = (
         "a8eee53c21cca79a2d6ddc7b2451f89f5e60be7c",
         "7f66bc6cddb1f389b052714b4872828a3447b127",
+        "9e0680b343cbc1097bc29fdc709a24a7537290a1",
+        "1e134da0ad68ad4fe960714e2ea8911e3ee8d8aa",
+        "8622e303d63a6d2bc419ef6a97a2fb9601a63f7e",
     )
     expected_file_delta = (
         (
             "MVP-PLAN.md",
             "d8c3646dcefd04ff2c8c9f3b8e38475500185405",
-            "2f9abeba1afa64de420860f4db00f2facd428907",
-            194,
+            "1d05707f2c7edbc82cec60a6e1e319ab4e3822fd",
+            398,
             0,
         ),
         (
             "docs/develop/testing.md",
             "4fdb2800bf272d42e67519745bcb2daa063c70a6",
-            "7da6ceab215cff0463418c65b5f715b406be4102",
-            19,
+            "0386703d80211eda58b6740b7bac7904663ff3bf",
+            59,
             0,
+        ),
+        (
+            "tests/test_assistant_api.py",
+            "888a32b17a2671aea3c2c87126c7e1f8f19e07e5",
+            "3fdbecf1554916eb82c8c9cec49f02bd39487110",
+            7,
+            3,
         ),
         (
             "tests/test_assistant_final_boundary_coverage.py",
@@ -3251,9 +3263,23 @@ def test_v3_lineage_pins_match_all_four_consumers() -> None:
         (
             "tests/test_assistant_provider_admin_api_flows.py",
             "29959b587e3a53ce7b3b8f787000130a5771004e",
-            "acf705e6b3b3b378ec923bf2121e6ddfca10cdcb",
-            1,
+            "a31ef10d9d2fa226ffb613208e9ce8e5773fa85f",
+            4,
+            6,
+        ),
+        (
+            "tests/test_assistant_runtime_event_http_flows.py",
+            "d076fb753fcf7899082eada854b59e5fc564f6a4",
+            "1bb3e947e051a3839494f82df1f75daea944d479",
+            17,
             3,
+        ),
+        (
+            "tests/test_backup_automation.py",
+            "95d8b5f7305b2ce6e3b8f0db55fa9b19c03deed3",
+            "2570d14bf93fac0f6a794fe5aa19bb2fc2ef3f92",
+            22,
+            2,
         ),
         (
             "tests/test_browser_assistant_fixture.py",
@@ -3272,13 +3298,27 @@ def test_v3_lineage_pins_match_all_four_consumers() -> None:
         (
             "tools/browser/assistant_qa_server.py",
             "ba6bbdd01d5a9e62f5e99d82b99152151f394bf2",
-            "b944fc9ca9bbb8e4b06aa5b744e94157ecbca030",
-            79,
+            "2e6e4ecd861a5453b1498b184f57169fbfd68e9d",
+            84,
             60,
+        ),
+        (
+            "tools/browser/tests/assistant.spec.js",
+            "3734a80eae843a382ac9b49bc2ec51d77b046903",
+            "5d4be699bceba523aef8fdb1f25943e01c62ae6f",
+            13,
+            1,
+        ),
+        (
+            "tools/browser/tests/fixtures.js",
+            "89468fe1a51ab1a7fa46b9fc1f169bf3a1028230",
+            "c517ba1ff6c8606042cbff041572cc5f628f2b79",
+            10,
+            1,
         ),
     )
     assert {consumer.HOTFIX_V3_REVIEWED_PR_HEAD_SHA for consumer in consumers} == {
-        "7f66bc6cddb1f389b052714b4872828a3447b127"
+        "8622e303d63a6d2bc419ef6a97a2fb9601a63f7e"
     }
     for consumer in consumers:
         assert expected_commits == consumer.HOTFIX_V3_REVIEWED_PR9_COMMITS
@@ -10289,13 +10329,43 @@ def _known_40ece_install_fixture(
     return original, helper, manifest_path, fields, sidecars
 
 
+def _known_c38_install_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> tuple[bytes, bytes, Path, dict[str, object], dict[Path, bytes]]:
+    original, _helper, manifest_path, prior_fields, sidecars = _known_40ece_install_fixture(
+        monkeypatch, tmp_path
+    )
+    helper = b"exact c38 installed helper fixture bytes"
+    bootstrap.PRODUCTION_HELPER.write_bytes(helper)
+    bootstrap.PRODUCTION_HELPER.chmod(0o750)
+    digest = hashlib.sha256(helper).hexdigest()
+    fields = {
+        **prior_fields,
+        "reviewed_head_sha": "c38f6a4065a0d86f2890d9d616d8a3ef2676dae0",
+        "reviewed_pair_manifest_sha256": (
+            "9c26eb269bf72502c55c2e1dee8db96dca89560a2ec3796f64af7d25b270ebf0"
+        ),
+        "files": {**prior_fields["files"], "production-deploy-helper.py": digest},
+    }
+    manifest_path.write_bytes(_installed_manifest_bytes(fields))
+    manifest_path.chmod(0o640)
+    monkeypatch.setattr(bootstrap, "KNOWN_INSTALLED_C38_PRODUCTION_HELPER_SHA256", digest)
+    monkeypatch.setattr(bootstrap, "KNOWN_INSTALLED_C38_INSTALL_MANIFEST", fields)
+    return original, helper, manifest_path, fields, sidecars
+
+
+@pytest.mark.parametrize(
+    "predecessor_fixture",
+    [_known_40ece_install_fixture, _known_c38_install_fixture],
+    ids=["40ece", "c38"],
+)
 def test_bootstrap_accepts_exact_40ece_predecessor_without_mutating_it(
+    predecessor_fixture,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    original, helper, manifest_path, fields, sidecars = _known_40ece_install_fixture(
-        monkeypatch, tmp_path
-    )
+    original, helper, manifest_path, fields, sidecars = predecessor_fixture(monkeypatch, tmp_path)
     old_manifest = manifest_path.read_bytes()
     assert bootstrap._prepare_previous_production_helper(
         b"reviewed successor helper bytes",
@@ -10338,14 +10408,18 @@ def test_bootstrap_40ece_pin_matches_the_verified_root_receipt() -> None:
     "mutation",
     ["head", "pair", "files", "contract", "extra", "helper", "sidecar", "backup", "mode"],
 )
+@pytest.mark.parametrize(
+    "predecessor_fixture",
+    [_known_40ece_install_fixture, _known_c38_install_fixture],
+    ids=["40ece", "c38"],
+)
 def test_bootstrap_rejects_drift_around_exact_40ece_predecessor(
+    predecessor_fixture,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     mutation: str,
 ) -> None:
-    _original, _helper, manifest_path, fields, sidecars = _known_40ece_install_fixture(
-        monkeypatch, tmp_path
-    )
+    _original, _helper, manifest_path, fields, sidecars = predecessor_fixture(monkeypatch, tmp_path)
     malformed = {**fields, "files": dict(fields["files"])}
     error = "production_helper_manifest_mismatch"
     if mutation == "head":
@@ -10388,13 +10462,17 @@ def test_bootstrap_rejects_drift_around_exact_40ece_predecessor(
     } == before
 
 
+@pytest.mark.parametrize(
+    "predecessor_fixture",
+    [_known_40ece_install_fixture, _known_c38_install_fixture],
+    ids=["40ece", "c38"],
+)
 def test_bootstrap_accepts_completed_40ece_candidate_retry_only_with_exact_receipt(
+    predecessor_fixture,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    _original, helper, manifest_path, fields, _sidecars = _known_40ece_install_fixture(
-        monkeypatch, tmp_path
-    )
+    _original, helper, manifest_path, fields, _sidecars = predecessor_fixture(monkeypatch, tmp_path)
     candidate_fields = {
         **fields,
         "reviewed_head_sha": "a" * 40,
@@ -10415,3 +10493,87 @@ def test_bootstrap_accepts_completed_40ece_candidate_retry_only_with_exact_recei
                 "reviewed_pair_manifest_sha256": "c" * 64,
             },
         )
+
+
+def test_bootstrap_c38_pin_matches_the_verified_root_receipt() -> None:
+    assert bootstrap.KNOWN_INSTALLED_C38_PRODUCTION_HELPER_SHA256 == (
+        "9b2195a09a1df3ba6c72de4f897ceeae135441df21be07028a4ccc176311c6ab"
+    )
+    assert bootstrap.KNOWN_INSTALLED_C38_INSTALL_MANIFEST == {
+        "files": {
+            "host_helper.py": "8cb6dc8192653ef157d508a3d729582801c5a4de7505df35b6589c1e610ebd56",
+            "native_driver.py": "8c02095c26ea5713c34808cc5a607dce6260bd2691d4975338fb5d11730992ef",
+            "production-deploy-helper.py": (
+                "9b2195a09a1df3ba6c72de4f897ceeae135441df21be07028a4ccc176311c6ab"
+            ),
+            "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+        },
+        "format_version": 1,
+        "helper_source_contract": "schema13_same_schema_hotfix_v1",
+        "previous_production_helper_sha256": (
+            "57b88adc91b13689d83c0d56a2dd9f756000624e847f0c7a107dff7cb382a915"
+        ),
+        "pull_number": 11,
+        "repository": "eddiesoz/stock_probs",
+        "reviewed_head_sha": "c38f6a4065a0d86f2890d9d616d8a3ef2676dae0",
+        "reviewed_pair_manifest_sha256": (
+            "9c26eb269bf72502c55c2e1dee8db96dca89560a2ec3796f64af7d25b270ebf0"
+        ),
+    }
+
+
+@pytest.mark.parametrize("route_kind", ["pinned", "nearby", "helper", "tree"])
+@pytest.mark.parametrize("extra", [-1, 0, 1])
+def test_host_v3_github_reader_caps_only_exact_reviewed_comparison(
+    monkeypatch: pytest.MonkeyPatch, route_kind: str, extra: int
+) -> None:
+    routes = {
+        "pinned": (
+            f"/repos/{host_helper.REPOSITORY}/compare/"
+            f"{host_helper.HOTFIX_V3_IMAGE_SOURCE_REVISION}..."
+            f"{host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA}?per_page=6"
+        ),
+        "nearby": (
+            f"/repos/{host_helper.REPOSITORY}/compare/"
+            f"{host_helper.HOTFIX_V3_IMAGE_SOURCE_REVISION}...{'f' * 40}?per_page=6"
+        ),
+        "helper": (
+            f"/repos/{host_helper.REPOSITORY}/compare/"
+            f"{host_helper.HOTFIX_V3_REVIEWED_PR_HEAD_SHA}...{'a' * 40}?per_page=1&page=2"
+        ),
+        "tree": f"/repos/{host_helper.REPOSITORY}/git/trees/{'a' * 40}",
+    }
+    cap = 131_072 if route_kind == "pinned" else 65_536
+    payload = b"{}" + b" " * (cap + extra - 2)
+    reads = []
+    closed = []
+
+    class Response:
+        status = 200
+
+        def read(self, maximum: int) -> bytes:
+            reads.append(maximum)
+            return payload[:maximum]
+
+    class Connection:
+        def __init__(self, host: str, *, timeout: int) -> None:
+            assert host == "api.github.com" and timeout == 10
+
+        def request(self, method: str, path: str, *, headers: dict[str, str]) -> None:
+            assert method == "GET" and path == routes[route_kind]
+            assert "Authorization" not in headers
+
+        def getresponse(self) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            closed.append(True)
+
+    monkeypatch.setattr(host_helper.http.client, "HTTPSConnection", Connection)
+    if extra > 0:
+        with pytest.raises(host_helper.RehearsalError, match="v3_lineage_unavailable"):
+            host_helper._read_v3_github_json(routes[route_kind])
+    else:
+        assert host_helper._read_v3_github_json(routes[route_kind]) == {}
+    assert reads == [cap + 1]
+    assert closed == [True]

@@ -1098,7 +1098,8 @@ def test_public_event_stream_preserves_completion_during_execution_recheck(
             except RuntimeError:
                 if not entered.is_set():
                     entered.set()
-                    release.wait(timeout=3)
+                    # The parent's finally owns release; a timer would end the race early.
+                    release.wait()
             return original_check(*args, **kwargs)
 
         def record_terminal_status(*args: object, **kwargs: object) -> object:
@@ -1113,8 +1114,10 @@ def test_public_event_stream_preserves_completion_during_execution_recheck(
             f"/api/v1/assistant/conversations/{conversation['id']}/turns/{turn['id']}/events"
         )
         with ThreadPoolExecutor(max_workers=1) as executor:
-            stream = executor.submit(browser.get, event_path)
+            stream = None
+            primary_failure = None
             try:
+                stream = executor.submit(browser.get, event_path)
                 assert entered.wait(timeout=3), "SSE did not reach execution authorization"
                 if completion_state == "closed-only":
                     lease = assistant.storage.execution_for_turn(
@@ -1129,10 +1132,21 @@ def test_public_event_stream_preserves_completion_during_execution_recheck(
                     app.state.repository.auth_revoke_session(
                         str(identity["token_hash"]), _NOW.isoformat()
                     )
+            except BaseException as error:
+                primary_failure = error
+                raise
             finally:
                 release.set()
                 try:
-                    response = stream.result(timeout=5)
+                    if stream is not None:
+                        try:
+                            response = stream.result(timeout=5)
+                        except Exception as cleanup_error:
+                            if primary_failure is None:
+                                raise
+                            primary_failure.add_note(
+                                f"SSE cleanup also failed ({type(cleanup_error).__name__})."
+                            )
                 finally:
                     runtime.loop.call_soon_threadsafe(runtime.resume.set)
             assert response.status_code == 200

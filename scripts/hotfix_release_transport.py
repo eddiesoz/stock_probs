@@ -35,25 +35,35 @@ IMAGE_ID_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
 
 HOTFIX_CANDIDATE_REVISION = "f6a51d5c821e6b1ab7974a94f4ff795da10130bc"
 HOTFIX_V3_IMAGE_SOURCE_REVISION = "e40dbc3b721080057a2ab2b9b23565ebf4d85982"
-HOTFIX_V3_REVIEWED_PR_HEAD_SHA = "7f66bc6cddb1f389b052714b4872828a3447b127"
+HOTFIX_V3_REVIEWED_PR_HEAD_SHA = "8622e303d63a6d2bc419ef6a97a2fb9601a63f7e"
 HOTFIX_V3_REVIEWED_PR9_COMMITS = (
     "a8eee53c21cca79a2d6ddc7b2451f89f5e60be7c",
     "7f66bc6cddb1f389b052714b4872828a3447b127",
+    "9e0680b343cbc1097bc29fdc709a24a7537290a1",
+    "1e134da0ad68ad4fe960714e2ea8911e3ee8d8aa",
+    "8622e303d63a6d2bc419ef6a97a2fb9601a63f7e",
 )
 HOTFIX_V3_REVIEWED_PR9_FILE_DELTA = (
     (
         "MVP-PLAN.md",
         "d8c3646dcefd04ff2c8c9f3b8e38475500185405",
-        "2f9abeba1afa64de420860f4db00f2facd428907",
-        194,
+        "1d05707f2c7edbc82cec60a6e1e319ab4e3822fd",
+        398,
         0,
     ),
     (
         "docs/develop/testing.md",
         "4fdb2800bf272d42e67519745bcb2daa063c70a6",
-        "7da6ceab215cff0463418c65b5f715b406be4102",
-        19,
+        "0386703d80211eda58b6740b7bac7904663ff3bf",
+        59,
         0,
+    ),
+    (
+        "tests/test_assistant_api.py",
+        "888a32b17a2671aea3c2c87126c7e1f8f19e07e5",
+        "3fdbecf1554916eb82c8c9cec49f02bd39487110",
+        7,
+        3,
     ),
     (
         "tests/test_assistant_final_boundary_coverage.py",
@@ -65,9 +75,23 @@ HOTFIX_V3_REVIEWED_PR9_FILE_DELTA = (
     (
         "tests/test_assistant_provider_admin_api_flows.py",
         "29959b587e3a53ce7b3b8f787000130a5771004e",
-        "acf705e6b3b3b378ec923bf2121e6ddfca10cdcb",
-        1,
+        "a31ef10d9d2fa226ffb613208e9ce8e5773fa85f",
+        4,
+        6,
+    ),
+    (
+        "tests/test_assistant_runtime_event_http_flows.py",
+        "d076fb753fcf7899082eada854b59e5fc564f6a4",
+        "1bb3e947e051a3839494f82df1f75daea944d479",
+        17,
         3,
+    ),
+    (
+        "tests/test_backup_automation.py",
+        "95d8b5f7305b2ce6e3b8f0db55fa9b19c03deed3",
+        "2570d14bf93fac0f6a794fe5aa19bb2fc2ef3f92",
+        22,
+        2,
     ),
     (
         "tests/test_browser_assistant_fixture.py",
@@ -86,9 +110,23 @@ HOTFIX_V3_REVIEWED_PR9_FILE_DELTA = (
     (
         "tools/browser/assistant_qa_server.py",
         "ba6bbdd01d5a9e62f5e99d82b99152151f394bf2",
-        "b944fc9ca9bbb8e4b06aa5b744e94157ecbca030",
-        79,
+        "2e6e4ecd861a5453b1498b184f57169fbfd68e9d",
+        84,
         60,
+    ),
+    (
+        "tools/browser/tests/assistant.spec.js",
+        "3734a80eae843a382ac9b49bc2ec51d77b046903",
+        "5d4be699bceba523aef8fdb1f25943e01c62ae6f",
+        13,
+        1,
+    ),
+    (
+        "tools/browser/tests/fixtures.js",
+        "89468fe1a51ab1a7fa46b9fc1f169bf3a1028230",
+        "c517ba1ff6c8606042cbff041572cc5f628f2b79",
+        10,
+        1,
     ),
 )
 HOTFIX_V3_REVIEWED_TEST_PATCH = (
@@ -397,7 +435,7 @@ def _expected_manifest_v3(
 
 
 def _v3_pr9_delta_matches(raw_diff: str, numstat: str) -> bool:
-    """Match Git's raw metadata and line counts to the frozen seven-file PR #9 delta."""
+    """Match Git's raw metadata and line counts to the frozen exact PR #9 delta."""
 
     expected = {
         filename: (base_blob, head_blob, additions, deletions)

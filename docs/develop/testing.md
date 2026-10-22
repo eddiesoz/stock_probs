@@ -1347,3 +1347,59 @@ names. A malformed-input regression must fail closed without loading app code. P
 authorization, deadline and acceptance checks. Compare footprint on the exact image without starting
 an application or provider; report that measurement separately from actual-host resource acceptance.
 See the [attached-probe footprint checkpoint](../../MVP-PLAN.md#r-astra-121-f6-attached-native-probe-import-footprint-repair-2026-10-21).
+
+
+Held-await authorization fixtures should send requests through their already-entered lifespan
+TestClient, setting the existing helper's session/CSRF cookies before the timed request. This keeps
+portal startup outside the held-await entry check without extending its deadline. Preserve every
+authorization rejection, consent/provider side-effect assertion and release-in-finally operation.
+A passing subset does not repair a failed aggregate or prove a latency cause. Keep host startup
+admission separate from later reserve readings, and verify restoration of the original image and
+rollout mode independently of a failed pair trial. See the
+[F6 host/fixture checkpoint](../../MVP-PLAN.md#r-astra-121-f6-host-reserve-failure-and-held-await-fixture-setup-2026-10-21).
+
+
+For the completion-transition SSE regression, keep the worker held until the parent's protected
+finally explicitly releases it. Equal independent release/completion timers can end the intended
+interleaving early. Retain the original entry, completion and future-result deadlines. Cleanup must
+preserve a primary assertion when an ordinary secondary future exception occurs, recording only its
+exception type; without a primary failure, propagate cleanup errors. Preserve the original failed
+aggregate and earlier review finding beside the final selected pass.
+
+On unexpected assistant browser-fixture outcomes, attach the existing bounded synthetic stderr tail
+and stop the app in a nested finally even if attachment fails. Keep those artifacts private. A
+failure-only attachment does not establish a cause, and a later diagnostic pass cannot replace a
+failed aggregate. Do not infer disk causation from traced syscall duration or extend browser bounds
+to conceal unresolved latency. See the
+[F6 completion/browser evidence checkpoint](../../MVP-PLAN.md#r-astra-121-f6-completion-barrier-and-bounded-browser-failure-evidence-2026-10-21).
+
+
+Keep spawn-based lock helpers free of application/CLI imports they do not use. Import those modules
+inside the individual tests that require them, retaining every lock, startup, join and critical-
+section assertion. Measure import-only footprint separately from runtime acceptance and preserve the
+original failed aggregate beside a passing affected module; reduced footprint does not prove the
+original failure's cause.
+
+Approval-focused browser journeys may prepare a conversation through the existing UI before their
+per-turn response waiter, while a separate journey continues to cover automatic creation on Send.
+Do not increase response, fixture or case bounds. When adding a fixed anonymous fixture checkpoint,
+include it in the existing bounded attachment allowlist; an omitted consumer stage cannot be
+reconstructed into a delivered attachment. Distinguish fixture-start, pre-MCP and later context
+failures before assigning a shared cause. See the
+[F6 backup/browser checkpoint](../../MVP-PLAN.md#r-astra-121-f6-backup-spawn-imports-and-focused-browser-failure-checkpoint-2026-10-21).
+
+
+When a reviewed lineage adds nested paths, retain the exact tree-request-count assertion and
+update its fixture expectation only after accounting for both base/head traversals. The current
+12-path delta requires 16 bounded requests; the previous 14-request fixture failure remains
+recorded. Exercise every registered predecessor against exact receipt success, nearby receipt,
+file/mode/sidecar/backup drift, and completed-retry rejection. Preserve both imported fixture
+cleanup mechanisms when merging: bounded failure stderr and before/after-stop diagnostics must
+still reach stop through protected finally blocks. See the
+[F6 lineage checkpoint](../../MVP-PLAN.md#r-astra-121-f6-current-pr-lineage-and-c38-predecessor-checkpoint-2026-10-22).
+
+The fixed reviewed GitHub comparison's metadata may use 128 KiB; every nearby comparison, helper
+ancestry query and Git-tree read retains 64 KiB. Test cap-minus-one, exact cap and cap-plus-one for
+each route class, requiring exactly cap-plus-one reads and closed connections. Keep duplicate JSON
+keys rejected and preserve the original live 64 KiB overflow alongside repaired actual readback.
+This response-envelope scope does not extend a test, native turn or resource deadline.

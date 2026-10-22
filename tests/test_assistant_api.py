@@ -2935,9 +2935,14 @@ def test_model_consent_route_rechecks_live_auth_before_persisting_after_inventor
     )
     inventory_started = threading.Event()
     release_inventory = threading.Event()
-    with TestClient(application, client=("127.0.0.1", 51052)):
+    with TestClient(application, client=("127.0.0.1", 51052)) as browser:
         owner = _add_signed_in_user(application, 50089)
-        browser = _browser_client(application, owner)
+        context = application.state.auth.authenticate(
+            str(owner["token"]), application.state.assistant.now()
+        )
+        assert context.user.id == owner["user_id"]
+        browser.cookies.set(SESSION_COOKIE_NAME, str(owner["token"]), path="/")
+        browser.cookies.set(CSRF_COOKIE_NAME, str(owner["csrf"]), path="/")
         assistant = application.state.assistant
         authorization_callbacks: list[bool] = []
 
@@ -2992,7 +2997,6 @@ def test_model_consent_route_rechecks_live_auth_before_persisting_after_inventor
             assert providers.calls == []
         finally:
             release_inventory.set()
-            browser.close()
 
 
 def test_model_policy_route_requires_admin_step_up_and_projects_closed_dto(settings):

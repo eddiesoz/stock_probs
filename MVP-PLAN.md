@@ -11648,3 +11648,292 @@ genuine authenticated UI, resource, PR-bound recovery/rollback, guide and releas
 The helper manifest still binds historical PR #9 head 7f; no later-head binding is inferred.
 The overall goal remains active, with free Zen restoration preceding seven features. Existing
 1 GB host, backups and US$15 monthly total cap remain unchanged; no merge, resize or email occurred.
+
+
+### R-ASTRA-121 F6 host reserve failure and held-await fixture setup (2026-10-21)
+
+The clean `7f66bc6` canonical attempt **Failed** at exit 2, `19:32:18Z`–`19:53:24Z`:
+585 Python passes, two failures, four deselected and 15 warnings. One deliberate SIGINT stopped
+that known-failing run; Python completion, final coverage and the completion contract are unavailable.
+Documentation and the 75 frontend checks are subchecks only. The two failures did not reach their
+held inventory/provider await within five/three seconds. The exact two-case diagnostic, all eight
+related authorization cases with and without coverage, and the original ordered 163-case prefix
+subsequently passed unchanged. This does not rewrite the aggregate or prove its cause. The prefix
+had no contemporaneous hash for `tests/test_api.py`; preserve that binding limitation. Separate
+permission/syscall and device-wide I/O observations establish neither the original failure's cause
+nor a product defect. Canonical receipt SHA-256:
+`fa4289201c68bbefc18d6654563d44678b2a8fab0aebaab9ad38012fe45ccda6`;
+parent terminal SHA-256 `66e2e6810b592d8ca0fa148ee36599f91d3d14dd42d4a1e9e1699d544f1c75b9`.
+
+The two held-await fixtures now send their request through the already-entered lifespan TestClient.
+They set the same session/CSRF cookies and retain the consent helper's authentication assertion,
+rather than constructing a second client whose portal starts during the timed request. All original
+13 assertion nodes, held-await/release operations and timeout arguments remain unchanged. No
+application, provider or auth source changed. Parent AST review verifies that only the two named
+functions changed; the original timeout cause remains **Unproven**. The eight selected cases passed
+with coverage instrumentation (zero failures/errors/skips), and independent Luna verification also
+passed all eight with 147 unchanged declared tracked source/test/config pins. These subset passes
+are not a canonical result. Parent packet:
+`/var/tmp/r12r/f6-auth-managed-portal-b262707306e34999920e77f26e4bdf42/`;
+independent review SHA-256 `c6afbf24d7352b44d1143528f9f74fb0b53676dcd0f47093e335dfcdf9c648b2`;
+covered terminal SHA-256 `ed776faa605ba5657675b3a67372d086ac5deaf7021ce7270bc0949ca210952a`;
+source review SHA-256 `f0fca3551c4caa4d2a1f11c3567c73236de93a65dfef351117fde52638ac54a6`.
+Fresh comparison retained all 150 `e40dbc3` image inputs and 53 served/export pairs, so the existing
+image, genuine free-Zen native and separate shutdown evidence keep their original scoped bindings.
+A fresh mandatory aggregate remains pending.
+
+In separate helper PR #11, exact head `c38f6a4065a0d86f2890d9d616d8a3ef2676dae0` installed the
+reviewed helper bundle after independent 140-case bootstrap QA and exact installed-40ece predecessor
+validation. The same candidate/recovery archive bytes were bound to manifest
+`9c26eb269bf72502c55c2e1dee8db96dca89560a2ec3796f64af7d25b270ebf0`.
+The actual-host pair attempt **Failed**, `21:37:42Z`–`21:40:57Z`, with
+`host_memory_reserve_breached`: temporary-recovery startup admission reported 538,216 KiB available;
+the later monitor recorded 129,988 KiB against the unchanged 131,072 KiB floor. The exact root
+210-byte failure receipt has SHA-256
+`6479609519fba81ff45a47417ad63c00884025548eb37eb6873bed8df7013bac`.
+Docker event metadata shows the attached native driver started before candidate termination;
+owner turns, answers, resource acceptance and PR-pair recovery completion are **Unavailable**.
+The memory cause beyond the guard remains **Unproven**. All nine helper source pins stayed unchanged.
+Post-trial exact-c38 label queries found no containers, volumes or networks. That absence does not
+establish staged-asset cleanup. Preserve the initial event-template query failure separately.
+
+The approved temporary recovery served the app with its assistant disabled during the trial.
+Restoration returned the original `5ad2c3f`/`78746f` image ready but left rollout disabled, so the
+first restoration assertion **Failed**. A c38 controller request failed its different-revision check;
+a direct disabled-to-invited request from the original-release checkout also failed with a generic
+remote error (raw error code unavailable). The maintained original-release controller then completed
+the required owner_canary and invited transitions. Fresh inspect confirmed the original revision/image,
+schema 13, invited mode, app and assistant ready, and loopback-only access. Restoration scope
+**Passed** at `21:47:14Z`; this does not repair the pair failure. Parent reviewed the actual results
+and all 24 independent evidence references. Independent integrity/restoration/lifecycle review
+SHA-256 `68ec48dc772bf11c8969e5d09f3d582c69a4a649afe8354eabdffe77eb29ee4c`.
+The immutable trial packet is
+`/var/tmp/r12r/f6-actual-host-c38-e9aeded9fb604d1497be12fb0a1a1ac2/`.
+
+PRs #9 and #11 remain draft. Current canonical/full-browser, complete security/accessibility,
+genuine authenticated UI, actual combined 1 GB, PR-bound recovery/rollback, guide and release gates
+remain open. No candidate promotion, merge, resize or email occurred. The original production image
+and invited rollout are restored; the existing 1 GB host, backups and US$15 monthly total cap remain.
+Free Zen restoration still precedes the seven features, and the overall goal remains active.
+
+
+### R-ASTRA-121 F6 completion barrier and bounded browser failure evidence (2026-10-21)
+
+The clean `9e0680b` canonical attempt **Failed** at exit 2, `21:58:20Z`–`22:24:03Z`:
+1,439 Python passes, one failure, four deselected and 15 warnings. One deliberate SIGINT stopped
+the known-failing run. Python completion, final coverage and the canonical completion contract
+are unavailable; documentation and 75 frontend checks are subchecks only. The revoked completion-
+transition case failed its three-second completion assertion before revocation ran; cleanup's
+five-second future timeout then hid that assertion. No revocation leak or product cause follows.
+Canonical receipt SHA-256 `97e21bdeebfff00c949dbe57042e28e86a8802f0710db3bdb0860b8570ef7d79`;
+JUnit SHA-256 `c1250209e6657bef43450e843f345dd171a3478c13849352253dc6ea691ff87a`.
+All 417 source/test pins, 150 image inputs and 53 served/export pairs stayed unchanged.
+
+The unchanged revoked case and all three completion states subsequently passed covered diagnostics.
+Existing syscall tracing observed fsync latency, but scheduling/tracing overhead and the missing
+original-run trace prevent a storage-cause claim. Independent source review identified equal,
+independent three-second release/completion timers as a fixture synchronization weakness. The test
+now holds the worker until its parent's protected finally explicitly releases it; entry/completion
+assertions remain three seconds and future cleanup remains five seconds. It preserves the primary
+failure and records only a secondary cleanup exception's type. All 11 original assertions and the
+module outside the owned function remain unchanged. The first independent review **Failed** because
+only TimeoutError was preserved; the repair catches ordinary Exception. Final independent source,
+three covered cases, Ruff/security/format/diff and 147 unchanged pins **Passed**, `22:44:51Z`–
+`22:45:09Z` for pytest. Final receipt SHA-256
+`84da9ccad9c457a681b16fbbc5ba04172a655e76e0462a6729bb8770567bf865`;
+parent integrated review SHA-256 `d16732c19b145ff9b40e2804a70b9adf689815db29ab5acbe4664ea3853960b8`.
+This fixture repair does not prove the original aggregate's cause or replace a fresh canonical gate.
+
+A separate original-order 22-case browser diagnostic with existing syscall tracing **Failed**:
+19 passed, three failed. Failures were an unexpected synthetic stream abort, real-fixture status
+HTTP 500, and disabled model selection. The HTTP 500 resource contained only generic internal_error;
+its exception was unavailable because fixture stderr was not persisted. The trace observed slow
+fsync calls but does not establish their ownership or the original failure's cause.
+Packet: `/var/tmp/r12r/f6-browser-prefix22-io-f894e518beba4284a2a0b2c6f3586a4f/`.
+
+The existing synthetic-app fixture now attaches its already bounded stderr tail on an unexpected
+Playwright outcome. A nested finally always stops the owned app, including attachment failure.
+Node syntax, nine existing lifecycle cases and independent source/static review **Passed**; the
+lifecycle tests do not directly simulate attachment failure. Independent receipt SHA-256
+`3946a63dc394bd208fb0a114426a71145dae295efa6a9d33487b3450cfe97c12`.
+No application source or deadline changed. The next same-order, untraced diagnostic **Failed** at
+20 passed/two failed, zero skips/retries/flaky, `22:45:49Z` with 185.117 seconds reported duration.
+The HTTP 500 did not recur. Receipt-flow completion exhausted the 30-second case budget after MCP
+HTTP 200 and the six-second synthetic delay-start marker, without a runtime-completed marker.
+The first WebFetch submission exhausted its five-second response wait; existing network metadata
+shows serial context/conversation/list/detail/turn requests and an eventual HTTP 202. No precise
+latency cause or product repair is established. Preserve the failed result rather than increasing
+its deadlines. Parent terminal SHA-256
+`3c74ed0a62df7040c71f7f18990be86d8edb79a23b48683c8bc66516f329e5a8`;
+supplemental first-submission correction/network metadata SHA-256
+`fe706c8aba0ed4471d9cd60ef5b91f15cb743dcab2f365f5a831b6c554c7ee7a`.
+All 417 source/test pins, 150 image inputs and 53 served/export pairs remained unchanged through
+terminal review; the service/cgroup, two known fixture PIDs and three known ports were absent.
+
+These changes are test/fixture-only; existing e40 image, genuine free-Zen native and shutdown
+receipts retain their original scope. Complete canonical/browser/security/accessibility,
+authenticated genuine UI, actual combined 1 GB, PR-bound recovery/rollback, final guide and release
+gates remain open. PRs #9/#11 remain draft; the helper manifest still binds the earlier PR #9 head.
+The original 5ad production image and invited rollout remain restored. No candidate promotion,
+merge, resize or email occurred. The 1 GB host, backups, US$15 monthly total cap and active overall
+goal remain unchanged; free Zen restoration precedes the seven-feature plan.
+
+
+### R-ASTRA-121 F6 backup spawn imports and focused browser failure checkpoint (2026-10-21)
+
+The clean pushed `1e134da0ad68ad4fe960714e2ea8911e3ee8d8aa` canonical attempt **Failed**,
+`22:51:55Z`–`23:25:57Z`, exit 2 after one deliberate SIGINT: terminal output reports 1,530 Python
+passes, one failure, four deselected and 86 warnings. Python completion and final coverage are
+unavailable; documentation and 75 frontend checks are completed subchecks only. The retire-key
+cross-process backup-lock case exhausted its unchanged 30-second child-start wait before reaching
+the lock-critical assertions. The child was alive at the deadline and later exited successfully;
+its exact signal time and the failure cause remain **Unproven**. Contemporaneous low available RAM
+and nearly exhausted swap do not establish causation. Raw JUnit has inconsistent suite/testcase
+counts; retain the terminal's 1,530-pass count rather than infer an extra pass.
+Canonical receipt SHA-256 `20dc363ef0556bbb387e6a130b65106f082735d8c9720e7523b50529bd139661`;
+parent terminal SHA-256 `ae795f3da6a0365a9fc7da5d018859661215cdbf1dd917772f8fefa65ae87e5b`.
+All 417 source/test pins, 150 image inputs and 53 served/export pairs stayed unchanged. The owned
+unit/cgroup and known processes were absent; the private pytest directory remains retained.
+
+The unchanged exact failed case subsequently passed one covered independent reproduction. A
+separate measured import diagnostic found that the backup test module loaded API/CLI dependencies
+in every spawned lock helper. Moving those two imports into the 11 tests that use them reduced
+import-only RSS from 92,966,912 to 46,526,464 bytes. Parent AST comparison retained all 114 assertions,
+all lock/start/join bounds, and every other AST node after removing the moved imports. This is a
+test-only footprint repair, not a demonstrated cause of the original timeout. Parent affected-module
+coverage passed 26/26, `23:32:30Z`–`23:33:32Z`. Independent affected-module coverage passed 26/26,
+`23:35:16Z`–`23:36:35Z`, with all 417 pins unchanged during that run; Ruff/security/format and syntax
+checks passed. Independent receipt SHA-256
+`1f4ca63f35d1fdd90f9e99c8c4856ba8ac61d9e9fc33c1a4355e8d38f52a3506`.
+Its post-run memory snapshot is **Unavailable** because the pre-created metadata file remained empty.
+These selected passes do not replace the failed canonical aggregate.
+
+The WebFetch approval-focused browser journey now creates a conversation through the existing UI
+before its per-turn response waiter. The separate receipt journey retains automatic creation on
+Send. Existing five-second response/action waits, fixture and case bounds remain unchanged. The
+synthetic server adds one anonymous monotonic checkpoint after its existing six-second delay;
+the attachment consumer now includes that fixed stage. The consumer entry was initially omitted,
+so the passing mobile attachment below does not contain that separate delay-completed marker.
+The final consumer correction passed independent one-line diff/privacy review and Node syntax,
+receipt SHA-256 `4b1d711b844587d8cc5d742abc50248f60c1c75530ef0e588f4c5c502a7fd998`.
+Its initial report-assembly assertion failure remains recorded. This is static scope only; the
+correction has not been replayed.
+
+The focused desktop/emulated-mobile four-case run **Failed**, `23:37:56.758Z`–`23:40:53.533Z`:
+one passed, three failed, zero skips/retries/flaky. Desktop receipt completion exhausted its
+30-second case budget before a workspace-summary result. Desktop WebFetch timed out during fixture
+setup before its test body. Mobile receipt passed in 22.892 seconds, including MCP HTTP 200 and
+completion after the synthetic delay. Mobile WebFetch progressed through initial approvals but
+later exhausted a five-second turn-response wait alongside a five-second context route-fetch
+timeout. Their causal relationship and underlying failure causes remain **Unproven**. No deadline
+increase or application repair follows. All 417 source pins, 150 image inputs and 53 served/export
+pairs matched at terminal review. The unit/cgroup, three known fixture PIDs and four known ports
+were absent; the setup failure supplied no fourth PID, so direct PID proof for that fixture is
+unavailable. No blanket temporary-directory cleanup acceptance is claimed.
+Parent terminal SHA-256 `bf06fd513d37b6cdd8d89a50ba73fbd9337aaec7a60a23f36f0cb47d1d19850d`;
+independent artifact/source interpretation SHA-256
+`ba57f65e030d55aefcfa4a9f6493b250e5e5f723d75c3f67b05193e785f83636`.
+Independent review did not replay clicks, re-probe cleanup or recompute the parent's full pin maps.
+
+A separate network-none, one-shot import-only diagnostic on exact candidate image `76aecf54`
+measured the attached native probe before/after importing auth for two public fixture cookie names:
+RSS 38,072,320 to 45,658,112 bytes, a 7,585,792-byte increase. No app, supervisor, server or provider
+was started. The exact owned container was absent after completion. Container umask was not observed;
+this is import-overhead evidence only, not runtime-profile, host-failure-cause or actual 1 GB acceptance.
+Receipt SHA-256 `2c0f01a799fb5738d2419e633acbf14fc7d18639b260f272c41300cd6aa614c3`.
+No probe repair or actual-host retry occurred in this checkpoint.
+
+Fresh read-only production inspect/status reconfirmed the original `5ad2c3f`/`78746f` image,
+schema 13, invited rollout, app/assistant ready and loopback-only. Snapshot SHA-256
+`b8cb3f5cf3ea017636963f32e30b9aa5d643f25de74f12d91e4e47c82442c35f`.
+The new free-Zen fix is not deployed. Existing e40 image/native/shutdown results retain their
+original exact scope. PRs #9/#11 remain draft and the helper manifest still binds historical PR #9
+head `7f`; current canonical/full-browser/security/accessibility, genuine authenticated UI, actual
+combined 1 GB, PR-bound recovery/rollback, final guide and release gates remain open. No candidate
+promotion, merge, resize or email occurred. The active overall goal, seven-feature dependency order,
+existing 1 GB host, backups and US$15 monthly total cap remain unchanged.
+
+
+### R-ASTRA-121 F6 current PR lineage and c38 predecessor checkpoint (2026-10-22)
+
+PR #9 is pushed at `8622e303d63a6d2bc419ef6a97a2fb9601a63f7e`; its implementation image remains
+bound to e40/76aec. PR #11's reviewed probe-import repair is pushed at
+`9e57e4e8e0bc264f0a59a54d0c17c23b4f2ba298`. The helper branch now integrates the exact reviewed
+PR #9 ancestry. The four maintained consumers pin all five commits and twelve file records from
+e40 to 8622, with exact base/head Git blobs, regular-file metadata and additions/deletions. The
+host's fixed public compare route admits six rows, retaining one overflow slot for the five-commit
+sequence. Parent computes the values from exact local Git objects; a source definition alone does
+not establish the required post-push public lineage result.
+
+Merge resolution retains both branches' authored evidence. The assistant fixture preserves the
+new bounded failure stderr attachment and the existing before/after-stop lifecycle diagnostics,
+with owned process stop protected even if either attachment fails. No application implementation,
+resource floor, acceptance condition or test deadline changes. The bootstrap registers only the
+complete verified c38 predecessor through its existing strict tuple/file/backup checks. Its new
+cases reuse the prior predecessor drift matrix; unknown state still fails closed.
+
+The first parent static check **Failed** on six overlong new literal lines; formatting those
+literals repaired that scope. The first affected Python selection **Failed** at 211 passes/one
+failure: the twelve-path fixture reached 16 tree requests while its stale expectation was 14.
+The added nested tests directory requires one extra base-tree and one extra head-tree traversal.
+The exact count assertion now requires 16; the failed selector subsequently passed 1/1. Both
+failures and source snapshots are retained; no acceptance guard was weakened.
+
+A fresh read-only root metadata/digest capture found the exact c38 installed sources and modes,
+including the immutable original helper backup. The initial literal prior-receipt comparison
+**Failed** because identical c38 bundle restaging changed installed_at from 21:34:50 to 21:38:35
+on October 21. Its raw readback was not retained, so its exact assertion location is unavailable;
+the second readback preserves the mismatch. Reviewing that captured result under the existing
+strict validated-timestamp contract **Passed**: only the generated valid UTC timestamp differs;
+every registered receipt field, all four installed public Git source digests/modes and original
+backup digest/mode match. This is read-only predecessor identity, not a new install or host trial.
+Readback SHA-256 `b94de6a583f3cfe135ac4b156189ce6a7a1a63a6e632c075616942850605dbbc`;
+contract review SHA-256 `ed966199469da71af4af20f643572b0a056acc3fd8a539062caabd3b23d9dd19`.
+
+Fresh maintained allowlist comparison **Passed** for actual build worktree R: all 150 source
+hash/size/mode inputs and 53 served/export pairs remain bound to the e40 image. Helper worktree H
+matches all 150 source contents but has 14 host-file permission differences and missing ignored
+compiled outputs; H build/stage acceptance is **Unavailable**. Two earlier comparison attempts
+stopped on missing H outputs, and a third rejected the broader mode assertion; those limitations
+remain recorded rather than reconstructing a missing baseline or changing permissions. Image
+reuse refers only to the actual R-built immutable image and existing archive. Binding review
+SHA-256 `db4351ebe2eefed290f7973401c237eaf32f85341b715794ec77de2698f38c8b`.
+
+Before publication, the actual first public comparison **Failed** with v3_lineage_unavailable.
+A bounded read-only discriminator returned HTTP 200 and 65,537 bytes at the old 65,536-byte ceiling;
+a separate diagnostic measured the exact response at 96,297 bytes, five commits and twelve files.
+This proves the reader-envelope rejection for that path, not a provider or runtime cause. The
+repaired reader admits 128 KiB only for the exact pinned e40-to-8622 comparison; unrelated/nearby
+comparison, helper and tree routes retain 64 KiB. Both retain cap-plus-one rejection, duplicate-key
+validation, connection cleanup and the original ten-second timeout. Parent affected host-lineage/
+reader selection passed 35/35, including twelve cap-minus-one/exact/plus-one route-class cases.
+The actual fixed comparison then **Passed**, `00:18:04Z`, with the expected five commits/twelve files;
+repaired preflight SHA-256 `ee9a0df8fcaf543862ede0a6aaf96891762bf08e2c6d813ba71d40c675fe5033`.
+The earlier 212-case/Node source pass retains its old reader binding. The new envelope's independent
+affected source review and 35/35 checks **Passed**, `00:18:53Z`–`00:18:57Z`, with all 13 pins
+unchanged. Ruff/security/format/diff passed via the R venv after a bare Ruff PATH lookup returned
+127; that lookup remains **Unavailable**. No tests outside the affected reader scope were repeated.
+Independent receipt SHA-256 `6b0b6587df6b22978ab87627574896e552308e34d2c718068d8218545a35e1e9`.
+Parent verified its actual referenced artifacts, JUnit, current pins and the integrated diff. Full
+published-helper ancestry remains pending at this authored checkpoint.
+
+Packet: `/var/tmp/r12r/f6-lineage-8622-and-c38-predecessor-afa55d3990a749afa674707642d836ef/`.
+Independent corrected-source QA **Passed** 212/212 selected cases, zero failures/errors/skips,
+`00:06:44Z`–`00:06:50Z`, native x86_64 with explicit SD TMPDIR/H PYTHONPATH and umask 022. Node
+lifecycle passed 9/9; syntax, Ruff/security/format/diff and 13 before/after pins passed. Parent
+verified the actual JUnit, current pins and integrated source. Independent main receipt SHA-256
+`32acd55e3968a5fcf06dc007b6a951b44463c54aef89ba625be9be7f4276d3fa`.
+Its first metadata supplement retained wrong paths; a new explicit reference audit corrected the
+actual readback/contract/JUnit paths and the five-commit compare explanation, while marking the
+absent original parent-review reference **Unavailable**. The actual parent reviews and all 13 pins
+were rechecked without repeating tests. Reference audit SHA-256
+`68ebf88574774076ad76bf34537bf8eb6dbed88052581a3fb31df0b99df25dbf`;
+interpreter metadata supplement SHA-256
+`0e097451bed0044b9a8b445777c511e0526c38764a8755c40bb97bd5b64a5c24`.
+Parent verified 26 exact corrected references. Merge publication, fresh local/public lineage and a
+new helper manifest remain pending at this authored checkpoint. No new helper install,
+actual-host trial, application rebuild, deployment, rollout, merge to main, resize or email occurred.
+Current canonical/full-browser/security/accessibility, genuine authenticated UI, actual combined
+1 GB, PR-bound recovery/rollback, final guide and release gates remain open. The free Zen live fix
+still precedes all seven features; the overall goal remains active. The original production image,
+existing 1 GB host, backups and US$15 monthly total cap remain unchanged.

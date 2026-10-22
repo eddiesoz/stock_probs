@@ -867,3 +867,17 @@ For a changed-size release binary, the archive scanner may retain another exact 
 
 
 Bootstrap predecessor admission needs an exact root-owned installed receipt and all file digests tied to public Git ancestry, plus the immutable original helper backup. Keep generic preparation failures separate from directly observed component errors and record rollback/readback scope. The 40ece predecessor repair adds one complete prior-state tuple; it changes no image, runtime, resource floor or release gate.
+
+
+Later format-3 checkpoint records must distinguish the reviewed application's exact commit chain
+from the helper merge that contains it. Document the complete file delta, fixed compare overflow
+bound and exact registered predecessor tuple. Treat generated install timestamps according to the
+existing validated timestamp contract; keep strict-comparison failures visible. Bind image reuse
+to the actual build worktree's input modes and compiled stage, and do not infer an equivalent
+checker-worktree stage from matching source content. See the
+[F6 lineage checkpoint](../../MVP-PLAN.md#r-astra-121-f6-current-pr-lineage-and-c38-predecessor-checkpoint-2026-10-22).
+
+Record response-envelope changes as a separate live failing-path finding: the exact reviewed
+comparison exceeded its prior 64 KiB limit, while unrelated routes retain that limit. A route-
+specific 128 KiB envelope needs exact-route and boundary tests plus actual public readback before
+full published ancestry proof; do not treat a mocked response as that public evidence.

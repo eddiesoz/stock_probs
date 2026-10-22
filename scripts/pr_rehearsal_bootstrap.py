@@ -328,6 +328,31 @@ KNOWN_INSTALLED_40ECE_INSTALL_MANIFEST = {
     "helper_source_contract": HELPER_SOURCE_CONTRACT,
     "previous_production_helper_sha256": PREVIOUS_PRODUCTION_HELPER_SHA256,
 }
+# Exact c38 receipt and four public source digests retain the immutable original backup.
+KNOWN_INSTALLED_C38_PRODUCTION_HELPER_SHA256 = (
+    "9b2195a09a1df3ba6c72de4f897ceeae135441df21be07028a4ccc176311c6ab"
+)
+KNOWN_INSTALLED_C38_INSTALL_MANIFEST = {
+    "files": {
+        "host_helper.py": "8cb6dc8192653ef157d508a3d729582801c5a4de7505df35b6589c1e610ebd56",
+        "native_driver.py": "8c02095c26ea5713c34808cc5a607dce6260bd2691d4975338fb5d11730992ef",
+        "production-deploy-helper.py": (
+            "9b2195a09a1df3ba6c72de4f897ceeae135441df21be07028a4ccc176311c6ab"
+        ),
+        "seed.py": "56e79454482f20a2964766aa016e6f985673bb41571ac36bba21d09302d72b15",
+    },
+    "format_version": 1,
+    "helper_source_contract": "schema13_same_schema_hotfix_v1",
+    "previous_production_helper_sha256": (
+        "57b88adc91b13689d83c0d56a2dd9f756000624e847f0c7a107dff7cb382a915"
+    ),
+    "pull_number": 11,
+    "repository": "eddiesoz/stock_probs",
+    "reviewed_head_sha": "c38f6a4065a0d86f2890d9d616d8a3ef2676dae0",
+    "reviewed_pair_manifest_sha256": (
+        "9c26eb269bf72502c55c2e1dee8db96dca89560a2ec3796f64af7d25b270ebf0"
+    ),
+}
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 ASSETS = {
@@ -796,6 +821,11 @@ def _prepare_previous_production_helper(
                 _require_installed_manifest(candidate_manifest_fields)
             except InstallError:
                 _require_installed_manifest(KNOWN_INSTALLED_40ECE_INSTALL_MANIFEST)
+        elif current_digest == KNOWN_INSTALLED_C38_PRODUCTION_HELPER_SHA256:
+            try:
+                _require_installed_manifest(candidate_manifest_fields)
+            except InstallError:
+                _require_installed_manifest(KNOWN_INSTALLED_C38_INSTALL_MANIFEST)
         elif current_digest == candidate_digest:
             _require_installed_manifest(candidate_manifest_fields)
         elif current_digest != PREVIOUS_PRODUCTION_HELPER_SHA256:

@@ -442,22 +442,31 @@ exports.test = base.test.extend({
       await use({ url: application.url, logs: application.logs });
     } finally {
       try {
-        await attachAssistantFixtureDiagnosticSnapshot(
-          testInfo,
-          "assistant-fixture-before-stop.json",
-          application.diagnostics(),
-          application.markDiagnosticAttachmentFailed,
-        );
+        if (testInfo.status !== testInfo.expectedStatus) {
+          await testInfo.attach("assistant-fixture-stderr", {
+            body: Buffer.from(application.logs(), "utf8"),
+            contentType: "text/plain",
+          });
+        }
       } finally {
         try {
-          await application.stop();
-        } finally {
           await attachAssistantFixtureDiagnosticSnapshot(
             testInfo,
-            "assistant-fixture-after-stop.json",
+            "assistant-fixture-before-stop.json",
             application.diagnostics(),
             application.markDiagnosticAttachmentFailed,
           );
+        } finally {
+          try {
+            await application.stop();
+          } finally {
+            await attachAssistantFixtureDiagnosticSnapshot(
+              testInfo,
+              "assistant-fixture-after-stop.json",
+              application.diagnostics(),
+              application.markDiagnosticAttachmentFailed,
+            );
+          }
         }
       }
     }
