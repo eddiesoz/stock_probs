@@ -10476,3 +10476,66 @@ no successful current native or authenticated owner UI answer follows. Canonical
 security/browser, actual combined 1 GB, host recovery/rollback and release gates remain open.
 The 1 GB host, existing backups and US$15/month including tax are unchanged. No production action,
 resize, rollout or email occurred. The free-Zen repair and seven-feature goal remain active.
+
+
+### R-ASTRA-121 F6 current-image free usage rejection (2026-10-22)
+
+The repaired source was committed and pushed as `c6db6f62fb0fbebe924b0608776db6c10ac126d9`.
+Its genuine Linux/amd64 Compose build Passed, exit 0, at `2026-10-22T21:24:45.982371Z`–
+`21:31:58.174547Z`, producing image
+`sha256:67064075fa64deab92fabf43a701a635c0731cadca6fdcff2a11972bba4cc410`
+from context `c9bbe6230a52e9c6186a68cd7b09cdf744bc7e7fe2a9d5e92fbcf1a80f8c6163`.
+All 150 image inputs and 53 served/export pairs matched. The outer wrapper **Failed** on the
+unchanged 15-second builder-stop deadline; its first read-only inspection also timed out.
+A separate fresh read-only observation at `21:34:37.887279Z`–`21:34:37.958211Z` confirmed
+the same controller generation stopped with PID 0, absent cgroup, unchanged source/helper pins
+and matching stage. No build or stop retry occurred. Immutable build-terminal v2 preserves both
+the successful Compose result and failed outer wrapper; it does not turn the wrapper into Pass.
+
+The first native launcher **Failed before fixture creation or model calls** because its strict
+31-key terminal consumer received the 35-key supplemental producer record. The failed receipt is
+preserved. A separate compatibility record retains the original 31-key contract and links the
+immutable supplemental provenance; its publication time is not a new build observation. The
+launcher correction changes only the terminal path/digest and versioned evidence paths. Parent
+prefix/full read-only validation and independent static review Passed this narrow correction;
+the earlier prelaunch review missed the mismatch and remains separate history.
+
+The single subsequent genuine native trial **Failed**, exit 2, at
+`2026-10-22T21:48:52.351808Z`–`21:49:39.703673Z`. Readiness Passed after 21 attempts in
+10.580 seconds. Both owners matched the selected model predicates and reached model-session,
+then returned `provider_unavailable` without an answer, workspace summary, search or fetch.
+The closed diagnostic recorded two HTTP 429 `free_usage_limit_error` failures. Each anonymous
+timing row contains one observed failed provider request and zero sanitized chunks/bytes.
+This current result verifies preservation of the recognized free-usage classification; it does
+not establish a quota account/IP, reset time, total native retry count, or the prior untyped
+run's cause. Both conversation deletes returned HTTP 200; owner 0 required three pending retries.
+The local 768 MiB diagnostic peaked at 531,943,424 bytes with zero high/max/OOM deltas; app
+readiness samples remained ready. This is not actual combined 1 GB acceptance or causal proof.
+
+Current native packet: `/var/tmp/r12r/f6-native-429-344eaf8048d341d5ac6a7f0ce0a1bbc1/`.
+Complete bounded stdout SHA-256:
+`2d5120a6b70f10446caaa27896ef1668523abdcd95169589e643c35208328bb1`.
+Parent saved-result review SHA-256:
+`1d945046b8495bbc10e8746e20f845f656dfd64adb7ab2fb8410bc92145ab8d8`.
+Parent live fixture inspection occurred after removal and is **Unavailable**; no parent live
+host-port binding was saved. Independent terminal/integrity/cleanup review is recorded separately.
+No further native trial or kill followed. The free-Zen live fix, authenticated owner UI answers,
+remaining release gates and seven features remain open. Production, backups, the 1 GB host and
+US$15/month including tax are unchanged; no deployment, rollout, resize or email occurred.
+
+Further native inference is held until there is new evidence of changed free-service availability;
+an unchanged repeat would not discriminate a new cause. The existing image retains its exact c6
+application binding through this documentation-only checkpoint.
+
+Independent terminal/integrity/cleanup review Passed its selected scope at
+`21:58:11.623479Z`–`21:58:11.897485Z`, preserving native functional **Fail**. It verified
+150 image inputs, each distinct 153-path build/runtime manifest, 53 served/export pairs,
+complete untruncated hash-bound streams, and absence of the exact container ID/name, volume,
+network ID/name and process group. Host-port evidence remains **Unavailable**. The reviewer did
+not interpret 93 trailing non-JSON output bytes; exact cleanup was checked independently with
+bounded read-only queries. Receipt `independent-native-terminal-integrity-review-v2.json`
+SHA-256: `93d9d26fe1ffe9a6cfb5a9c9bb01c128f23ea90a2a0ab876e9e7f2b07237a3d4`.
+Its earlier v1 review remains **Fail** because its checker incorrectly required equality of the
+two distinct 153-path manifests; the corrected review compares their shared 150 image rows and
+separate three-path scopes. No test/native rerun occurred. Parent review accepted only this
+selected integrity/cleanup scope and retains every functional and wrapper failure above.
