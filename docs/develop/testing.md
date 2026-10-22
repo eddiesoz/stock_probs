@@ -1053,3 +1053,21 @@ this setup. Reuse unchanged image/native/browser evidence only within its exact 
 and rerun the mandatory aggregate after affected QA. A failed/interrupted aggregate has no final
 coverage or Python-completion acceptance even when its earlier subchecks passed. See the
 [F6 repaired-image/SSE checkpoint](../../MVP-PLAN.md#r-astra-121-f6-repaired-image-native-pass-and-sse-fixture-checkpoint-2026-10-22).
+
+
+WebFetch authorization liveness checks must hold both the initial and periodic execution check
+while requesting health/readiness through the same entered application lifespan. Keep synchronous
+storage/session checks off the event loop while leaving waiter/future mutation on its owning loop.
+Cover session revocation and turn cancellation during those waits; assert no URL release, terminal
+turn state and revoked lease. An already approved future must still fail closed if the final delayed
+check passes beyond existing expiry/deadline. Do not increase response, fixture, case or provider
+bounds to conceal unresolved latency. An off-loop repair does not establish why a repository lock
+was contended, and it does not repair independent event-persistence waits or forecast latency.
+
+Independent QA must record an explicit worktree cwd for every command and subprocess, use absolute
+test paths, and bind actual in-process package/service imports before pytest when worktree identity
+is in doubt. A relative argv or a matching source manifest does not replace that import/cwd proof.
+Preserve wrong-checkout/unbound checks as Unavailable for the target, retain pre-launch setup failures,
+and require a fresh correctly bound run before acceptance. Keep normal child umask `022` and create
+private receipts/logs with explicit `0600` mode; a later chmod is a metadata correction, not proof of
+initial mode. See the [F6 WebFetch liveness checkpoint](../../MVP-PLAN.md#r-astra-121-f6-full-browser-failure-and-webfetch-authorization-liveness-checkpoint-2026-10-22).

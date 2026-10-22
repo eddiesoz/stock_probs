@@ -9785,3 +9785,112 @@ SHA-256 `a87f092d42ff369d2f46cc58a16bf102abe57c3fc9672194b5186c4b511e29e0`.
 This resolves only the pending affected-QA status above. The parent reviewed the integrated diff
 and confirmed every original assertion predicate remains, with one added first-tool precondition.
 No canonical/native failure cause is upgraded, and no aggregate or release Pass follows.
+
+
+## R-ASTRA-121 F6 full-browser failure and WebFetch authorization liveness checkpoint (2026-10-22)
+
+**Scoped WebFetch source/test repair: Pass. Overall free-Zen live restoration: In progress.**
+The parent implemented and personally reviewed this repair; independent GPT-6 Luna xhigh performed
+only the necessary read-only evidence/security QA. The baseline is pushed `b7f36fb5398bbd68769e77d708c6fef578943b65`
+on `codex/signal-ledger-assistant-fix`, draft PR #9. These results precede the checkpoint commit and
+bind the dirty source/test hashes below; they do not establish a released application.
+
+The one authorized full browser run **Failed**, exit 1, at
+`2026-10-22T14:42:26.813Z`–`15:06:48.205256Z`: 200 cases, **187 passed, 10 failed, 3 skipped,
+0 flaky**; JUnit reports three failures and seven errors. The approved 75-minute aggregate,
+30-second default cases, five-second actions, zero retries and single worker were retained.
+Desktop failures covered the pending assistant answer/receipt flow, WebFetch preview and decline,
+stale forecast state and the fifth rolling-forecast POST. Mobile failures covered the assistant
+flow, WebFetch cancellation, a screenshot/font wait and two forecast POST/response waits.
+The earlier four-case browser Pass does not pass this aggregate.
+
+Independent review matched all **417 source pins, 150 image inputs and 53 served/export pairs** on
+clean b7. Available raw axe evidence contains 26 detailed reports and ten count summaries, all
+zero violations/incompletes within those samples; this is not full accessibility acceptance.
+The raw cleanup artifact's false/null cgroup values remain **Unavailable** because its terminal
+ControlGroup field was empty. Separate exact saved-cgroup, eight known-PID and six listener absence
+checks Passed; the parent also observed the saved group and base processes absent and base port
+refused. The independent review's approximate start time was corrected to **Unavailable** in a
+new immutable supplement; the actual test execution window remains bound.
+
+Bounded trace review found four successful rolling-forecast POSTs before the fifth timed out at
+5 seconds. Two other failed journeys eventually received HTTP 201 at about 6.1 and 6.8 seconds.
+The mobile WebFetch cancel response eventually returned HTTP 500 `internal_error` after
+15,520.544 ms, distinct from the test's five-second response waiter. Cleanup-time refused requests
+are not assumed to be primary causes. A fresh isolated five-interval fixture profile completed all
+five with HTTP 201 in 0.50–1.52 seconds; it did not reproduce the original slow requests. Its first
+wrapper setup Failed before calling the profiled method because it hid the inspected ownership
+signature; `functools.wraps` repaired only that private diagnostic. Forecast cause remains **Unproven**.
+
+A separate six-case diagnostic at `15:24:26.147871Z`–`15:28:07.843028Z` **Failed**, exit 1,
+with three passes and three failures. It kept the case/action/assertion bounds, using a bounded
+private subset aggregate and a default-off fixture-only, one-shot loop-lag observer. No repository
+source changed during this diagnostic. The desktop WebFetch preview and mobile keyboard-flow
+stacks show the event loop blocked in `Repository._coordinated` → `execution_lease` →
+`_execution_current` → `await_webfetch_approval`, alongside a session/auth worker; a later repository
+coordination timeout was captured. Independent source/evidence review confirms the synchronous
+blocking path. **Why the lock was contended remains unresolved**; no storage root cause follows.
+The desktop stderr attachment reached its 16,384-byte tail cap; the earlier diagnostic stack remains
+in the bounded unit stdout. The route-only diagnostic failed later than the original pending-answer
+failure, at theme confirmation: no confirmation POST was recorded before teardown. Do not relabel
+these different observations as one reproduced cause. The reviewer's Python 3.14.4 attribution was
+corrected separately as reviewer-side metadata; a later venv version read returned Python 3.11.15
+without backdating runtime-version acceptance.
+
+The repair moves WebFetch's initial grouped turn/lease/session/model/context checks and its periodic
+and final execution checks to `asyncio.to_thread`. Waiter/future registration and cleanup remain on
+the owning event loop. Exact validated/displayed/approved URL equality, session ownership, policy,
+context, tool/turn limits and cancellation are retained. A final monotonic/expiry check rejects a URL
+if the delayed final authorization check outlives its existing bound. No provider, browser, lock or
+turn budget was increased; no search adapter, paid fallback or account was added.
+
+Four controlled initial/poll × health/readiness cases first **Failed** because a held 1.5-second
+check delayed unrelated health, then **Passed** after repair. The first tracked eight-case selection
+Passed. Strengthened revocation/cancellation cases Passed all four and verify denied URL release,
+terminal turn state and revoked lease. The new expiry test first Failed at setup because the lease
+summary omits `expires_at`; a test-only full-lease lookup repair then Passed the exact case. These
+private setup failures remain preserved and are not application failures.
+
+The corrected independent command selected `webfetch` from the absolute paths to
+`tests/test_assistant_runtime_event_http_flows.py` and `tests/test_assistant_api.py`, via the exact
+worktree's venv Python. It **Passed 22/22**, exit 0, no failures/errors/skips, native x86_64,
+Python 3.11.15, `15:49:10.796353Z`–`15:50:29.738338Z` (JUnit 73.429 seconds).
+An in-process pre-pytest attestation binds cwd, interpreter, absolute test paths, sanitized explicit
+environment, and imported package/service paths to this worktree. All 417 pins stayed unchanged.
+Ruff check, format check, selected security rules and diff check Passed in the exact worktree.
+The earlier unbound 22-pass result and primary-checkout static checks remain **Unavailable for this
+worktree**. A corrected private supervisor's status-parser setup Fail started no test child and is
+preserved separately. Normal test children used umask `022`; JUnit was initially `0644` and then
+hardened to `0600` with an immutable metadata correction, not a claim of initial private mode.
+The parent personally reviewed the integrated diff, attestation, JUnit, terminal and current hashes:
+
+- `src/stock_probs/assistant/service.py`: `4bc7d4d52b65d34cb4142013f527e83864f4c056c15978b18be3f3b5248646d2`.
+- `tests/test_assistant_runtime_event_http_flows.py`: `6251502370542773d6ba9d1ca3a83cbb996697dee3ab176ee9075c901ffd7a80`.
+
+**Open work:** a separate held event-write health/readiness reproduction still has two failures;
+that persistence/cancellation path is not repaired here. Forecast latency and remaining browser
+failures stay open. The earlier canonical Fail/interruption remains; no fresh aggregate was run.
+The f7 image's genuine two-owner free-Zen/native Pass retains only its original af0cfcd/b7 input
+binding. This service change makes that image historical for current-source acceptance: require a
+new bound image/native run after the remaining repairs, then affected browser and mandatory release
+gates. Do not rebuild while known runtime repairs are incomplete or repeat unchanged passing scopes.
+The next bounded action is to repair event persistence without permitting late writes after
+cancellation/revocation, preserving its failing reproductions and required independent review.
+
+No merge to main, build, native retry, current-image kill, host rehearsal, deployment, rollout,
+resize or email occurred in this checkpoint. No active backup was removed; the last observed active count is 32, pending the
+explicit retention decision. The existing 1 GB host/backups and US$15 monthly cap including tax
+remain unchanged. Actual combined 1 GB, current native/security/recovery/rollback, authenticated
+free-Zen owner UI and release gates remain open. Physical mobile, actual screen reader, true zoom
+and PDF/UA remain Unavailable; no full WCAG claim follows.
+
+Selected immutable private evidence:
+
+- Full browser independent review: `/var/tmp/r12r/f6-full200-b7f36fb-c3b10af72ecd485bb8965881a4b12a08/independent-terminal-review-v1.json`, SHA-256 `05899504a3a68f9e0811b044363326e0f95fec2b677eb1e943f1437347810f17`.
+- Full-browser review-window correction: `/var/tmp/r12r/f6-full200-b7f36fb-c3b10af72ecd485bb8965881a4b12a08/independent-terminal-review-window-correction-v1.json`, SHA-256 `4eeb23e0b1a8137c7e508aebfe680be5c44270c7b8912a3c5460c574a55ac978`.
+- Parent full-browser terminal review: `/var/tmp/r12r/f6-full200-b7f36fb-c3b10af72ecd485bb8965881a4b12a08/parent-integrated-terminal-review-v1.json`, SHA-256 `86b9f4570ded3124ac96b19be95dbdec86dcd2ff2dfaf3a5d4094a6ebe19290f`.
+- Loop diagnostic independent review: `/var/tmp/r12r/f6-browser-failure-diagnosis-20261022T1515Z/browser-loopdiag/independent-loopdiag-review-v1.json`, SHA-256 `8a984970cc199edf5e5041e72406db8ccd9dd0a47a1f993e03983d0c6b977adb`.
+- Python attribution correction: `/var/tmp/r12r/f6-browser-failure-diagnosis-20261022T1515Z/browser-loopdiag/independent-loopdiag-python-attribution-correction-v1.json`, SHA-256 `55e9b4bd3c669c50848fb66fad2cf4b6556b3fa06b139af01b5290f84ded09b6`.
+- Reproductions, forecast profile and pre-edit raw-byte baselines: `/var/tmp/r12r/f6-browser-failure-diagnosis-20261022T1515Z/`.
+- Corrected independent scoped QA: `/var/tmp/r12r/f6-independent-webfetch-rerun-b7f36fb-20261022T1546Z-499a0b64424c4a5a859c6f72e778bc2a/independent-qa-receipt-v1.json`, SHA-256 `9c281eca9b7d16ab683c93f5c7bdd5299e94a3f542bec85c027c33245577bbf4`.
+- Parent integrated scoped review: `/var/tmp/r12r/f6-browser-failure-diagnosis-20261022T1515Z/parent-webfetch-integrated-review-v1.json`, SHA-256 `6045467488186d3e28c6f35d1be5535c2583563230e99b1def06b358ee9b04e2`.

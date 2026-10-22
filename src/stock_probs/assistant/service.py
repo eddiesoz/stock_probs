@@ -1807,42 +1807,49 @@ class AssistantService:
         validated_url = validate_webfetch_url(url)
         if validated_url != url:
             return None
-        try:
-            turn = self.storage.get_turn(
-                runtime_context.user_id,
-                runtime_context.conversation_id,
-                runtime_context.turn_id,
-            )
-            if (
-                turn.get("status") != "running"
-                or turn.get("model_id") != runtime_context.model_id
-                or turn.get("policy_version") != runtime_context.policy_version
-                or turn.get("context_version") != runtime_context.context_version
-            ):
+
+        def authorize_preview() -> dict[str, object] | None:
+            try:
+                turn = self.storage.get_turn(
+                    runtime_context.user_id,
+                    runtime_context.conversation_id,
+                    runtime_context.turn_id,
+                )
+                if (
+                    turn.get("status") != "running"
+                    or turn.get("model_id") != runtime_context.model_id
+                    or turn.get("policy_version") != runtime_context.policy_version
+                    or turn.get("context_version") != runtime_context.context_version
+                ):
+                    return None
+                lease = self.storage.authorize_tool_call(
+                    runtime_context.execution_id,
+                    runtime_context.capability,
+                    now=self.now(),
+                    marks_private_read=False,
+                )
+            except AssistantStorageError:
                 return None
-            lease = self.storage.authorize_tool_call(
-                runtime_context.execution_id,
-                runtime_context.capability,
-                now=self.now(),
-                marks_private_read=False,
-            )
-        except AssistantStorageError:
+            if (
+                int(lease.get("user_id", 0)) != runtime_context.user_id
+                or lease.get("conversation_id") != runtime_context.conversation_id
+                or lease.get("turn_id") != runtime_context.turn_id
+                or lease.get("session_id") is None
+                or lease.get("context_version") != runtime_context.context_version
+                or not self.validate_execution_session(lease)
+                or not self._execution_current(
+                    runtime_context.user_id,
+                    runtime_context.execution_id,
+                    runtime_context.model_id,
+                    runtime_context.policy_version,
+                )
+            ):
+                raise AssistantUnavailable("session_revoked", 403)
+            return lease
+
+        lease = await asyncio.to_thread(authorize_preview)
+        if lease is None:
             return None
-        if (
-            int(lease.get("user_id", 0)) != runtime_context.user_id
-            or lease.get("conversation_id") != runtime_context.conversation_id
-            or lease.get("turn_id") != runtime_context.turn_id
-            or lease.get("session_id") is None
-            or lease.get("context_version") != runtime_context.context_version
-            or not self.validate_execution_session(lease)
-            or not self._execution_current(
-                runtime_context.user_id,
-                runtime_context.execution_id,
-                runtime_context.model_id,
-                runtime_context.policy_version,
-            )
-        ):
-            raise AssistantUnavailable("session_revoked", 403)
         try:
             lease_expiry = datetime.fromisoformat(str(lease["expires_at"])).astimezone(UTC)
         except (KeyError, TypeError, ValueError):
@@ -1902,7 +1909,8 @@ class AssistantService:
                 await asyncio.wait({future}, timeout=min(1.0, remaining))
                 if future.done():
                     break
-                if not self._execution_current(
+                if not await asyncio.to_thread(
+                    self._execution_current,
                     runtime_context.user_id,
                     runtime_context.execution_id,
                     runtime_context.model_id,
@@ -1910,12 +1918,15 @@ class AssistantService:
                 ):
                     return None
             approved = future.result()
-            if approved != url or not self._execution_current(
+            if approved != url or not await asyncio.to_thread(
+                self._execution_current,
                 runtime_context.user_id,
                 runtime_context.execution_id,
                 runtime_context.model_id,
                 runtime_context.policy_version,
             ):
+                return None
+            if loop.time() >= deadline or self.now() >= expires_at:
                 return None
             return url
         finally:

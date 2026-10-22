@@ -1509,3 +1509,197 @@ def test_interrupted_turn_persistence_closes_late_lease_without_generation(
         assert turn["error_code"] == "turn_cancelled"
         lease = storage.execution_lease(str(record["execution_id"]))
         assert lease is not None and lease["status"] == "revoked"
+
+
+class _WebfetchAuthorizationRuntime(_ScriptedRuntime):
+    def __init__(self):
+        super().__init__()
+        self.ready = threading.Event()
+        self.finished = threading.Event()
+        self.approved_url = None
+        self.approve_immediately = False
+
+    async def run_turn(self, *, context, prompt, emit):
+        self.contexts.append(context)
+        self.loop = asyncio.get_running_loop()
+        self.go = asyncio.Event()
+        self.ready.set()
+        await self.go.wait()
+
+        async def emit_preview(event):
+            await emit(event)
+            if self.approve_immediately:
+                with self.service._webfetch_waiter_lock:
+                    waiters = [
+                        waiter
+                        for waiter in self.service._webfetch_waiters.values()
+                        if waiter.execution_id == context.execution_id
+                    ]
+                assert len(waiters) == 1
+                waiters[0].future.set_result(waiters[0].url)
+
+        try:
+            self.approved_url = await self.service.await_webfetch_approval(
+                context, "https://example.com/research?fixture=liveness", emit_preview
+            )
+        finally:
+            self.finished.set()
+        return AssistantTurnResult(status="completed")
+
+
+@pytest.mark.parametrize("phase", ["initial", "poll"])
+@pytest.mark.parametrize("health_path", ["/api/v1/health", "/api/v1/readiness"])
+def test_webfetch_authorization_wait_preserves_application_health(
+    settings, monkeypatch, phase, health_path
+):
+    runtime = _WebfetchAuthorizationRuntime()
+    app = _make_app(settings, runtime)
+    runtime.service = app.state.assistant
+    entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80081)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        _start_turn(browser, identity, context, conversation, model)
+        assert runtime.ready.wait(timeout=3)
+        original = app.state.assistant._execution_current
+        calls = 0
+
+        def held_check(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == (1 if phase == "initial" else 3):
+                entered.set()
+                release.wait(timeout=1.5)
+                returned.set()
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(app.state.assistant, "_execution_current", held_check)
+        try:
+            runtime.loop.call_soon_threadsafe(runtime.go.set)
+            assert entered.wait(timeout=5), "WebFetch did not reach the selected authorization wait"
+            response = browser.get(health_path)
+            assert response.status_code == 200
+            assert not returned.is_set(), (
+                "health waited for WebFetch authorization storage to return"
+            )
+        finally:
+            release.set()
+
+
+@pytest.mark.parametrize("phase", ["initial", "poll"])
+@pytest.mark.parametrize("interruption", ["revoke", "cancel"])
+def test_webfetch_authorization_wait_cannot_release_interrupted_request(
+    settings, monkeypatch, phase, interruption
+):
+    """A late authorization result cannot release a URL after session or turn interruption."""
+    runtime = _WebfetchAuthorizationRuntime()
+    app = _make_app(settings, runtime)
+    runtime.service = app.state.assistant
+    entered, release, finalized = threading.Event(), threading.Event(), threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80082)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        assert runtime.ready.wait(timeout=3)
+        storage = app.state.assistant.storage
+        original_status = storage.set_turn_status
+
+        def observe_terminal(*args, **kwargs):
+            result = original_status(*args, **kwargs)
+            if kwargs.get("status") in {"cancelled", "failed"}:
+                finalized.set()
+            return result
+
+        monkeypatch.setattr(storage, "set_turn_status", observe_terminal)
+        original = app.state.assistant._execution_current
+        calls = 0
+
+        def held_check(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == (1 if phase == "initial" else 3):
+                entered.set()
+                release.wait(timeout=3)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(app.state.assistant, "_execution_current", held_check)
+        try:
+            runtime.loop.call_soon_threadsafe(runtime.go.set)
+            assert entered.wait(timeout=5)
+            if interruption == "revoke":
+                app.state.repository.auth_revoke_session(
+                    str(identity["token_hash"]), _NOW.isoformat()
+                )
+            else:
+                response = browser.post(
+                    f"/api/v1/assistant/conversations/{conversation['id']}"
+                    f"/turns/{turn['id']}/cancel",
+                    headers={"x-csrf-token": str(identity["csrf"])},
+                )
+                assert response.status_code == 200
+                assert response.json()["status"] == "cancelled"
+        finally:
+            release.set()
+        assert runtime.finished.wait(timeout=5)
+        assert runtime.approved_url is None
+        assert not app.state.assistant._webfetch_waiters
+        assert finalized.wait(timeout=5)
+        stored = storage.get_turn(int(identity["user_id"]), conversation["id"], turn["id"])
+        assert stored["status"] == ("failed" if interruption == "revoke" else "cancelled")
+        assert stored["error_code"] == (
+            "session_revoked" if interruption == "revoke" else "turn_cancelled"
+        )
+        lease = storage.execution_for_turn(int(identity["user_id"]), conversation["id"], turn["id"])
+        assert lease is not None and lease["status"] == "revoked"
+
+
+def test_webfetch_delayed_final_authorization_cannot_release_expired_url(settings, monkeypatch):
+    """An approved future cannot release its URL when the final async check outlives expiry."""
+    runtime = _WebfetchAuthorizationRuntime()
+    runtime.approve_immediately = True
+    app = _make_app(settings, runtime)
+    assistant = app.state.assistant
+    runtime.service = assistant
+    entered, release = threading.Event(), threading.Event()
+    checked = []
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80083)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        assert runtime.ready.wait(timeout=3)
+        execution = assistant.storage.execution_for_turn(
+            int(identity["user_id"]), conversation["id"], turn["id"]
+        )
+        assert execution is not None
+        lease = assistant.storage.execution_lease(str(execution["execution_id"]))
+        assert lease is not None
+        expiry = datetime.fromisoformat(str(lease["expires_at"]))
+        original = assistant._execution_current
+        calls = 0
+
+        def held_check(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            final_check = calls == 3
+            if final_check:
+                entered.set()
+                release.wait(timeout=3)
+            result = original(*args, **kwargs)
+            if final_check:
+                checked.append(result)
+            return result
+
+        monkeypatch.setattr(assistant, "_execution_current", held_check)
+        try:
+            runtime.loop.call_soon_threadsafe(runtime.go.set)
+            assert entered.wait(timeout=5)
+            assistant.clock = lambda: expiry + timedelta(seconds=1)
+        finally:
+            release.set()
+        assert runtime.finished.wait(timeout=5)
+        assert checked == [True]
+        assert runtime.approved_url is None
+        assert not assistant._webfetch_waiters
