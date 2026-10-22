@@ -9495,3 +9495,21 @@ a supplemental receipt clarifies the launch envelope's default-only wording. No 
 The next browser diagnosis should distinguish unused base-server overhead from the per-case real
 fixture without changing product behavior or deadlines. Host trials remain held for the backup
 retention decision. No application fix is inferred from the browser failure.
+
+
+A subsequent single desktop receipt diagnostic omitted the unused base server through the existing
+external-server configuration; its real per-case application, isolated context, assertions and all
+deadlines were retained. The initial anchored selector ran zero tests and **Failed at setup**;
+the corrected selector then **Failed** one case, `00:59:44.381Z`–`01:01:00.660Z`, exit 1.
+The saved network trace places turn POST at `01:00:16.861Z`, 29.748 seconds after case start,
+HTTP 202 in 170.014 ms. Workspace summary returned HTTP 200 and the existing six-second synthetic
+delay began. It could not finish within the remaining fraction of the unchanged 30-second case
+budget. Context teardown also exceeded its bound. The cause of preparation latency remains
+**Unproven**; omitting the unused server did not make the case pass. No further unchanged trial
+is justified. All 416 source pins and 53 served/export pairs remained matched, and the exact
+fixture PID/port were absent/refused at parent review. The trace SHA-256 is
+`5a4d7dfd31777b6e7ada862da8ddb918a4d16db57699d4beda17b48a12d145f5`.
+The application repair is pushed at `15a5a1d67c182ded61b0a213e55d6f98c2bff425`; its independent
+40-case synthetic Pass remains separate from this failed browser diagnostic. Host trials await
+the explicit backup-retention choice; local resource preference is also unanswered. No user apps
+or signed-in browser state were changed. The overall goal remains active and release gates open.
