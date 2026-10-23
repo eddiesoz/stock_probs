@@ -610,3 +610,15 @@ no-store error response. This preserves the pinned native client's quota classif
 changing retry limits or turn deadlines. Unknown 429s stay generic. Neither HTTP status alone nor
 a synthetic classification test establishes the cause of a live provider rejection or a completed
 assistant answer; see the [MVP evidence ledger](../../MVP-PLAN.md).
+
+
+## Frontend build dependency advisories
+
+The frontend uses Next's static export; FastAPI serves the generated assets rather than a
+Next.js server. This limits the applicability of server-only Image Optimization, Server Action
+and Cache Component advisories, but does not substitute for current dependency review. The
+Next.js 16.4.2 candidate replaces the affected 16.3.8 dependency and its companion packages;
+React remains pinned at 19.3.0. Preserve the original advisory findings and verify the locked
+update, approved build/stage and browser behavior before promotion. See the
+[upstream security release](https://github.com/vercel/next.js/releases/tag/v16.4.1) and the
+[scoped evidence ledger](../../MVP-PLAN.md#r-astra-121-f6-canonical-bootstrap-and-next-security-repair-2026-10-23).

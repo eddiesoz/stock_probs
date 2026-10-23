@@ -11049,3 +11049,97 @@ The final testing-guide reconciliation now explicitly retains the failed non-thi
 outcome. This evidence append and guide-only wording receive fresh parent docs/map checks;
 implementation/test QA remains bound to its original unchanged inputs. No native restoration,
 current-image or release result follows from these scoped passes.
+
+
+### R-ASTRA-121 F6 canonical bootstrap and Next security repair (2026-10-23)
+
+The successor restored the complete active goal and verified the handoff manifest
+`886fb8422cdcf9976e1a6555e8cfffa15e18bb3aec69dcbeab1df771767a5ee9`.
+The primary, R1 and R4 dirt and all recorded worktree heads were unchanged. Frozen PR #9 head
+`d31dc8ebb0d083a6081e58f84bbe4d312df1d89b` retains the preceding genuine free DeepSeek
+two-user native Pass and its limitations; no provider trial was repeated for the handoff.
+The approved SD frontend's 84 source inputs and all 53 explicit served/export pairs matched
+the retained build on both R and the SD checkout before the canonical attempts.
+
+The first mandatory canonical attempt Failed, exit 2, at `05:35:26Z`–`05:35:27Z`, before
+any of its three required checks completed. The SD wrapper had linked `bin` and `lib` entries
+but no `pyvenv.cfg`, so bootstrap's UV lookup selected the externally managed base interpreter.
+Parent and independent prelaunch source/preflight review had passed their narrower scope and
+did not establish successful bootstrap. The parent's initial generated-storage clarification
+did not address virtual-environment detection; preserve this missed preflight condition.
+The runner terminal verified all 555 source-tree bindings unchanged and a clean worktree.
+Exact runner/gate cgroup and PID absence were verified afterward.
+
+The missing wrapper configuration was copied from the existing private R wrapper with exact
+SHA-256 `93e5a4bd400bd35299dc69bb9ec951f242dbe07d0665da3457084c986917f0cb` and mode 0600.
+Python then identified the wrapper as its virtual environment; UV's compatible-package check
+Passed. A dry-run with the original task cache still Failed on the cached base-interpreter
+result, while a fresh task cache checked all 56 locked packages and reported no changes.
+No externally-managed override, interpreter relocation or shared primary environment change
+was made. The dry-run's contemporaneous child umask was not captured, and its retry receipt
+omits the actual cache assignment; those receipt fields remain Unavailable. The canonical
+runner itself explicitly sets its child umask to 022 and task-private cache path.
+
+Independent retry prelaunch review Passed its declared bindings, repaired environment and
+fixed runner/outer-unit scope. The retry then ran `./scripts/local-gate.sh check` from clean
+d31 on native x86_64, starting `05:40:10Z`. Bootstrap and documentation completeness Passed;
+the approved frontend build/stage completed with 75 frontend tests, followed by Ruff, selected
+mypy and comment-audit subchecks. A fresh npm audit identified three Next.js advisories against
+16.3.8: `GHSA-2464-fhr4-w9xw`, `GHSA-p3m5-59mp-jv5r` and `GHSA-673q-mjm6-r5xr`.
+The parent verified the exact owned process group/cwd/cgroup and sent one SIGTERM to avoid
+continuing a broad Python run on a candidate requiring dependency repair. The terminal child
+exit was 143 after 269 seconds; only two of three aggregate checks completed. Aggregate status
+remains Fail/interrupted, with no completed Python/JUnit/coverage acceptance. All 555 source
+bindings and the clean worktree were preserved. Exact runner/gate/cgroup absence and restoration
+of the private editable package binding to R Passed separately.
+
+The independent read-only d31 source review Passed its declared 4de4-to-d31 application scope:
+all ten changed application paths, 38 enumerated changed paths and direct callers/regression
+declarations, with no P1/P2 findings. Its twelve retained 4de4 pins cover the prior frontend/
+dependency subset only; neither receipt establishes full runtime or release security. The
+current dependency audit remains a separate Fail. The review's initial reading time was not
+captured; the final binding window is `05:47:31Z`, not a reconstructed review-start time.
+
+The official [16.4.1 security release](https://github.com/vercel/next.js/releases/tag/v16.4.1)
+fixes the three advisories; the selected [16.4.2 release](https://github.com/vercel/next.js/releases/tag/v16.4.2)
+also includes subsequent maintained fixes. Current code uses static export and does not declare
+Server Actions or use-cache functions; no exploit or production exposure was demonstrated.
+That applicability observation does not erase the package audit findings. The parent prepared
+an exact Next 16.4.2 package/lock update in task scratch. Only Next and its companion packages
+change; React remains 19.3.0. Its first scratch update Failed with EFBIG because a 4 MiB individual
+file cap rejected registry metadata. A distinct retry with a 128 MiB individual-file cap Passed,
+exit 0 at `05:47:19Z`, reporting zero vulnerabilities. Source remained unchanged during scratch
+resolution. The two-file update is now applied for review; installed audit, approved build/stage,
+independent dependency verification and fresh aggregate acceptance remain pending.
+
+Selected private evidence (never overwritten):
+
+- Initial failed runner packet: `/var/tmp/r12r/f6-canonical-d31-9e706c74cb424bbfb853dfb6fe99e16d/`.
+- Interrupted repaired-environment packet: `/var/tmp/r12r/f6-canonical-d31-retry-55a06447566047ebb0e1c6b00359bd60/`.
+- Independent retry prelaunch SHA-256: `b8cec4d24fbe1abbf93db488fd459cd66429f6feae550953bb20ce232994dd3e`.
+- Independent source review: `/var/tmp/r12r/f6-pr9-d31-security-review-5bd658f5-1097-4f61-b722-bd09380ea365/independent-source-security-review-v1.json`, SHA-256 `1250937e74efdf06e613626fd36d0a85f3e999d21ebc467b8cef2b6641b38a71`.
+- Dependency baseline, scratch attempts and lock update: `/var/tmp/r12r/f6-next-security-repair-8693833cd70c4d5c91f6c8611e487a95/`.
+
+The overall goal remains active. Full canonical/browser/security/accessibility, current-image
+shutdown, actual combined 1 GB, exact-PR recovery/rollback, guide and authenticated owner UI/live
+release gates remain open. Host checks remain held pending the explicit backup-retention choice;
+the exact preserved task backup's byte count and digest were freshly verified without remote
+mutation. No backup was removed, and no merge, deployment, resize, rollout or email occurred.
+The existing 1 GB host, backups, US$15 monthly total cap including tax and seven-feature order
+remain unchanged.
+
+
+Independent dependency review and its single lock-only audit subsequently Passed, exit 0,
+`06:00:01.987Z`–`06:00:04.465Z`, native Linux x86_64, Node 22.19.0/npm 10.9.3. All advisory
+severity counts were zero. The five intended dirty paths and all ten previously reviewed
+application inputs stayed byte-identical across the audit. HTTPS registry and SHA-512 lock
+metadata, exact companion versions, unchanged React/ReactDOM and locked Sharp entries Passed
+source review. Earlier reviewer setup failures stopped before npm; their empty private
+directories and unavailable pre-child timing/artifacts are not audit results. Receipt:
+`/var/tmp/r12r/f6-pr9-next-audit-790b3e50-5fcc-429c-9832-7d15fad5501d/independent-next-lock-audit-v1.json`,
+SHA-256 `8714893a730ccfe5a03fc5f1a367adb0084cdd1c5b4a6df41076af96436a5eee`.
+Parent personally reviewed the integrated package/lock/docs diff and actual review/audit result.
+Documentation validation, 177-file coverage including the five changed paths, and whitespace
+checks Passed for their recorded scope. This final ledger append is parent documentation
+reconciliation after that independent snapshot; it does not relabel the original doc hash.
+The approved current-dependency build/stage and mandatory canonical aggregate are still pending.

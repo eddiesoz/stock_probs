@@ -1198,3 +1198,20 @@ reviewed. This selection is a different-model latency hypothesis, not an automat
 completed native result. LongCat remains documented upstream while absent from the observed endpoint;
 preserve that discrepancy and follow runtime availability. See the [catalog-review checkpoint](../../MVP-PLAN.md#r-astra-121-f6-native-inventory-failure-and-free-model-catalog-review-2026-10-22)
 for the failed trial, independent selected checks and remaining release gates.
+
+
+### Canonical environment and current dependency audits
+
+An SD checkout that reuses the private Python environment must keep its `pyvenv.cfg` beside
+its linked `bin` and `lib` entries. Verify that `sys.prefix` identifies that checkout wrapper
+and differs from `sys.base_prefix`, then check the actual bootstrap command with the same
+private UV cache. A cached interpreter lookup made before restoring the configuration can
+retain the base-interpreter result; preserve that failed attempt and use a fresh task cache.
+Do not bypass the externally-managed guard or modify the shared primary environment. Restore
+and verify the private editable package binding after the SD check.
+
+Run fresh dependency audits before accepting a release candidate; an unchanged lockfile does
+not make an earlier advisory result current. The Next.js 16.4.2 candidate updates Next and its
+companion packages while retaining the React pins. Its lock-only audit is separate from the
+required approved frontend build/stage, browser, image and release checks. See the
+[canonical/dependency checkpoint](../../MVP-PLAN.md#r-astra-121-f6-canonical-bootstrap-and-next-security-repair-2026-10-23).
