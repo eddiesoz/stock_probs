@@ -3129,8 +3129,9 @@ class AssistantProviderManager:
         if provider_id == "opencode-zen" and native_model_id in {
             "minimax-m3.1-flash-free",
             "glm-5.3-flash-free",
+            "deepseek-v4.1-flash-free",
         }:
-            # These models default to max thinking; keep app turns at interactive depth.
+            # Keep these reviewed free models at interactive reasoning depth.
             upstream["reasoning_effort"] = "low"
         if clean_tools is not None:
             upstream["tools"] = clean_tools

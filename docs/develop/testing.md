@@ -40,12 +40,15 @@ legacy `/zen/v1` route and `/inference/openai/v1` must preserve known-model excl
 paths on the same host fail closed, while similarly named unrelated hosts are not globally banned.
 Keep session revalidation and stream cancellation covered without a live provider request.
 
-The exact reviewed GLM-5.3-Flash Free and MiniMax M3.1 Flash Free Zen routes send the app-owned
-`reasoning_effort: low` setting for interactive turns. Other models and paid routes keep their
-existing request parameters. Verify the exact outbound model identity, untouched messages,
-output-token budget, 120-second transport deadline, response-byte bound and `store: false`.
-GLM thinking remains enabled by its model default. This parameter choice is a latency candidate;
-synthetic egress checks do not establish that Zen honors it or that native turns finish in time.
+The exact reviewed DeepSeek V4.1 Flash Free, GLM-5.3-Flash Free and MiniMax M3.1 Flash Free
+Zen routes send the app-owned `reasoning_effort: low` setting for interactive turns. Other models
+and paid routes keep their existing request parameters. Verify the exact outbound model identity,
+untouched messages, output-token budget, 120-second transport deadline, response-byte bound and
+`store: false`. No `thinking` toggle is added. The direct DeepSeek API documents default high
+reasoning and supports low effort; its documentation does not establish Zen's effective default.
+This parameter choice is a latency candidate; synthetic egress checks do not establish that Zen
+honors it or that native turns finish in time. See the
+[DeepSeek effort contract](https://api-docs.deepseek.com/guides/thinking_mode/).
 
 Compatible-chat streams must preserve bounded `reasoning_content` inside the native session so
 the adapter can replay it in assistant tool continuations. It shares the existing history byte
@@ -55,8 +58,8 @@ never enters app token events or timeout logs. The pinned V2 adapter supports th
 the [MiniMax continuation contract](https://platform.minimax.io/docs/api-reference/text-openai-api).
 Preserve the fresh model-bound native session per execution and visible-only app history projection;
 private native reasoning must not be replayed into a later app turn after model selection changes.
-For the exact reviewed free Zen MiniMax M3.1 Flash route, assert the fixed `reasoning_effort=low`
-interactive default, unchanged token/deadline limits, and no effort field on other model/provider
+For each exact reviewed free Zen route above, assert the fixed `reasoning_effort=low`
+interactive setting, unchanged token/deadline limits, and no effort field on unrelated model/provider
 identities. The public request schema stays closed; this is not a browser-supplied option.
 A protocol regression pass does not establish the cause of a live timeout or a completed answer.
 

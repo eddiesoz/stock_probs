@@ -610,6 +610,10 @@ def test_zen_proxy_uses_fixed_route_and_native_public_bearer_without_changing_ot
     [
         ("opencode-zen", "minimax-m3.1-flash-free", "low"),
         ("opencode-zen", "glm-5.3-flash-free", "low"),
+        ("opencode-zen", "deepseek-v4.1-flash-free", "low"),
+        ("opencode-zen", "deepseek-v4.1-flash", None),
+        ("opencode-zen", "other-deepseek-v4.1-flash-free", None),
+        ("openai", "deepseek-v4.1-flash-free", None),
         ("opencode-zen", "glm-5.3-flash", None),
         ("opencode-zen", "other-glm-5.3-flash-free", None),
         ("openai", "glm-5.3-flash-free", None),
@@ -626,7 +630,7 @@ def test_zen_interactive_reasoning_effort_is_model_scoped(
     suffix: str,
     expected_effort: str | None,
 ) -> None:
-    """Avoid the free model's max-effort default without changing other routes or budgets."""
+    """Request interactive depth only on reviewed free routes; preserve other budgets."""
 
     model_id = f"{provider_id}/{suffix}"
     manager = _policy_manager(tmp_path, _policy_model(model_id, provider_id=provider_id))

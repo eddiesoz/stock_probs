@@ -10752,3 +10752,73 @@ verified image/tag absence and acknowledged the ledger. Retirement terminal Pass
 Both protected deployment/recovery images remain, managed count two. No app, container, volume,
 production, backup or global-cache action followed from this retirement. Earlier native failure
 and unavailable direct-inspect evidence are unchanged. The overall goal remains active.
+
+
+### R-ASTRA-121 F6 DeepSeek default-mode failure and low-effort candidate (2026-10-23)
+
+The explicit free DeepSeek selection was committed and pushed at
+`f504d63d632a14bacd9a151e975edb2fe55ad8f2`; PR #9 remains draft. One local managed build
+Passed with a successful original stop guard and newly bound image
+`sha256:c6d0bc309bec88b043ebcd94047f0b6adecf8dc7773cbda5650dd68750649a1b`, context
+`75d424fee72a64e365f010432fc7aae70a2b184119d5cc919e3ae6e357b601c0`. All 150 source inputs
+and 53 explicit served/export pairs matched. Build receipt SHA-256:
+`8133c7353decdea6eaac4b98a931f177a8c2968e8296ad1340c4d106c4743236`.
+Parent terminal SHA-256: `68c642a80b0d6a1c599296344953b19c359cdaa41c0df4afca587b23f9bfb94e`.
+Packet: `/var/tmp/r12r/f6-image-deepseek-82eac539b4814154ac81afb65f77ffbe/`.
+
+The one genuine native trial **Failed**, exit 2, at
+`03:22:58.898576Z`–`03:25:45.198062Z`, 166.3 seconds, with complete bounded output.
+Both owners matched the selected model and workspace summary, but neither completed an answer.
+Owner 0 timed out at 124.546 seconds; owner 1 timed out at 124.106 seconds after approving search
+and receiving eight search sources, with no fetch preview, approval or source. These observed
+elapsed times do not change the configured 120-second turn deadline. Both conversation deletes
+returned HTTP 200. App samples were ready 101/101; worker samples included 94 ready, four starting
+and three unavailable states. A `worker_not_ready` supervisor-status warning remains recorded;
+continuous readiness and the timeout cause are unproven. The local 768 MiB sample peaked at
+520,081,408 bytes with zero high/max/OOM deltas. CPU throttling and anonymous provider timing
+rows do not establish causation or actual combined 1 GB acceptance.
+Native packet: `/var/tmp/r12r/f6-native-deepseek-a00a54ee80e3405e995cce05cbc9da45/`.
+Raw stdout SHA-256: `85cfd0ae7fe3c71745a7fd934fee6dce134172efd5befd0e2a5fa72ce946557f`.
+Independent result-integrity/source/stage/cleanup review **Passed** while retaining native **Fail**:
+153 runtime pins, 150 image inputs and all 53 served/export pairs matched; successful bounded
+Docker inventories found exact container/network ID/name and volume absent, the recorded PID/PGID
+were absent and the loopback port refused connection. Independent receipt SHA-256:
+`8d5926b24a9edc0f656a648f67fbf5575e6d92ef58fca61aca9ca1109c99838d`.
+The source freeze was released after this review. No native repeat or kill occurred.
+
+[DeepSeek's primary thinking documentation](https://api-docs.deepseek.com/guides/thinking_mode/)
+documents default high effort and supports low/high/max. The current app sends low only for the
+exact free GLM and MiniMax identities; the failed DeepSeek run had no app-owned effort setting.
+The next bounded candidate adds only exact `deepseek-v4.1-flash-free` to that existing set, with
+positive and unrelated/non-free/provider counterexamples. No thinking toggle, user-controlled
+parameter, paid route, token/tool/byte/deadline change or permission change is added. Zen honoring
+this field and native completion still require fresh evidence. Static fixture review found the
+sampler reads cgroup files on the host and polls health through HTTP rather than repeatedly
+starting Python inside the candidate; it does not justify a fixture-overhead repair or a CPU cause.
+Exact four-file baselines and research are saved at
+`/var/tmp/r12r/f6-deepseek-low-effort-41b38148da9a48eda5cbd70c94bd57b6/`.
+The new 13-case regression first Failed only its new exact-free-DeepSeek positive case (12 passed,
+one failed), with complete output, stable pins and process/temp cleanup. The candidate requires
+selected independent verification, a newly bound image and a real native trial before broader gates.
+The previous image does not contain this change. No full canonical/browser check is repeated.
+
+The full free Zen restoration, authenticated owner UI, current-image shutdown, actual combined
+1 GB, security/browser, recovery/rollback and release gates remain open, followed by the seven
+approved visible features. The active goal, existing production, 1 GB host, backups and US$15/month
+including tax are unchanged. No deployment, rollout, resize, paid substitution, new account or email
+occurred; the prepared support email remains unsent.
+
+
+The repaired candidate then Passed the parent 56/56 selected checks, no failures/errors/skips,
+with 156 stable pins, complete bounded output and process/temp cleanup. A separate independent
+run of the same 17 selectors Passed 56/56 plus Ruff check/format, with stable source bindings,
+exact-worktree imports and cleanup. Independent receipt:
+`/var/tmp/r12r/f6-deepseek-low-independent-72781410-b47a-4d46-8f7d-0a8ba357d72c/independent-deepseek-low-effort-review-v1.json`,
+SHA-256 `d60c3586aa18a6b73c5678a892a161f235725e909c3c67c03eaef10fbfedbe45`.
+Its raw supervisor did not contain `ended_utc`; the review preserves the outer observation boundary
+and does not reconstruct that field. Parent source review confirms the single exact model-set
+addition and corrected comment; the four new cases verify positive and counterexample request
+behavior. Ruff, documentation validation (9 categories, 14 topics, 8 governance entries), explicit
+changed-file coverage (177 mapped, 4 changed) and diff checks Passed for their scopes. The source
+freeze was released after independent review. These are selected synthetic results, not a native
+or release Pass. A clean pushed candidate, newly bound image and real native trial remain required.
