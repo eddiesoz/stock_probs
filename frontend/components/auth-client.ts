@@ -71,6 +71,7 @@ export class AuthRequestError extends Error {
 
 let csrfToken: string | undefined;
 let csrfRequest: Promise<string | undefined> | undefined;
+let sessionRequest: Promise<AuthSession | null> | undefined;
 
 const CSRF_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -129,11 +130,17 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
   headers.set("Accept", "application/json");
   if (options.body !== undefined && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   const method = (options.method ?? "GET").toUpperCase();
-  if (CSRF_METHODS.has(method) && !headers.has("X-CSRF-Token")) {
+  const mutates = CSRF_METHODS.has(method);
+  if (mutates) sessionRequest = undefined;
+  if (mutates && !headers.has("X-CSRF-Token")) {
     const token = await ensureCsrfToken();
     if (token) headers.set("X-CSRF-Token", token);
   }
-  return fetch(apiPath(path), { ...options, headers, credentials: "include" });
+  try {
+    return await fetch(apiPath(path), { ...options, headers, credentials: "include" });
+  } finally {
+    if (mutates) sessionRequest = undefined;
+  }
 }
 
 export async function authRequest<T = Record<string, unknown>>(
@@ -152,14 +159,21 @@ export async function authRequest<T = Record<string, unknown>>(
 }
 
 export async function getAuthSession(): Promise<AuthSession | null> {
-  try {
-    const body = await authRequest<AuthSession>("/api/v1/auth/session", { cache: "no-store" });
-    if (typeof body.csrf_token === "string") csrfToken = body.csrf_token;
-    return body;
-  } catch (error) {
-    if (error instanceof AuthRequestError && [401, 403, 404].includes(error.status)) return null;
-    throw error;
+  if (!sessionRequest) {
+    // Startup consumers share a pending check; settled results never cache identity.
+    const request: Promise<AuthSession | null> = (async () => {
+      try {
+        return await authRequest<AuthSession>("/api/v1/auth/session", { cache: "no-store" });
+      } catch (error) {
+        if (error instanceof AuthRequestError && [401, 403, 404].includes(error.status)) return null;
+        throw error;
+      }
+    })().finally(() => {
+      if (sessionRequest === request) sessionRequest = undefined;
+    });
+    sessionRequest = request;
   }
+  return sessionRequest;
 }
 
 export function authErrorMessage(error: unknown): string {

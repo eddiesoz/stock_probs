@@ -11580,3 +11580,150 @@ after the repair is accepted. The current canonical, full browser, required secu
 actual combined 1 GB, exact-PR rollback/recovery, final guide, authenticated owner UI and release
 gates remain open. No backup deletion, production mutation, merge, resize, rollout, release or
 email occurred; the 1 GB host, existing backups and US$15 monthly total cap are unchanged.
+
+
+### Free Zen restoration: 326 image/native checkpoint and full-browser failure (2026-10-23)
+
+The clean pushed `326c4dadf8a546b20ee3f36d321d7bca08834af1` candidate built as image
+`sha256:aebbbd8b989d83a84ed32ccb2d47cbd14f43b519e0727d3c22571c676b1ab85c`, context
+`0fa0ce1a73be579ee59759373fe7a6aea6a1627ad2dca247b329569d729c63b1`.
+Actual managed build exit 0, producer completion, 419 source pins, 150 image inputs and 52
+host served/export pairs Passed their declared scope. The exact owned builder generation was
+stopped afterward; this is not independent worker-resource or actual combined 1 GB acceptance.
+Parent terminal v1 mistakenly stored the stage pair list instead of its count, and the first
+native consumer rejected it before runtime. Immutable terminal v2 corrects only that metadata:
+`/var/tmp/r12r/f6-image-326c4da-f98081fec9d64a3e8666d62dd6e69d54/parent-build-terminal-v2.json`,
+SHA-256 `81e6e27745d04ab82f44b97b603a224ffab717a8ef3f1f80524311d90e55c5df`.
+The first build-preparation mapping-shape failure also remains preserved. Independent exact
+binding review used the actual manifests and corrected its initial manifest-name/count metadata
+in a separate receipt, SHA-256 `68592fc2b8a21c8b20cef4c00c8bbc01a5f0212eea96582ef0f127fe3efc8c21`.
+
+One genuine free `opencode-zen/deepseek-v4.1-flash-free` native functional trial Passed on that
+image at `2026-10-23T16:43:46.986581Z`–`16:46:24.239758Z`, actual exit 0. Both concurrent fixture
+owners completed answers of 147 and 719 bytes with matching model and workspace-summary receipts;
+the tool owner received nine native search sources and one approved guarded IANA fetch source.
+Cross-owner/forged MCP requests returned 404, both conversation deletes returned 200, and cache
+markers were cleared. Source/probe/stage bindings and exact owned container/network/volume/PID/
+listener cleanup Passed parent and independent review. Independent receipt
+`/var/tmp/r12r/f6-native-functional-integrity-v1-20261023T1648Z/receipt-v2.json` has SHA-256
+`2b464f319638d7ce3aa8ff4e6df1ee432b565cfd40bc247f0b71e7a0affa0cc0`; the separate metadata
+correction has SHA-256 `726bbc4e4317e7dbe3dde49ac873d588db5e8420f9fa2e2b2bbe408895b90d86`.
+The independently unrecomputable inner stdout digest remains separate from retained outer stdout.
+An anonymous completed-turn row took 119.230 seconds under the unchanged 120-second deadline;
+no owner mapping, latency improvement, timeout cause or reliability claim follows. Local memory
+peaked at 491,679,744 of 805,306,368 bytes with zero high/max/OOM deltas; this is a 768 MiB local
+scope, not actual combined 1 GB host acceptance.
+
+One same-image pending-search shutdown diagnostic Passed its cancellation and app-survival
+scope at `2026-10-23T16:52:22.483622Z`–`16:53:43.741916Z`, actual exit 0. The app stayed ready,
+six assistant routes returned 503, saved records/private history survived, and worker state was
+cleared. Preserve `active_search_scan_acknowledged=false` / `active_scan_ack_invalid`: provider
+execution counts and proof that search did not execute remain Unavailable. Independent numeric
+allocated-port replay is Unavailable because the number was not retained; the enclosing launcher
+recorded its guarded port-refusal result. Independent receipt
+`/var/tmp/r12r/f6-active-kill-terminal-integrity-v1-20261023T1655Z/receipt.json` has SHA-256
+`749454463ee122ea5846925d08c55c6a91ff86a083d7b0f5a7f8adf072b40331`.
+Its 768 MiB sample is not actual combined 1 GB evidence.
+
+The subsequent complete 200-case browser aggregate Failed: 187 passed, 10 failed, three skipped,
+zero flaky. Actual exec/session 79562 and the owned systemd unit exited 1; JUnit records two
+failures and eight errors. Playwright started `2026-10-23T17:01:12.680Z` and recorded
+1,799.091923 seconds. All 419 source pins, 150 image inputs and 52 served/export pairs stayed
+unchanged. Parent and independent terminal/cleanup review Passed the declared scope: the original
+cgroup, all 425 recorded PIDs, six retained listeners, fixture runtime and two owned Chromium
+files were absent. Successful fixture ports not retained individually cannot be replayed. The
+initial false/null post-stop cgroup fields remain unchanged, supplemented by the contemporaneous
+live binding and 1,737 recorded cgroup/PID samples. Parent cleanup's initial nonzero-file guard
+and incorrect fuser invocation remain preserved; the corrected exact-file metadata/reference
+check completed retirement without reading its contents. Two earlier dispatcher setup failures
+(missing outer user-bus environment, then exclusive log-file collision) executed zero cases.
+Independent receipt
+`/var/tmp/r12r/independent-full-browser-review-4af69998-997a-422d-beba-12b0940fe727/receipt.json`
+has SHA-256 `e0ca42edfc6bec0a6a0ceccf0bbf05edd0dcf87d5d2a60b669d1c93c0c598597`.
+This preserves the earlier full aggregate and selected case results; no aggregate or full-app
+accessibility acceptance follows.
+
+Failures include desktop/emulated-mobile assistant route/turn waits, two initial assistant
+launcher waits, and forecast/news/market waits. A mobile assistant-status HTTP 500 retained only
+a generic internal error and no traceback; its cause remains Unproven. The desktop WebFetch trace
+shows two overlapping session checks, one taking 6.001682 seconds; the assistant-status request
+began after the existing five-second launcher deadline. Account controls and AssistantHost both
+request that session. This supports a narrow duplicate-request repair, not attribution of all ten
+failures or proof of the underlying six-second latency cause.
+
+The parent implemented in-flight-only session request sharing with invalidation before and after
+API mutations and identity-aware completion. Settled identities are not cached; no-store fetching,
+CSRF handling, server authorization, original browser assertions and all limits remain. Four new
+real-client deferred-fetch regressions cover sharing/freshness, errors, mutation boundaries and
+old-finalizer races. The pre-repair run recorded three Fail and one Pass; the post-repair parent
+selection Passed 15 tests (11 existing plus four new), exit 0. The first commentary incorrectly
+said 17 and was corrected to 15; exact parent test UTC windows were not captured. Raw output and
+exact baseline bytes are retained in
+`/var/tmp/r12r/f6-auth-session-sharing-4afb88e8ef5b4804b62da1331f164e54`.
+Independent source/test review, approved frontend build/stage and affected browser checks were
+pending at this source checkpoint. This frontend change makes prior image/UI results historical
+for their original bindings; it does not repair the failed aggregate by itself.
+
+The free Zen live fix remains first and unreleased. Current canonical, full browser/security/
+accessibility, actual combined 1 GB, exact-PR recovery/rollback, final guide and authenticated
+owner UI/release gates remain open. Host trials await the explicit backup-retention decision;
+no backup was deleted. No merge, production deployment, rollout, resize or email occurred; the
+existing 1 GB host, backups and US$15 monthly total including tax remain unchanged.
+
+
+The subsequent independent authentication review Passed the exact modified source and 15 focused
+Node tests, at `2026-10-23T17:49:30.951892Z`–`17:49:32.849167Z`, exit 0, native x86_64,
+Node 22.19.0 and child umask 022. It confirms that callers already awaiting an invalidated request
+are not cancelled; invalidation prevents later consumers from joining it. CSRF, credentials and
+401/403/404 handling remain unchanged. Receipt
+`/var/tmp/r12r/independent-auth-session-supplement-2e6da22b-b3b1-4fff-a136-f021cf727419/receipt.json`
+has SHA-256 `6846d98eb37f95309266dd7c5b7aea843b44bd438f8e85ea5c3124819123456b`.
+Three prior receipt-writer failures retained their successful raw test outputs but lacked complete
+per-run metadata. The accepted execution's first receipt falsely required modified source to equal
+HEAD; its immutable supplement instead verifies HEAD against the preserved baseline and the
+modified bytes before/after the test. These audit failures remain preserved; no test result is
+inferred from them.
+
+The full approved `./scripts/build-frontend.sh` path Passed in a private SD build root at
+`2026-10-23T17:47:35.001185Z`–`17:50:53.746936Z`, actual exit 0: type checking, production build
+and 79 frontend tests. All 89 explicit build inputs stayed unchanged. Before staging to R, the
+parent preserved both original generated trees and verified all 52 original served/export pairs,
+including four authored legacy assets. Two preparation failures stopped before R mutation: a
+`ps` exit-1/empty-output metadata guard, then an incomplete backup allowlist for those four assets.
+Both remain recorded. The corrected preservation check and maintained `scripts/build_frontend.py`
+completed, and all 52 new R served/export pairs matched the SD build byte for byte. Independent
+build/input/stage review Passed in its correction supplement, SHA-256
+`54f60713fe5da6fe3446a1e793bbb6c7177cb4856243ef5bec056701be80c1df`; its initial false Fail
+compared a captured string PID with an integer, with no build or browser rerun for that correction.
+
+The four affected WebFetch/revocation browser cases then Failed their selected scope: two
+emulated-mobile Passes and two desktop Failures, no skips or flaky results. Playwright started
+`2026-10-23T17:53:48.337Z` and recorded 147.897253 seconds; actual unit exit was 1, and JUnit
+records one failure and one error. Desktop WebFetch reached the launcher but missed its existing
+five-second preview visibility assertion despite persisted `meta` and `webfetch_preview` events;
+the later snapshot contained the preview, and an incomplete-chunked network error was recorded.
+Desktop revocation reached the assistant and later exceeded its unchanged 30-second case limit;
+its retained trace shows 17.789 seconds in assistant fixture setup. These observations do not
+establish the underlying delivery/startup cause or a security bypass. The opted-in existing
+coordination-timeout diagnostic emitted no timeout stack. Both mobile journeys Passed with
+unchanged assertions and limits; they do not erase either desktop failure or the failed full
+aggregate.
+
+All 420 source pins and 52 served/export pairs remained unchanged through that run. Exact cleanup
+Passed for the original cgroup, all 34 recorded PIDs, all four fixture listeners and base listener,
+owned synthetic runtime and unit. No direct Chromium temp files matched the private TMPDIR pattern;
+no Chromium-file deletion is claimed. Parent terminal receipt SHA-256 is
+`5e5d7db0008a69e85892d8de577a669b42401c01c5353e4ac013875f756c99db`; an immutable supplement,
+SHA-256 `d36cf1d5f0721b3c378f946b87333c0a28b78c438eb3d68c604959c49ecd883e`, corrects its inherited
+limitation about unretained successful-fixture ports, because all four were actually retained and
+checked. Independent terminal/cleanup integrity review Passed its declared scope, retaining the
+browser Fail, in
+`/var/tmp/r12r/independent-auth-build-preterminal-20261023T1755Z/focused-terminal-independent-review-v1.json`,
+SHA-256 `fee1bb7b3e68634d8c35052294ad4bbf32dd844c58439c3730bd32c683d30d08`.
+
+A separate bounded 100-call diagnostic on one disposable fake file/directory found permission
+hardening fast in that sample (0.002244 seconds total for files; 0.004821 for directories).
+It does not establish application performance or rule out intermittent storage delays; no storage,
+permission, authentication-policy or SQL repair follows from that hypothesis. No unchanged browser
+retry or new image/native run was performed. The session-sharing repair is a scoped tested source
+checkpoint; desktop browser causes, required release gates and the overall live-fix goal remain open.

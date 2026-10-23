@@ -12,6 +12,12 @@ signed-in tabs and authentication state. Never clear user cookies, browser stora
 reset a test. Do not use production local-login flows or claim an MFA bypass; exercise authentication
 through development fixtures and isolated contexts.
 
+`frontend/tests/auth-session.test.mjs` exercises the real authentication client with deferred
+fetch responses. Check that simultaneous consumers issue one session request, a later consumer
+gets a fresh server result, failures release the request, account mutations separate checks
+before/during/after their request, and an earlier completion cannot clear a newer pending check.
+This does not cache settled identities or replace server-side revocation checks.
+
 The real-HTTP assistant browser fixture must implement the runtime policy-authority contract:
 accept only its exact immutable model/policy version and a positive integer owner ID. Exercise
 that contract through the real service write scope; do not weaken the production policy guard
