@@ -11834,3 +11834,32 @@ not a complete browser
 aggregate, physical-mobile evidence or proof of the earlier failure causes. The desktop news
 failure and required release gates remain open; the next bounded action is review of its specific
 forecast path before any new discriminating trial, rather than restarting a known-failing full gate.
+
+
+A post-publication cleanup inventory correction preserves the earlier receipts: the passing desktop
+M03 case also declared `outOfSessionApplication`, whose exact `out-of-session-runtime` directory
+was omitted from the original two-path inventory. The parent verified ownership from the maintained
+fixture and unique launch artifact path, rechecked original cgroup/all 17 PID absence, and removed
+only that additional runtime without reading database/key contents. Initial inventory is Fail;
+that exact supplemental runtime cleanup Passed. The additional fixture listener port was not retained,
+so complete fixture-inventory cleanup remains Unavailable, rather than Pass. Supplement SHA-256 is
+`fc6f9e3decf540b45456e8a543297afe15279f3d8d2971c353faa616d9b45209`.
+Independent correction review preserved the original receipt and confirmed this limitation.
+
+A new bounded direct-HTTP comparison used the maintained CLI fixture server at clean `9be5a96`:
+forecast POST 201 in 0.358956 seconds, fixture news GET 200 in 0.022382 seconds, and a second
+forecast POST 201 in 0.303254 seconds. Each curl command exited 0 within its unchanged hard
+five-second bound. The initial system-Python client import failed before server launch or requests
+and is Unavailable; the corrected approved Python 3.11.15 execution exited 0. All 420 explicit
+source pins stayed unchanged. Exact actual-server PID/cgroup/port/runtime/unit cleanup Passed after
+an owned stop while the server was still running; no RuntimeMax timeout occurred. Independent
+metadata/body-size/digest/cleanup review Passed this scope without interpreting response content.
+Receipt SHA-256 is `4fe3dad60496d9046c4a71a412da85505a7b687575133066b5c294db0816d0ee`.
+This client, fixture-news response and fresh server state differ from the browser failure; no cause,
+browser acceptance, native/provider result or product repair follows. Source review found separate
+news/lookup cancellation controllers, no shared forecast abort, and the retained first history
+refresh completed in 29.325 milliseconds. The next bounded discrimination is the existing isolated
+news case against a fresh maintained server, preserving original assertions and limits, before
+attributing the failure to accumulated fixture state or changing application code. No unchanged full
+aggregate, native/image build, production mutation, backup deletion or email followed. The live fix,
+all remaining release gates and the seven-feature goal remain incomplete.
