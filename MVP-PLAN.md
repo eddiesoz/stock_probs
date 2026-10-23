@@ -12100,3 +12100,87 @@ PR-bound recovery/rollback, final guide, authenticated owner UI and release gate
 Production, data, existing 1 GB host/backups, US$15 monthly total and the backup-retention hold are
 unchanged. No merge, deployment, rollout, resize, backup deletion or email occurred. The free Zen
 live restoration still precedes all seven features; the overall goal remains active and incomplete.
+
+
+### R-ASTRA-121 F6 browser-result reconciliation and bounded test repairs (2026-10-23)
+
+The complete browser run at clean pushed `30dd9c448a72da177aee6d5067346b8844dd73c2`
+**Failed**, actual session `68332` exit 1: 186 passed, 11 failed, 3 skipped, zero flaky,
+200 cases, one worker and zero retries. It ran from `2026-10-23T21:59:22.396Z` for
+1,742,746.095 ms; the outer terminal was observed at `22:28:34.318527Z`. All 420 source
+pins, 151 image inputs and 52 served/export pairs held; stdout/stderr were untruncated.
+The parent reviewed the terminal and exact cleanup, then the earlier independent reviewer
+confirmed result integrity and cleanup only. There were 24 matching fixture start/exit
+generations, 23 clear/refused numeric ports, 433 absent recorded PIDs, an absent process group
+and captured original cgroup, and 23 removed runtime directories. The original sampler's false
+cgroup-empty flags remain unchanged: its terminal `ControlGroup` was empty. The separately
+captured original cgroup path and fresh absence checks supply the later cleanup evidence.
+
+Raw packet: `/var/tmp/r12r/f6-full-30dd9c4-20261023`. Parent review SHA-256 is
+`a85407ddff8eb70129c4696c9d59b7ca6eb71b6ee419b3c7c7ad169f481d1b48`;
+independent integrity/cleanup review is
+`69f79634dd390a1c4f4f14ee15f62eecb9ffdf1749fd558cab970a40470d50d3`.
+Its corrected quiet mount-query supplement is
+`a1d0eb438cd73b3992230ad9e3dde94de758d1a2b7bba2ab37d5c21946ca1bfd`;
+the initial header-parsing error remains preserved. Neither review reran the browser or reconciled
+all raw axe artifacts. No full accessibility claim follows.
+
+The parent repaired three test contracts: register model/context waits after navigation and
+launcher visibility but before opening the panel; verify a fresh successful member-session check
+without demanding duplicate startup reads; and pass the exact finite assistant event stream to
+the existing strict request/response/terminal classifier during filter-reset handoff. All six
+selected desktop/Pixel 7 emulation cases **Passed**, exit 0, in 74.473 s, with no skips or flakes.
+Global browser diagnostics and application behavior were unchanged. The parent
+verified cleanup and unchanged 420-pin/52-pair bindings for this run. Independent source review
+SHA-256 is `017c58a904675fa96164faa510418e393f7f21497aa2e66fe4be40daa844a6bf`;
+retained-result/cleanup review is
+`b9c013e99277c8ba3b9f7625e46f771d9b4509691ee9cf282c567d8617560ec5`.
+These are source and result reviews, not independent browser replays or a replacement aggregate.
+Baselines and evidence are under `/var/tmp/r12r/f6-browser-contract-repair-30dd9c4-20261023`.
+
+A separate news-test candidate **Failed** source review on P2: its abort allowlist could grow
+from matching requests created during a pending forecast. Its two-case run also **Failed**,
+one desktop failure and one mobile pass; desktop stalled on the seventh forecast click. The
+parent preserved that candidate and repaired the allowlist to snapshot at most one exact lookup
+already pending before each submission. Later/restarted requests remain unexpected; only the
+marked request's exact `net::ERR_ABORTED` can be classified once. The response wait now settles
+both outcomes immediately, and the original click is inside the existing bounded readiness/history
+diagnostic. No click, response, case, global or outer deadline was increased.
+
+The bounded source repair **Passed** the earlier independent source/negative-invariant review
+(`7c67f2e95e85d25256343bd41025c9b4c52fd684a57d6b7aa012979b511b80c9`). Its two-case runtime
+check still **Failed**: mobile passed; desktop stalled on the busy-state news disclosure before
+the expected HTTP 503. The exact cause remains **Unproven**. Retained result integrity and cleanup
+Passed (`bf3a67147b20d89767e9e4fad1b3ea9bee36ca41439996daebc6e829aab48255`), with 420 unchanged
+source pins and 52 served/export pairs. Both failed runs and their raw reports remain private under
+`/var/tmp/r12r/f6-news-cancellation-30dd9c4-20261023` and
+`/var/tmp/r12r/f6-news-cancellation-bounded-30dd9c4-20261023`. The latter trace records `call@143`
+waiting for visible/enabled/stable action progress without repeated geometry-instability logs;
+absence of progress or screencast frames does not establish a moving layout, renderer failure,
+visibility state, database cause, or repair. The full aggregate rerun is held for discriminating
+investigation of this action stall; do not repeat an unchanged trial or use forced clicks.
+
+Three separate unchanged-case diagnostics Passed their selected scopes: desktop revocation with
+the existing lock-timeout observer (24.788 s), desktop WebFetch keyboard operation with that observer
+(30.709 s), and the mobile forecast journey with the existing fsync/fdatasync-only observer
+(22.389 s). No lock-timeout stack was reproduced. The latter recorded 97 synchronization durations,
+maximum 0.066541 s, none above 0.5 s. These do not prove earlier timeout causes or general reliability.
+Their owned units/cgroups, recorded PIDs, ports and runtime directories were cleaned up. The initial
+anchored-selector setup failure ran zero tests, was preserved and cleaned up before correction.
+
+The 2026-10-23 user first requested parent-only work, then clarified that subagents may be used
+only when delegation is necessary and the work can genuinely proceed asynchronously. The parent
+handles sequential implementation, checks, documentation and review directly; any delegated task
+must have clear ownership and permit useful independent parent progress. Earlier reviews above
+retain their original attribution; parent checks are not independent QA. Root policy and the
+documentation workflow record the clarified rule without agent/model configuration or discovery
+changes. No further subagent was dispatched during these policy updates.
+
+Application/image inputs and frontend assets are unchanged by these test/documentation repairs;
+reuse the preceding exact native free-model, kill and approved frontend-build evidence only for
+their original bindings. Current canonical/full-browser/security, actual-host combined 1 GB,
+PR-bound recovery/rollback, final guide, authenticated owner UI and release gates remain open.
+Physical mobile, actual screen reader, true zoom and PDF/UA remain Unavailable. Production, existing
+1 GB host/backups, the US$15 monthly total and backup-retention hold are unchanged. No merge,
+deployment, rollout, resize, backup deletion or email occurred. Free Zen live restoration still
+precedes all seven features; the overall goal remains active and incomplete.

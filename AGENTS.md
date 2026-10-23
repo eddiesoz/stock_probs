@@ -31,6 +31,14 @@ OpenCode evidence only. For local browser QA, use development fixture accounts a
 browser contexts. Preserve signed-in tabs and authentication state; never clear user cookies,
 browser storage, or profiles to reset tests. Do not claim production local login or an MFA bypass.
 
+User correction (2026-10-23): use subagents only when delegation is necessary and the assigned
+work can genuinely proceed asynchronously and independently of the parent's next step. The parent
+handles implementation, checks, documentation, and review directly when delegation would make the
+parent wait for a sequential dependency. Do not delegate merely to occupy worker slots or repeat
+the parent's work. Give any necessary asynchronous subtask a clear ownership boundary and continue
+useful independent work. Preserve historical reviewer attribution and independent-evidence
+requirements; parent checks are not independent QA. Configured roles alone do not justify delegation.
+
 ### Current model routing
 
 Maintain model, effort, and role assignments only in `model-routing.json`. The model fields in
@@ -69,12 +77,12 @@ proof that archival works. Verify the requested chat state through the app after
 
 ### Feature-by-feature continuation (user correction, 2026-10-20)
 
-For the free Zen assistant repair and the seven-feature plan, the parent does implementation,
-review, and routine checks directly. Use subagents only when necessary (for example, a required
-independent verification gate), explain the need, and use only GPT-6 Luna at `xhigh` workers.
-This supersedes earlier requests to keep all worker slots occupied and prior task-scoped Astra/Sol
-subagent exceptions; historical receipts retain their original attribution. The parent is not a
-subagent. Retain the single-source model-routing projections.
+For the free Zen assistant repair and the seven-feature plan, the parent performs implementation,
+review, checks, and documentation directly by default. The 2026-10-23 user correction above permits
+delegation only when necessary and genuinely asynchronous; it supersedes requests to keep worker
+slots occupied and prior task-scoped Astra/Sol exceptions. Historical receipts retain their original
+attribution; parent checks do not become independent evidence. Retain the single-source
+model-routing projections.
 
 After each feature reaches its tested implementation checkpoint, use the user-level
 `$signal-ledger-feature-handoff` skill to create the next local project thread with GPT-6.1 Sol

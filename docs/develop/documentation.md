@@ -54,6 +54,13 @@ policy can load. The project-scoped `luna-build`, `luna-qa`, and `luna-docs` TOM
 `.codex/agents/` mirror the current ownership split. Their instructions guide task ownership;
 the active Codex permission mode governs actual filesystem access.
 
+The 2026-10-23 user correction in root `AGENTS.md` permits subagents only when delegation is
+necessary and the task can genuinely proceed asynchronously. The parent handles sequential work
+directly; a delegated task must have clear ownership and allow useful independent parent progress.
+Keep historical reviewer attribution and independent-evidence requirements explicit; a parent check
+does not establish independent QA. Configured agent/model projections alone do not justify
+delegation. This policy-only correction changes no runtime configuration or discovery claim.
+
 [`model-routing.json`](../../model-routing.json) is the single maintained source for model,
 reasoning-effort, and role assignments. Codex and OpenCode model fields are synchronized
 projections; maintain the manifest, then run `python3 scripts/sync_model_routing.py --write` to

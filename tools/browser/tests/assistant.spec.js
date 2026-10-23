@@ -422,6 +422,10 @@ async function openRealAssistant(page, origin, { requireModelAndContextReady = f
     { name: "signal_ledger_session", value: "browser-assistant-fixture-session-not-a-production-credential", url: origin, httpOnly: true, sameSite: "Lax" },
     { name: "signal_ledger_csrf", value: "browser-assistant-fixture-csrf-token-not-a-production-credential", url: origin, sameSite: "Lax" },
   ]);
+  await page.goto(`${origin}/overview`);
+  const launcher = page.getByRole("button", { name: "Open Ledger assistant" });
+  await expect(launcher).toBeVisible();
+  // Discovery starts when the panel opens; navigation is outside that response wait.
   const modelResponsePromise = requireModelAndContextReady
     ? page.waitForResponse((response) => response.request().method() === "GET"
       && new URL(response.url()).pathname === "/api/v1/assistant/models")
@@ -430,8 +434,7 @@ async function openRealAssistant(page, origin, { requireModelAndContextReady = f
     ? page.waitForResponse((response) => response.request().method() === "GET"
       && new URL(response.url()).pathname === "/api/v1/assistant/context")
     : null;
-  await page.goto(`${origin}/overview`);
-  await page.getByRole("button", { name: "Open Ledger assistant" }).click();
+  await launcher.click();
   const panel = page.getByTestId("assistant-panel");
   await expect(panel).toBeVisible();
   if (requireModelAndContextReady) {
@@ -3534,9 +3537,16 @@ test("member sessions can use assistant workspace and account context but not th
   assistantRequests.length = 0;
   protectedAdminRequests.length = 0;
   const sessionReadsBeforeAdmin = sessionReads;
+  const adminSessionResponse = page.waitForResponse((response) => (
+    response.request().method() === "GET"
+    && new URL(response.url()).pathname === "/api/v1/auth/session"
+  ));
   await page.goto("/admin");
+  const adminSession = await adminSessionResponse;
+  expect(adminSession.status()).toBe(200);
+  expect(await adminSession.json()).toMatchObject({ authenticated: true, user: { id: 9, role: "member" } });
   await expect(page.getByRole("heading", { name: "Administrator access required" })).toBeVisible();
-  await expect.poll(() => sessionReads).toBeGreaterThanOrEqual(sessionReadsBeforeAdmin + 2);
+  expect(sessionReads).toBeGreaterThanOrEqual(sessionReadsBeforeAdmin + 1);
   await expect(page.getByRole("button", { name: "Open Ledger assistant" })).toHaveCount(0);
   await expect(page.getByTestId("assistant-panel")).toHaveCount(0);
   expect(assistantRequests).toEqual([]);

@@ -1261,3 +1261,22 @@ not make an earlier advisory result current. The Next.js 16.4.2 candidate update
 companion packages while retaining the React pins. Its lock-only audit is separate from the
 required approved frontend build/stage, browser, image and release checks. See the
 [canonical/dependency checkpoint](../../MVP-PLAN.md#r-astra-121-f6-canonical-bootstrap-and-next-security-repair-2026-10-23).
+
+
+### Browser trigger waits and intended request cancellation
+
+Register assistant model/context response waits after navigation and launcher visibility and before
+opening the panel. Keep their existing response deadlines. Startup consumers share a pending auth
+check: verify fresh successful session validation and denied member/admin behavior rather than
+requiring duplicate HTTP reads. A finite synthetic assistant stream must use the existing exact-path
+classifier, retaining one GET, one HTTP 200 event-stream response and one terminal browser outcome.
+
+For news journeys, only the exact autocomplete request already pending before a forecast submission
+may be classified as intentionally cancelled. Bound the pending count before taking that identity
+snapshot; later/restarted same-query requests remain unexpected. Preserve the exact origin, method,
+path, query and `net::ERR_ABORTED` checks, all forecast/news assertions and raw network failures.
+Settle response-wait rejections immediately and put the triggering click inside the existing bounded
+failure diagnostic so a click failure cannot bypass it. Do not increase deadlines or force clicks to
+accept an unresolved action stall. Source-review success and selected case passes do not replace a
+failed aggregate or establish its cause. See the
+[F6 browser-result checkpoint](../../MVP-PLAN.md#r-astra-121-f6-browser-result-reconciliation-and-bounded-test-repairs-2026-10-23).

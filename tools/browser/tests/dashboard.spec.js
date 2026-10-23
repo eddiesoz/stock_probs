@@ -2103,6 +2103,25 @@ test("news renders empty partial stale failure busy unreachable and superseded s
   browserDiagnostics,
 }) => {
   let mode = "empty";
+  const pendingLookups = new Set();
+  const submittedLookups = new Set();
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (request.method() !== "GET" || url.origin !== new URL(page.url()).origin
+        || url.pathname !== "/api/v1/instruments" || url.search !== "?query=ACDC-D&limit=5") return;
+    pendingLookups.add(request);
+  });
+  page.on("requestfinished", (request) => {
+    pendingLookups.delete(request);
+    submittedLookups.delete(request);
+  });
+  page.on("requestfailed", (request) => {
+    pendingLookups.delete(request);
+    // Submitting this forecast deliberately cancels its pending autocomplete lookup.
+    if (submittedLookups.delete(request) && request.failure()?.errorText === "net::ERR_ABORTED") {
+      browserDiagnostics.expectRequestAborts({ method: "GET", path: "/api/v1/instruments" });
+    }
+  });
   await page.route("**/api/v1/news?*", async (route) => {
     const symbol = new URL(route.request().url()).searchParams.get("symbol");
     if (mode === "provider") return route.fulfill({ status: 502, contentType: "application/json", json: { error: { code: "provider_unavailable", message: "Provider unavailable" } } });
@@ -2125,14 +2144,19 @@ test("news renders empty partial stale failure busy unreachable and superseded s
   await gotoSurface(page, "/");
   let lastCompletedForecastId = null;
   const submitForecast = async () => {
+    // Only the single lookup already pending before this submission may be cancelled.
+    expect(pendingLookups.size).toBeLessThanOrEqual(1);
+    for (const request of pendingLookups) submittedLookups.add(request);
     const forecastResponsePromise = page.waitForResponse((response) => (
       response.request().method() === "POST"
       && new URL(response.url()).pathname === "/api/v1/forecasts"
-    ));
-    await page.getByRole("button", { name: "Run forecast" }).click();
+    )).then((response) => ({ response }), (error) => ({ error }));
     let forecastResponse;
     try {
-      forecastResponse = await forecastResponsePromise;
+      await page.getByRole("button", { name: "Run forecast" }).click();
+      const outcome = await forecastResponsePromise;
+      if (outcome.error) throw outcome.error;
+      forecastResponse = outcome.response;
     } catch (error) {
       const [readiness, history] = await Promise.all([
         page.request.get(new URL("/api/v1/readiness", page.url()).href, { timeout: 1_000 })
