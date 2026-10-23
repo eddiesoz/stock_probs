@@ -9,6 +9,7 @@ import secrets
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta, tzinfo
 from importlib.resources import files
@@ -5192,9 +5193,11 @@ def test_model_admin_disable_invalidates_only_that_model_policy(settings):
                 for item in (MODEL, other_model)
             }
             self.default_model_id = MODEL.model_id
+            self.policy_reads: list[str] = []
 
         def model_policy_state(self, model_id, *, owner_id=None):
             del owner_id
+            self.policy_reads.append(model_id)
             return dict(self.states[model_id])
 
     providers = ProviderManager()
@@ -5218,7 +5221,31 @@ def test_model_admin_disable_invalidates_only_that_model_policy(settings):
                 MODEL.model_id,
                 MODEL.policy_version,
             )
+            providers.policy_reads.clear()
             assert service.policy(other_model.model_id).model_id == other_model.model_id
+            assert providers.policy_reads == [other_model.model_id, other_model.model_id]
+
+            providers.policy_reads.clear()
+            with pytest.raises(AssistantUnavailable) as missing:
+                service.policy("free/missing-model")
+            assert missing.value.code == "model_unavailable"
+            assert providers.policy_reads == []
+
+            inventory = Catalog().list_models()
+            selected_row = inventory[1]
+            assert (
+                service.policy(
+                    other_model.model_id,
+                    model_inventory=({**selected_row, "provider_id": None}, selected_row),
+                ).model_id
+                == other_model.model_id
+            )
+            with pytest.raises(AssistantUnavailable) as unavailable:
+                service.policy(
+                    other_model.model_id,
+                    model_inventory=({**selected_row, "available": False}, selected_row),
+                )
+            assert unavailable.value.code == "model_unavailable"
 
             providers.states[MODEL.model_id].update(enabled=False, usable=False, revision=2)
             assert not service._execution_current(
@@ -5258,6 +5285,16 @@ def test_turn_context_uses_admin_policy_generation_not_catalog_base(settings):
             return items
 
     class ProviderManager(FakeProviders):
+        @contextmanager
+        def runtime_policy_scope(self, model_id, policy_version, *, owner_id=None):
+            assert model_id == MODEL.model_id
+            assert type(owner_id) is int and owner_id > 0
+            assert policy_version == reviewed_generation
+            assert self.model_policy_state(model_id, owner_id=owner_id)["policy_version"] == (
+                policy_version
+            )
+            yield ()
+
         def model_policy_state(self, model_id, *, owner_id=None):
             del owner_id
             assert model_id == MODEL.model_id

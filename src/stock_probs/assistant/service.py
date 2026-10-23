@@ -731,10 +731,16 @@ class AssistantService:
         model_inventory: tuple[object, ...] | list[object] | None = None,
         owner_id: int | None = None,
     ) -> AssistantModelPolicy:
+        selected_inventory = tuple(
+            raw
+            for raw in self._raw_models(model_inventory)
+            if (mapping := self._model_mapping(raw)) is not None
+            and mapping.get("model_id", mapping.get("id")) == model_id
+        )
         policy = next(
             (
                 item
-                for item in self.model_policies(model_inventory, owner_id=owner_id)
+                for item in self.model_policies(selected_inventory, owner_id=owner_id)
                 if item.model_id == model_id
             ),
             None,

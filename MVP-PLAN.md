@@ -10926,3 +10926,126 @@ verified image/tag absence and acknowledged the ledger. Retirement Passed at
 Both protected images remain; managed count two. No application, container, volume, production,
 backup or global-cache mutation was performed by retirement. The source candidate still needs
 a clean pushed revision, newly bound image and genuine native result before broader release gates.
+
+
+### R-ASTRA-121 F6 non-thinking native failure and selected-model lookup repair (2026-10-23)
+
+The 1fd non-thinking candidate built image
+`sha256:9365966c2c634479f13cd1710a33c14b58e755594a7a341bdefc8b750749d049`
+from clean pushed `1fd24ab1985a5f12514a4886bccfd283e2cfffae`, context
+`05bfc1c7e8f9660d2cf47f3f361e0aa465605bf1c381f519b43bad70f8edda75`.
+The build child Passed, exit 0, at `04:12:56.630744Z`–`04:19:43.722848Z`.
+The outer wrapper Failed, exit 1, and the original typed stop guard Failed with
+`local_builder_stop_deadline_exceeded`; an immediate separate Docker observation timed out.
+A later distinct read-only observation at `04:21:08.969987Z` confirmed the same started generation
+stopped, PID 0 and cgroup absent. No stop/build retry occurred. The exact-31-key binding terminal
+Passed image/source/stage identity only, retaining those failures: 153 build-source pins,
+150 image inputs and 53 explicit served/export pairs. Build receipt SHA-256:
+`2d1ee86bacde6c4dc49f4cbbbeca21a848937538a0918f2e1bb43afc1f40033a`;
+binding terminal SHA-256 `9e0267ed2e5d1e2f287d1a1101082cd826e00bc6d96edeb3cd7f67cc8b979aec`.
+Build packet: `/var/tmp/r12r/f6-image-deepseek-nonthinking-1a445b16a1d5402c98c7b2bc8b26627c/`.
+
+One genuine DeepSeek non-thinking trial Failed, exit 2, at
+`04:22:26.639010Z`–`04:25:11.405190Z`, 164.766 seconds. Owner 0 completed a 322-byte answer
+in 70.093 seconds. Owner 1 timed out at 120.771 seconds with matching model/summary evidence,
+search and fetch approvals and sources, but no final answer. Interaction records show eight
+search sources while owner evidence reports nine; the discrepancy remains preserved. The last
+snapshot has three completed tools, no running tool and no reasoning parts; that snapshot is
+not a complete stream or proof of Zen's effective mode or timeout cause. Both deletes returned
+HTTP 200. The local 768 MiB failure sample peaked at 528,547,840 bytes with zero high/max/OOM
+deltas; worker samples included starting/unavailable. CPU throttling and anonymous provider
+request timings do not establish cause or actual combined 1 GB acceptance.
+Native packet: `/var/tmp/r12r/f6-native-deepseek-nonthinking-71088a47e93a4f5f8a63244f8dbb4a24/`.
+Raw stdout SHA-256: `867ef1680718adcb60ee1f5b2544a89bf07da775dda99407782ef926ee2e0b65`.
+Independent result/source/stage/exact-cleanup review Passed its declared scope while retaining
+native, wrapper and stop-guard failures. Each 153-path set matched its own manifest, all 150
+shared image inputs matched, and all 53 served/export pairs matched. Successful bounded Docker
+and full process inventories found exact fixture IDs/names/volume and PGID absent; no listener
+and loopback refusal were verified. The earlier direct `ps -g` exit-1/empty result remains
+Unavailable. Review SHA-256 `29fb5cde72084b7aebf425dc23b9a073648fce72ccc4aa94b16ea0456a95ba19`,
+in `/var/tmp/r12r/independent-deepseek-nonthinking-review-8d3c77efd2744b93bf52dab36ed951f8/`.
+The common image-input set is 150; the separate progress wording clarification is retained.
+Source freeze was released after completed review. No native repeat or kill followed.
+
+A bounded synthetic profile of actual service/manager code reproduced catalog-wide state reads
+on every selected-model policy lookup. The corrected v2 counts every callback entry: 2/20/60
+synthetic model catalogs caused 3/21/61 reads per lookup, with zero rejected callbacks. Means
+were 2.980/25.359/96.561 ms, versus 2.294/2.296/2.850 ms through the existing exact-row argument.
+The earlier v1 measured successful callback returns only and omitted rejected callbacks in its
+80-model count; its original results and limitation remain preserved. No actual native catalog
+size or authorization cost was measured, and no native timeout cause is established.
+Research packet: `/var/tmp/r12r/f6-stream-authorization-profile-f55d5d5c0c784c8fbb95e79213ac8255/`.
+
+The narrow repair filters raw current inventory by exact selected ID before existing policy
+adaptation, preserving every matching duplicate in order. Unique-ID selections keep two selected
+live state reads; duplicates keep their per-row reads and final crosscheck. It preserves
+generation/privacy/billing checks, consent/session revocation and each stream boundary;
+there is no authorization cache, new interval, route fallback, budget or permission relaxation.
+The new regression first Failed on an unrelated model read. The first 36-case selection Failed
+one pre-existing generation fixture (35 passed): the fixture exposed admin state without the
+required runtime policy authority, so durable completion failed closed. Applying the exact old
+policy method in a separate synthetic diagnostic reproduced `session_revoked`; this is not a
+native failure cause. The fixture now supplies its fixed reviewed authority scope, leaving the
+production fail-closed guard unchanged. Corrected selected verification is pending.
+
+The post-repair v3 synthetic profile Passed, exit 0, at
+`04:44:49.855883Z`–`04:44:50.980326Z`: exactly two selected state reads, zero unrelated or rejected
+reads at all three sizes, 1.127/2.155/2.066 ms means. All eight source pins remained unchanged,
+output was complete and owned process/scratch cleanup Passed. These are local synthetic timing
+samples, not a native performance or restoration claim. Exact five-file baselines, red/green
+attempts, diagnostic and profile are in
+`/var/tmp/r12r/f6-selected-policy-lookup-3b009455808348e991d59134db3591f8/`.
+Independent scoped QA, parent review, a clean pushed candidate, newly bound image and completed
+native answers remain required before the broader release gates.
+
+The overall goal remains active: free Zen restoration and authenticated owner UI precede the
+seven approved features. Current-image shutdown, actual combined 1 GB, security/browser,
+recovery/rollback and release gates remain open. Production, the existing 1 GB host, backups and
+US$15/month total including tax remain unchanged. No deployment, rollout, resize or email occurred.
+
+
+The corrected parent selection Passed 36/36, exit 0, at
+`04:46:41.720031Z`–`04:49:28.304226Z`, six deprecation warnings, no failures/errors/skips.
+All 157 pins remained unchanged; bounded output, JUnit, actual imports, process-group absence
+and owned-temp cleanup Passed. Raw stdout SHA-256:
+`a885005c95cacb73b87ee191385cf09c8c502891010c0c1037447beb74ece526`.
+Source Ruff check/format, documentation validation (9 categories/14 topics/8 governance entries),
+177-file change-aware coverage for the five changed paths and diff checks Passed. These checks
+remain scoped source/synthetic evidence; the original 35/36 attempt and old-method failure
+remain preserved. Independent verification and a newly bound native result are still pending.
+
+
+The failed 9365 image was archived at
+`/var/tmp/r12r/f6-image-selected-policy-9580cb493d8347bb8c79671486bbdd8a/candidate-9365966c.tar.gz`,
+183,519,339 bytes, SHA-256
+`e2b11b530ad04f3173c39c1a05d4d8e5ddf4e41ca20e4ad1df74fb21599b9fc5`.
+The bounded archive command Passed at `04:47:29.231451Z`–`04:49:04.442038Z`, exit 0;
+its digest/size were re-read before retirement. Full-ID/RootFS/tag/build-receipt, ancestry,
+container-reference and protected-inventory checks Passed. After the typed local development
+pointer selected protected 5ad, exact `--no-prune` retirement verified image/tag absence and
+acknowledged the ledger at `04:50:07.830403Z`. Retirement receipt SHA-256:
+`bf15378a7bb374853c2f2ee672526aeeb090a31468696ce2e1d2bb2e68d9ecb5`.
+Managed count is two; both protected images remain. No application/container/volume/production,
+backup or global-cache mutation was part of retirement.
+
+
+Independent selected QA Passed 36/36, exit 0, at
+`04:53:46.291946Z`–`04:55:54.238918Z` on native x86_64/Python 3.11.15, with six deprecation
+warnings, no failures/errors/skips, 157 stable application/test pins, complete output/JUnit,
+actual import attestation and exact process/temp cleanup. Scoped Ruff check/security (S101
+ignored), format and diff checks Passed. Independent source review Passed exact-ID filtering,
+duplicate ordering and selected live authorization preservation. Its initial documentation
+finding was repaired: two reads applies to unique IDs; duplicates retain per-row reads plus the
+final crosscheck. The initial receipt incorrectly described docs as part of the 157-pin set.
+Independent per-run doc binding is Unavailable; the parent correction receipt's contemporaneous
+hashes matched fresh post-run doc hashes. The immutable supplement preserves this distinction:
+`/var/tmp/r12r/independent-policy-lookup-20261023-a24e5721-86a3-4560-bcd4-99216aea4c43/independent-final-review-supplement-v1.json`,
+SHA-256 `a81080445d0c0b4e4fb473543f074acc01aec4d99fbf6e01e390557ece925180`.
+Original pytest receipt SHA-256:
+`c62abcc51525d96b9d5a61b128d403398553ceb866fa71b6366c742fdcf44bdb`.
+One private receipt-writer attempt failed by parsing JUnit XML as JSON; the corrected writer
+preserved original test results, with no test rerun or source effect. Source freeze was released.
+The final testing-guide reconciliation now explicitly retains the failed non-thinking native
+outcome. This evidence append and guide-only wording receive fresh parent docs/map checks;
+implementation/test QA remains bound to its original unchanged inputs. No native restoration,
+current-image or release result follows from these scoped passes.

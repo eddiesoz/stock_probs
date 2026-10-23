@@ -48,11 +48,21 @@ Verify exact outbound model identity, untouched messages, all thirteen native-co
 declarations and continuations, output-token budget, 120-second transport deadline, response-byte
 bound and `store: false`. These fixed settings are not browser-controlled options. The direct
 DeepSeek API documents both thinking controls and non-thinking tool calls; its documentation
-does not establish Zen's effective settings. The low-effort native attempt Failed, so the mode
-change remains a latency candidate until a newly bound native trial completes. Synthetic egress
+does not establish Zen's effective settings. The low-effort and subsequent non-thinking native
+attempts Failed their two-owner scope; the latter reached search/fetch but no final tool-flow answer.
+The selected-model lookup repair still needs a newly bound native trial. Synthetic egress
 checks do not establish that Zen honors a field or that native turns finish in time. See the
 [DeepSeek thinking contract](https://api-docs.deepseek.com/guides/thinking_mode/) and
 [non-thinking tool contract](https://api-docs.deepseek.com/guides/tool_calls/).
+
+Selected-model authorization filters the current raw inventory by exact model ID before policy
+adaptation. Verify that unrelated models receive no policy-state reads, missing IDs fail closed,
+and duplicate rows retain their original order and validation. Unique-ID selections retain two
+live state reads; duplicate rows retain their per-row reads and final live crosscheck. Generation
+comparison, consent, session revocation and stream-boundary authorization remain in place.
+Synthetic profiling found catalog-wide state reads in this path; it did not measure the
+native catalog size or establish a timeout cause. Recheck the actual native flow on a newly bound
+image before treating the lookup repair as restored service.
 
 Compatible-chat streams must preserve bounded `reasoning_content` inside the native session so
 the adapter can replay it in assistant tool continuations. It shares the existing history byte

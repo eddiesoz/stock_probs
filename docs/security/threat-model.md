@@ -306,6 +306,14 @@ unchanged. These are fixed app-owned controls, not caller-controlled request fie
 destinations or data-sharing permissions. Synthetic request checks do not prove Zen's effective
 settings or native completion; see the dated F6 result in the [MVP plan](../../MVP-PLAN.md).
 
+Selected-model authorization adapts only exact matching raw catalog rows, preserving their order
+and rejecting missing or unavailable selections. Unique-ID selections retain two selected state
+reads; duplicates retain their per-row reads and final live crosscheck. The live generation,
+privacy and billing acknowledgements are still compared. Every existing session,
+consent, revocation and stream-boundary check remains live; no authorization result is cached.
+Avoiding unrelated models' state reads changes lookup work, not permission scope. Synthetic
+profiling does not establish native latency causation or completed provider answers.
+
 The following E167–E777 records preserve earlier scoped findings and failures. They are historical;
 the E847/E849/E850 scopes above supersede only the bindings and checks they explicitly cover.
 
