@@ -1175,7 +1175,9 @@ before adding them; live model names alone cannot grant eligibility. Retained un
 must stay unavailable even if a stale upstream response echoes their IDs.
 
 The October 22 inventory failure occurred before either owner started a native turn. The current
-reviewed selection is GLM-5.3-Flash Free; DeepSeek V4.1 Flash Free is also reviewed, but is not an
-automatic fallback. LongCat remains documented upstream while absent from the observed endpoint;
+reviewed selection is DeepSeek V4.1 Flash Free, explicitly chosen after the GLM low-effort trial
+completed its simple answer but timed out after native search and fetch. GLM-5.3-Flash Free remains
+reviewed. This selection is a different-model latency hypothesis, not an automatic fallback or a
+completed native result. LongCat remains documented upstream while absent from the observed endpoint;
 preserve that discrepancy and follow runtime availability. See the [catalog-review checkpoint](../../MVP-PLAN.md#r-astra-121-f6-native-inventory-failure-and-free-model-catalog-review-2026-10-22)
 for the failed trial, independent selected checks and remaining release gates.

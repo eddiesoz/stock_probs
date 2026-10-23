@@ -10647,3 +10647,108 @@ Retirement terminal Passed at `02:12:28.177136Z`; receipt SHA-256
 Both protected deployment/recovery images remain; the managed count is two. No application was
 started, and no container, volume, production or global-cache mutation occurred. The new candidate
 still requires its own clean pushed revision, newly bound image and native trial.
+
+
+### R-ASTRA-121 F6 GLM-low native failure and DeepSeek model hypothesis (2026-10-23)
+
+The exact GLM interactive-effort candidate was committed and pushed at
+`b26db2de38adb1936e960731839ae07b0bd7b2fc`; PR #9 remains draft. Parent integrated source/evidence
+review Passed for its selected scope (receipt SHA-256
+`d82b07359ad4f749b3c34e9669f269fe34a7793cc63706ed54a6b3a246de5018`). Final documentation
+validation reported 9 categories, 14 topics and 8 governance entries; changed-file coverage Passed
+177 mapped files/4 changed paths and the diff check Passed. These did not establish live restoration.
+
+One local managed build Passed, exit 0, at `02:24:12.176869Z`–`02:31:57.918760Z`, 465.742 seconds:
+image `sha256:efe354e3476d095da5f35924947073357996cb1ef675f49817176bf667a48102`, context
+`5489d72af7ec445dcfe3dfd8128615e5ffedad77ee2a5b4f4621beace7e4e4a2`, 150 source inputs and 53
+served/export pairs. Only `providers.py` differed from the prior image's 150-input allowlist.
+Build receipt SHA-256: `cbe7083773679b53490f3bcfce77e5c59297953904dee115da649bad0f843694`.
+The original outer wrapper **Failed**, exit 1: a three-second Docker cache-volume inspection timed
+out during target verification, before a stop command. The exact original failure remains Fail.
+A fresh observation found the same builder generation running. The first stopped-cgroup query
+Failed on that running state before publishing a receipt; the generation-only supplement preserved
+this distinction. The first separate-cleanup review Failed on the generic failure-code precondition.
+A new immutable correction bound the parent-observed pre-stop traceback phase and no-stop fact;
+independent corrected static review Passed. One distinct typed cleanup then Passed with the same
+generation stopped and cgroup absent; no build was retried or builder restarted. Cleanup receipt
+SHA-256: `c1e8f1db6d68618f3ae063459059b853a7ae01a91d18da88dd7a897910e56bc9`.
+Earlier held private finalizer/key and cleanup syntax mistakes remain preserved; neither was
+executed. The corrected exact-31-key finalizer Passed and retained the original failed guard in
+its limitations. Build terminal SHA-256:
+`8a8ee520a924b43ef8fc71d18874c7a201796e77f96e4c26d300784894a7e425`.
+Packet: `/var/tmp/r12r/f6-image-effort-9a860cbabda147b89248c31da20e2a19/`.
+
+The exact read-only build consumer and independent final native binding review Passed, retaining
+all original budgets and the failed wrapper outcome. One genuine GLM-low native trial ran at
+`02:47:04.961796Z`–`02:49:54.395138Z`, exit 2, 169.433 seconds, with complete bounded output.
+Readiness Passed in 15.083 seconds. Owner 0 completed a 133-byte answer in 42.886 seconds with
+matching model/summary evidence. Owner 1 received its summary, approved native search and guarded
+fetch, then timed out at 121.177 seconds without a final answer. Interaction rows report eight
+search sources while owner evidence reports nine; both raw counts remain preserved. The fetch
+source arrived at 107.978 seconds. The final diagnostic snapshot reports three completed tools
+and no running/error tools. Native acceptance remains **Fail**, not a completed repair. Comparing
+the earlier 86.763-second simple answer with 42.886 seconds does not prove causation or that Zen
+honored the requested effort. Anonymous provider timing rows are not assigned to owners.
+Both conversation deletes returned HTTP 200; owner 0 had three pending retries. The local 768 MiB
+failure sample peaked at 499,236,864 bytes with zero high/max/OOM deltas. All 106 app/worker health
+samples were ready, while a separate supervisor-status request-timeout warning remains; neither
+proves continuous accessibility or a timeout cause. Actual combined 1 GB acceptance remains open.
+
+Native packet: `/var/tmp/r12r/f6-native-glm-low-0083c97358c64d5e98a455fb19d0a31d/`.
+Raw stdout SHA-256: `201faf28407c23bd804b29fa03005d4dd6dc32983fced0d38578b116de88b256`.
+Parent result-review SHA-256: `f7f08bfa385c548e4e1e5fc545543b76ac1e4636fc2028fbc77ddf49498a0ca3`.
+Independent terminal/source/stage review verified 153 runtime pins and all 53 pairs, preserving
+functional Fail. Its direct-inspection absence classifier could not classify Docker errors, so
+that receipt remains **Unavailable** (SHA-256
+`1056f0d40d296aa1a8e52e9edd5bd51eb0db82519f16e681bcff2820feb5d4cc`). A separate fresh bounded
+successful-inventory review **Passed** exact container/network ID/name and volume absence,
+process-group absence and captured loopback-port refusal. Supplemental cleanup receipt SHA-256:
+`83b377c21d36abad852e3533dd395f4a25ec54fefccd9b4b66b610038158fb46`. No native rerun occurred.
+The source freeze was released after that review.
+
+Further [official V2 model documentation](https://dev.opencode.ai/v2/docs/console/models) still
+lists DeepSeek V4.1 Flash Free, temporarily free with zero retention and no model training.
+A bounded public metadata read at `02:56:49.382751Z`–`02:56:49.583126Z` returned HTTP 200,
+7,091 bytes and 85 rows, including the exact already-reviewed DeepSeek ID. Metadata is not
+inference acceptance. [DeepSeek's thinking documentation](https://api-docs.deepseek.com/guides/thinking_mode/)
+describes default high reasoning and required reasoning replay for tools; this app already preserves
+bounded reasoning history. No new missing-field cause is inferred and no new DeepSeek request
+parameter is added. The parent explicitly selected the existing reviewed DeepSeek free row for the
+next native candidate, retaining all privacy, free billing, exclusion, tool and 120-second deadline
+checks. This is a different-model hypothesis, not an automatic fallback or a successful answer.
+Its changed catalog fingerprint requires a newly bound image before native execution.
+Baselines/research: `/var/tmp/r12r/f6-deepseek-model-hypothesis-66bbfb4a25134810bc4a5e67d45b52f4/`.
+The free Zen live fix, authenticated owner UI, required native/security/resource/recovery/rollback
+and release gates and seven visible features remain open. Production, the 1 GB host, backups and
+US$15/month including tax are unchanged. No paid model, new account, kill, deployment, rollout,
+resize or email occurred; the prepared support email remains unsent.
+
+
+The explicit DeepSeek selection then Passed 52/52 parent selected synthetic checks and a separate
+independent 52/52 selection, with no failures, errors or skips. Independent child execution was
+`03:02:46.524817Z`–`03:02:52.799791Z`, normal child umask 022; all 156 pinned inputs and 27
+imported package modules matched, streams were complete, and process/temp cleanup Passed.
+Receipt `/var/tmp/r12r/f6-deepseek-independent-qa-f4e514c7-49db-4302-ad34-a144036105fa/independent-selection-review-v1.json`
+has SHA-256 `dc6cc06b176d440850414e7cef3b1f2bbd395d075775d0ffbde51ee72726cc84`.
+The reviewer preserved a preliminary scratch device-ID assertion failure before packet/test
+creation; the corrected setup verified the required mount UUID. No source repair or native run
+occurred in independent QA. Parent source review confirms a single catalog selector value and
+its matching expected test value; all model eligibility fields and request parameters are unchanged.
+Documentation validation, coverage and configured Ruff/format/diff checks Passed their declared
+scope. A newly bound image and native trial remain pending.
+
+The exact failed GLM-low image was archived and checksum-verified at
+`/var/tmp/r12r/f6-image-deepseek-82eac539b4814154ac81afb65f77ffbe/candidate-efe354e3.tar.gz`,
+183,518,942 bytes, SHA-256
+`997f97ec441d5bca2b41a48931c7b25c759178343796deb4655421f85c85e02b`.
+The bounded archive command Passed at `03:03:02.450731Z`–`03:04:39.657090Z`, exit 0;
+its byte count and digest were re-read before retirement. The exact target's full-ID/RootFS,
+registered build receipt, tag, container-reference and protected-inventory review Passed.
+After the typed local development pointer selected protected 5ad, exact retirement removed only
+`sha256:efe354e3476d095da5f35924947073357996cb1ef675f49817176bf667a48102` with `--no-prune`,
+verified image/tag absence and acknowledged the ledger. Retirement terminal Passed at
+`03:07:05.460028Z`; receipt SHA-256
+`b6b13d924bddf245e6372fdc139b5ff34362ec0cb12001ee706ade0fa5760d50`.
+Both protected deployment/recovery images remain, managed count two. No app, container, volume,
+production, backup or global-cache action followed from this retirement. Earlier native failure
+and unavailable direct-inspect evidence are unchanged. The overall goal remains active.

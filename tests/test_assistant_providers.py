@@ -1541,7 +1541,7 @@ def test_current_free_zen_review_accepts_only_the_exact_new_no_training_models()
     models = catalog._parse_zen_rows([{"id": model_id} for model_id in upstream_ids])
 
     assert {model.model_id for model in models} == {f"opencode-zen/{key}" for key in reviewed}
-    assert catalog._policy["zen"]["native_acceptance_model_id"] == "glm-5.3-flash-free"
+    assert catalog._policy["zen"]["native_acceptance_model_id"] == "deepseek-v4.1-flash-free"
     assert all(model.free and not model.training for model in models)
     assert all(
         not model.data_collection_allowed and not model.data_collection_default for model in models
