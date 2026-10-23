@@ -12,13 +12,15 @@ import re
 import sys
 import threading
 import time
-from contextlib import ExitStack, contextmanager, suppress
+from collections.abc import AsyncIterator
+from contextlib import ExitStack, asynccontextmanager, contextmanager, suppress
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
 import uvicorn
+from fastapi import FastAPI
 
 import stock_probs
 from stock_probs.api import create_app
@@ -79,6 +81,17 @@ _SESSION = "browser-assistant-fixture-session-not-a-production-credential"
 _CSRF = "browser-assistant-fixture-csrf-token-not-a-production-credential"
 _GITHUB_ID = 120120120
 _EVENT_STREAM_PATH = re.compile(r"^/api/v1/assistant/conversations/[^/]+/turns/[^/]+/events$")
+_AUDIT_EVENT_TYPES = (
+    "meta",
+    "token",
+    "tool",
+    "source",
+    "proposed_action",
+    "private_context_preview",
+    "webfetch_preview",
+    "error",
+    "complete",
+)
 
 
 class _AssistantStreamAudit:
@@ -87,6 +100,7 @@ class _AssistantStreamAudit:
     def __init__(self, application, records):
         self.application = application
         self.records = records
+        self.active_records = []
 
     async def __call__(self, scope, receive, send):
         if (
@@ -102,19 +116,47 @@ class _AssistantStreamAudit:
         complete_event_seen = False
         body_tail = b""
         body_ended = False
+        active = {
+            "path": scope.get("path", ""),
+            "status": None,
+            "body_bytes": 0,
+            "body_bytes_sent": 0,
+            "sent_event_types": [],
+            "body_end": False,
+            "send_pending": False,
+        }
+        self.active_records.append(active)
+        del self.active_records[:-10]
+        observed_types = []
 
         async def capture(message):
             nonlocal response_status, body_bytes, complete_event_seen, body_tail, body_ended
             if message.get("type") == "http.response.start":
                 response_status = message.get("status")
+                active["status"] = response_status
             elif message.get("type") == "http.response.body":
                 body = message.get("body", b"")
                 body_bytes += len(body)
                 body_tail = body_tail + body
                 complete_event_seen = complete_event_seen or b"event: complete" in body_tail
+                for event_type in _AUDIT_EVENT_TYPES:
+                    if event_type not in observed_types and (
+                        f"event: {event_type}\n".encode() in body_tail
+                    ):
+                        observed_types.append(event_type)
                 body_tail = body_tail[-32:]
                 body_ended = not message.get("more_body", False)
-            await send(message)
+                active["body_bytes"] = body_bytes
+                active["body_end"] = body_ended
+            active["send_pending"] = True
+            try:
+                await send(message)
+            finally:
+                active["send_pending"] = False
+            if message.get("type") == "http.response.body":
+                # ASGI acceptance is distinct from the browser receiving/rendering bytes.
+                active["body_bytes_sent"] += len(message.get("body", b""))
+                active["sent_event_types"] = list(observed_types)
 
         error_class = None
         try:
@@ -123,6 +165,9 @@ class _AssistantStreamAudit:
             error_class = type(error).__name__
             raise
         finally:
+            self.active_records[:] = [
+                record for record in self.active_records if record is not active
+            ]
             self.records.append(
                 {
                     "path": scope.get("path", ""),
@@ -434,9 +479,10 @@ def main() -> None:
     _install_lock_failure_diagnostic(application.state.repository)
     runtime.assistant = application.state.assistant
     stream_audits = []
+    stream_audit = _AssistantStreamAudit(application, stream_audits)
 
     async def assistant_stream_audit():
-        return {"items": list(stream_audits)}
+        return {"items": list(stream_audits), "active_items": list(stream_audit.active_records)}
 
     application.add_api_route(
         "/__qa/assistant-stream-audit",
@@ -448,24 +494,31 @@ def main() -> None:
     # fixed historical clock for deterministic saved-event context.
     assistant_now = datetime.now(UTC).replace(microsecond=0)
     application.state.assistant.clock = lambda: assistant_now
-    settings.ensure_local_dirs()
-    application.state.repository.migrate()
-    user_id = _seed_session(application, assistant_now)
-    application.state.service.search("ACDC", "stock", owner_user_id=user_id)
-    print(
-        json.dumps(
-            {
-                "qa_stage": "fixture_started",
-                "pid": os.getpid(),
-                "port": args.port,
-                "module_path": stock_probs.__file__,
-            }
-        ),
-        file=sys.stderr,
-        flush=True,
-    )
+    application_lifespan = application.router.lifespan_context
+
+    @asynccontextmanager
+    async def fixture_lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # Seed after canonical migration, before Uvicorn accepts fixture requests.
+        async with application_lifespan(app):
+            user_id = _seed_session(app, assistant_now)
+            app.state.service.search("ACDC", "stock", owner_user_id=user_id)
+            print(
+                json.dumps(
+                    {
+                        "qa_stage": "fixture_started",
+                        "pid": os.getpid(),
+                        "port": args.port,
+                        "module_path": stock_probs.__file__,
+                    }
+                ),
+                file=sys.stderr,
+                flush=True,
+            )
+            yield
+
+    application.router.lifespan_context = fixture_lifespan
     uvicorn.run(
-        _AssistantStreamAudit(application, stream_audits),
+        stream_audit,
         host="127.0.0.1",
         port=args.port,
         log_level="warning",

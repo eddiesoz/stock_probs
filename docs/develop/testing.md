@@ -24,6 +24,15 @@ that contract through the real service write scope; do not weaken the production
 to accommodate a stale fixture. Separately hold the status storage projection and verify that
 health/readiness remain responsive and that revocation during the wait returns no quota data.
 Retain the existing case, action, database and native-turn bounds when diagnosing slow paths.
+Seed its synthetic account and history inside the real application lifespan, after canonical
+migration and before the server accepts requests. Do not migrate once for seeding and again at
+startup. Cover successful authenticated readiness and seed-failure cleanup through that same
+lifespan in `tests/test_browser_assistant_fixture.py`.
+The fixture's existing stream audit keeps completed streams separate from at most ten active
+streams. Active diagnostics expose byte totals, whether an ASGI send is pending, and closed event
+names only; they retain no response text or URL payload. A returned ASGI send does not prove that
+the browser received or rendered the bytes. Preserve the original failing result when a later
+diagnostic passes without establishing its cause.
 
 ## Assistant access-failure checks
 

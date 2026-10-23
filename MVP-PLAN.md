@@ -11727,3 +11727,110 @@ It does not establish application performance or rule out intermittent storage d
 permission, authentication-policy or SQL repair follows from that hypothesis. No unchanged browser
 retry or new image/native run was performed. The session-sharing repair is a scoped tested source
 checkpoint; desktop browser causes, required release gates and the overall live-fix goal remain open.
+
+
+### Free Zen restoration: fixture lifespan and bounded stream-audit checkpoint (2026-10-23)
+
+The parent corrected the deterministic browser fixture to seed its synthetic account/history
+inside the canonical application lifespan, after its migration and before accepting requests.
+Previously it migrated before seeding and then migrated again at server startup. The new wrapper
+retains canonical shutdown, including seed failure. No application, provider, SQL, permission or
+security policy changed. Exact baseline bytes and raw diagnostics are retained in
+`/var/tmp/r12r/f6-fixture-lifespan-152670d3c9534ede940573d2662c462c`.
+The corrected pre-repair regression Failed both normal and seed-failure cases; an earlier test
+setup failure omitted the maintained frozen forecast clock and remains preserved. Parent and
+independent post-repair selections each Passed all 17 fixture tests with two warnings. Independent
+source/lifecycle review Passed; its final receipt SHA-256 is
+`1869bdddb9025a3f743bc0422d37496f726d23d4bd575364f95d9d0f37784ee3`.
+A nested-JUnit metadata correction was recorded separately without rerunning the tests.
+
+The existing desktop revocation case then Passed in 19.531 seconds under its original 30-second
+limit. The separate desktop WebFetch case still Failed in 33.812 seconds at its unchanged
+five-second preview assertion despite persisted meta/preview events. Each run had 420 unchanged
+source pins and 52 unchanged served/export pairs, successful exact owned cleanup, and actual
+terminal evidence. Independent terminal review Passed the declared integrity scope while
+preserving these different outcomes; receipt SHA-256 is
+`dd0127142d5ca2a835eab49db1fd08ad00c4591e1b5f7ee2c299da8179418654`.
+Neither selected result rewrites the prior failed full browser aggregate or proves a cause.
+
+A separate direct loopback HTTP comparison observed HTTP 200 and both meta and WebFetch-preview
+frames (649 bytes, first byte at 0.230593 seconds) within curl's existing five-second bound.
+Curl exited 28 because the unapproved stream remained open; the client cancelled the turn with
+HTTP 200 and exited 0. No URL approval, external fetch, real model or native check ran. Two client
+envelope setup failures preceded this observation on the same server and remain preserved.
+The server itself later reached its original 360-second RuntimeMax: its envelope is Fail, separate
+from the scoped preview-observation Pass. Parent cleanup found it already terminal, rather than
+causing an orderly shutdown. Immutable correction `http-direct-envelope-status-correction-v1.json`,
+SHA-256 `fe6a0264aa88d21e5d50350b1b3674d2a2e601ad3ea00d221d4774fd915d7bde`, preserves that distinction.
+Exact task runtime, original cgroup, recorded PID and listener cleanup Passed. This different-client
+observation narrows investigation; it does not establish the browser failure's cause.
+
+The parent extended the existing fixture stream audit with at most ten active metadata rows:
+byte totals, send-pending state and allowlisted event names. Completed-record semantics remain;
+no response text or URL payload is retained. Counts after ASGI send returns are not evidence of
+browser receipt or rendering. The existing failure diagnostic projects those facts for the exact
+stream, without changing assertions, polls, action limits or turn budgets. Parent red regression
+Failed both cases; parent and independent green selections Passed all 19 fixture tests with two
+warnings. Independent Ruff, formatting, JavaScript syntax and source privacy/bounds review Passed.
+Independent receipt SHA-256 is
+`0a34a92ec1a668fc49668659a8dda7dd563bfa16abfd0600d69603966b02d7bb`.
+Its initial pin metadata compared current extension bytes to baseline bytes; an immutable supplement
+separates verified baseline hashes from unchanged current pre/post-test hashes, without rerunning.
+The regression exercises one active stream at a time, not more-than-ten concurrent streams.
+
+The one subsequent desktop WebFetch diagnostic Passed all existing approval, decline, stale-context
+and stream-completion assertions: case 40.181 seconds, total 48.614503 seconds, actual unit/monitor
+exit 0, JUnit one test with zero failures, errors or skips. Its two preview axe snapshots each had
+zero violations/incompletes. The failure-only active diagnostic did not emit because the assertion
+Passed; the earlier delivery failure's cause remains Unproven. All 420 source pins and 52
+served/export pairs stayed unchanged. The original cgroup, 14 recorded PIDs, both retained listeners,
+exact base/case runtimes and unit were absent after cleanup; no Chromium temp files matched and none
+were deleted. Parent terminal receipt `audit-webfetch-parent-terminal-review-v1.json` has SHA-256
+`e845875099f7bf07efe0f9f5fdc53a4d5bde019c785abecc0d009ef70eb58bcc`.
+Independent terminal integrity review Passed for that scope, without click replay; receipt SHA-256
+is `42f29d03b58c1a9f2c63cddd28e6dd9412c24caf34c78d6726ce181e0faf079f`.
+Independent direct-HTTP integrity review separately preserved the envelope Fail / preview Pass /
+cleanup Pass distinction; receipt SHA-256 is
+`f14a03ecd881da886ff395d281b854d09a08e0e2c13c3c65e6ec0778044a0af5`.
+
+The approved 79-test frontend build, its 89 inputs and 52 served/export pairs are unchanged by this
+fixture-only checkpoint and are reused within their original scope. The last complete 200-case
+browser aggregate remains Fail; separate selected Passes are not an aggregate. Current canonical,
+full browser/security/accessibility, current-image native/resource, actual combined 1 GB,
+exact-PR recovery/rollback, final guide and authenticated owner UI/release gates remain open.
+The free Zen live fix remains first and unreleased. No backup deletion, merge, production deployment,
+rollout, resize or email occurred. Existing data, 1 GB host/backups and US$15 monthly total including
+tax remain unchanged; the seven-feature implementation/release goal is incomplete.
+
+
+Two further selections checked the remaining affected failures under the same original limits.
+The desktop selection Failed: the durable route-context/history/proposal/tool journey Passed in
+23.087 seconds, market-state coverage Passed in 14.270 seconds, and the news-state case Failed in
+16.976 seconds. Actual unit/monitor exit was 1; JUnit records three tests, zero failures, one error,
+zero skips. The retained trace shows a first forecast HTTP 201 and news HTTP 200, then a second
+forecast request without a recorded response before the unchanged five-second response wait expired.
+The intended later news 502/503 states were not reached. Root cause is Unproven; no unchanged retry,
+deadline increase or product repair follows. Raw app stderr has startup facts but no timeout stack.
+Parent terminal receipt SHA-256 is
+`219a03db7eb0472a30fe298d671578e150ecaec4a833617c5d7f63e6c8d44c2b`.
+The initial cleanup prefix guard Failed before mutation; its preserved exact-directory inventory
+supported a corrected literal-path intent, followed by cleanup Pass.
+
+The separate emulated-mobile selection Passed all four cases with actual unit/monitor exit 0 and
+JUnit four tests, zero failures/errors/skips: durable assistant journey 18.178 seconds, stock/ETF
+contracts 9.950 seconds, responsive/reduced-motion/high-contrast layouts 23.231 seconds, and
+live/markets unavailable-data disclosures 7.805 seconds. Playwright total was 66.7185 seconds.
+Parent terminal receipt SHA-256 is
+`64074ef046075ee480c75220328aed0edd9a05d9741536087507709f8039415f`.
+Each selection preserved all 420 source pins and 52 served/export pairs; exact cleanup Passed for
+its original cgroup, recorded PIDs (17 desktop, 19 mobile), both retained listeners, unit and
+synthetic base/case runtime. No matching Chromium temp files were deleted. Independent combined
+terminal integrity review retained desktop Fail and mobile Pass, with successful declared cleanup
+review; receipt SHA-256 is
+`efd25dbd2ca0c8ecd7807ac0e156a000291e8a362efbaae4ec6790f2b7a6c59d`.
+Its current readback differs only in the deliberately updated post-run MVP ledger; the three audit
+source files and all 52 current served/export pairs match. These are separate selected outcomes,
+not a complete browser
+aggregate, physical-mobile evidence or proof of the earlier failure causes. The desktop news
+failure and required release gates remain open; the next bounded action is review of its specific
+forecast path before any new discriminating trial, rather than restarting a known-failing full gate.

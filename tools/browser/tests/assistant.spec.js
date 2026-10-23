@@ -2292,6 +2292,9 @@ test("real FastAPI WebFetch preview shows the exact destination and binds one-ti
         }
         return {
           audit: Array.isArray(audit.items) ? audit.items.map(({ status, body_bytes, complete_event, body_end, error }) => ({ status, body_bytes, complete_event, body_end, error })) : audit,
+          active_audit: Array.isArray(audit.active_items) ? audit.active_items
+            .filter((item) => item.path === eventPath)
+            .map(({ status, body_bytes, body_bytes_sent, sent_event_types, body_end, send_pending }) => ({ status, body_bytes, body_bytes_sent, sent_event_types, body_end, send_pending })) : [],
           turn_status: turn?.status ?? null,
           turn_error_code: turn?.error_code ?? null,
           event_types: eventTypes,

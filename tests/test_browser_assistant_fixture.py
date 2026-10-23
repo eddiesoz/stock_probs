@@ -13,9 +13,130 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi.testclient import TestClient
 
 from stock_probs.assistant.service import AssistantService
 from stock_probs.assistant.storage import AssistantStorageExecutionStale
+from stock_probs.repository import Repository
+
+
+@pytest.mark.parametrize("stream_fails", [False, True])
+def test_browser_stream_audit_reports_pending_emission_without_body_content(stream_fails):
+    fixture = runpy.run_path(
+        str(Path(__file__).resolve().parents[1] / "tools/browser/assistant_qa_server.py")
+    )
+
+    async def exercise():
+        started = asyncio.Event()
+        release = asyncio.Event()
+        failure = RuntimeError("synthetic stream failure")
+        frames = [
+            b'id: 1\nevent: meta\ndata: {"private_text":"not retained"}\n\n',
+            b'id: 2\nevent: webfetch_preview\ndata: {"private_url":"not retained"}\n\n',
+        ]
+
+        async def application(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            for frame in frames:
+                split = frame.index(b"event:") + len(b"event: ")
+                for chunk in (frame[:split], frame[split:]):
+                    await send({"type": "http.response.body", "body": chunk, "more_body": True})
+            started.set()
+            await release.wait()
+            if stream_fails:
+                raise failure
+            await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+        async def receive():
+            return {"type": "http.disconnect"}
+
+        async def send(message):
+            return None
+
+        records = []
+        audit = fixture["_AssistantStreamAudit"](application, records)
+        task = asyncio.create_task(
+            audit(
+                {
+                    "type": "http",
+                    "method": "GET",
+                    "path": "/api/v1/assistant/conversations/fixture/turns/fixture/events",
+                },
+                receive,
+                send,
+            )
+        )
+        try:
+            await asyncio.wait_for(started.wait(), timeout=1)
+            assert records == [], "completed records must keep their original terminal meaning"
+            assert len(audit.active_records) == 1
+            pending = audit.active_records[0]
+            assert pending["status"] == 200
+            assert pending["body_bytes"] == sum(map(len, frames))
+            assert pending["body_bytes_sent"] == pending["body_bytes"]
+            assert pending["sent_event_types"] == ["meta", "webfetch_preview"]
+            assert pending["body_end"] is False
+            assert pending["send_pending"] is False
+            assert "not retained" not in str(pending)
+        finally:
+            release.set()
+            outcome = (await asyncio.gather(task, return_exceptions=True))[0]
+        assert outcome is failure if stream_fails else outcome is None
+        assert audit.active_records == []
+        assert len(records) == 1
+        assert records[0]["error"] == ("RuntimeError" if stream_fails else None)
+        assert records[0]["body_end"] is (not stream_fails)
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("seed_fails", [False, True])
+def test_browser_fixture_seeds_inside_one_canonical_lifespan(monkeypatch, tmp_path, seed_fails):
+    fixture = runpy.run_path(
+        str(Path(__file__).resolve().parents[1] / "tools/browser/assistant_qa_server.py")
+    )
+    monkeypatch.setenv("STOCK_PROBS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("STOCK_PROBS_FIXTURE_NOW", "2025-01-10T17:03:00+00:00")
+    monkeypatch.setattr("sys.argv", ["assistant_qa_server.py", "--port", "8765"])
+    migrations = []
+    original_migrate = Repository.migrate
+
+    def migrate(repository, *args, **kwargs):
+        migrations.append(repository.database_path)
+        return original_migrate(repository, *args, **kwargs)
+
+    monkeypatch.setattr(Repository, "migrate", migrate)
+    captured = []
+
+    def serve(server, **kwargs):
+        application = server.application
+        captured.append(application)
+        with TestClient(server, base_url="http://127.0.0.1:8765") as client:
+            assert application.state.ready is True
+            assert client.get("/api/v1/readiness").status_code == 200
+            client.cookies.set("signal_ledger_session", fixture["_SESSION"])
+            client.cookies.set("signal_ledger_csrf", fixture["_CSRF"])
+            session = client.get("/api/v1/auth/session")
+            assert session.status_code == 200
+            assert session.json()["authenticated"] is True
+            assert session.json()["user"]["role"] == "admin"
+            assert client.get("/api/v1/assistant/status").status_code == 200
+
+    monkeypatch.setattr(fixture["uvicorn"], "run", serve)
+    if seed_fails:
+
+        def reject_seed(*_args, **_kwargs):
+            raise RuntimeError("synthetic fixture seed failure")
+
+        monkeypatch.setitem(fixture["main"].__globals__, "_seed_session", reject_seed)
+        with pytest.raises(RuntimeError, match="synthetic fixture seed failure"):
+            fixture["main"]()
+    else:
+        fixture["main"]()
+    assert len(captured) == 1, "seeding must run within the actual server lifespan"
+    assert migrations == [tmp_path / "stock_probs.sqlite3"]
+    assert captured[0].state.ready is False
+    assert captured[0].state.assistant._started is False
 
 
 @pytest.mark.parametrize(
