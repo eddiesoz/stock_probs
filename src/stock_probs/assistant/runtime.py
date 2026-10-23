@@ -142,6 +142,7 @@ _MODEL_ACTIVATION_SECONDS = 15.0
 _MODEL_DISCOVERY_SECONDS = 8.0
 _MODEL_DISCOVERY_REQUEST_SECONDS = 2.0
 _MODEL_DISCOVERY_RETRY_SECONDS = 0.2
+_MCP_DISCOVERY_SECONDS = 8.0
 _STARTUP_STATUS_DEADLINE_SECONDS = 3.0
 _STARTUP_STATUS_REQUEST_TIMEOUT_SECONDS = 1.0
 _STARTUP_STATUS_POLL_SECONDS = 0.2
@@ -3161,9 +3162,10 @@ class OpenCodeV2Runtime:
         )
 
         connected = False
-        mcp_deadline = loop.time() + 8.0
+        mcp_deadline = loop.time() + _MCP_DISCOVERY_SECONDS
         if turn_deadline is not None:
             mcp_deadline = min(mcp_deadline, turn_deadline)
+        last_mcp_timeout = False
         while loop.time() < mcp_deadline:
             remaining = mcp_deadline - loop.time()
             if remaining <= 0:
@@ -3178,7 +3180,12 @@ class OpenCodeV2Runtime:
             except (TimeoutError, httpx.TimeoutException):
                 if turn_deadline is not None and loop.time() >= turn_deadline:
                     raise TimeoutError from None
-                raise _AssistantRuntimeFailure("native_request_timeout", "mcp_discovery") from None
+                last_mcp_timeout = True
+                await asyncio.sleep(min(0.2, max(0.0, mcp_deadline - loop.time())))
+                continue
+            last_mcp_timeout = False
+            if mcp_response.status_code != 200:
+                raise _AssistantRuntimeFailure("mcp_unavailable", "mcp_discovery")
             mcp_payload = _json_object(mcp_response)
             servers = mcp_payload.get("data") if mcp_payload else None
             if not isinstance(servers, list) or len(servers) > 64:
@@ -3203,6 +3210,8 @@ class OpenCodeV2Runtime:
         if not connected:
             if turn_deadline is not None and loop.time() >= turn_deadline:
                 raise TimeoutError
+            if last_mcp_timeout:
+                raise _AssistantRuntimeFailure("native_request_timeout", "mcp_discovery")
             raise _AssistantRuntimeFailure("mcp_unavailable", "mcp_discovery")
         search_timeout = 5.0
         if turn_deadline is not None:

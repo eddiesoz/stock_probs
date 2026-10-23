@@ -40,6 +40,12 @@ Unavailable; a later axe timeout does not pass the case or its accessibility sca
 
 ## Assistant access-failure checks
 
+MCP discovery retries only transient read timeouts within its existing eight-second stage window
+and the earlier turn deadline. Each request keeps its two-second cap and the existing polling
+backoff. Verify recovery, persistent timeout classification, denied/malformed/failed/duplicate
+responses and cancellation; these failures must not start search or session work. A synthetic
+recovery Pass does not establish the cause or recovery of a failed native trial.
+
 Native verification must retain the original turn deadline through diagnostic wrappers. Exact
 `FreeTierError` responses map to the closed `free_tier_access_error` diagnostic class across the
 proxy, runtime, API, and probe; never retain raw provider bodies. A classified rejection is not a

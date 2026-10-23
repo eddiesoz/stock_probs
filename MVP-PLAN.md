@@ -11921,3 +11921,80 @@ acknowledgement, retaining production and recovery. A fresh clean-head image/nat
 required for the current frontend. Production, data, 1 GB/backups, US$15 monthly total and the
 backup-retention hold remain unchanged. No merge, deployment, rollout, resize, backup deletion or
 email occurred. The free Zen live fix and seven-feature goal remain active and incomplete.
+
+
+### Free Zen restoration: current-image native failure and bounded MCP recovery (2026-10-23)
+
+The superseded local image `sha256:aebbbd8b989d83a84ed32ccb2d47cbd14f43b519e0727d3c22571c676b1ab85c`
+was retired after a fresh independent pre-action review. The first command-bound reviewer attempt
+Failed on an architecture metadata comparison; the corrected immutable invocation Passed without
+changing the image predicates. The initial parent preflight's exact failing image predicate remains
+Unproven. Parent fresh provenance, exact tags, container-reference and bounded RootFS checks held.
+The typed local-pointer CAS and exact-ID `docker image rm --no-prune` each exited 0. A premature
+post-removal pointer query Failed because the ledger had not yet acknowledged retirement; that
+failure is preserved. Fresh inventory and protected-tag checks then bound the exclusive retirement
+receipt, and typed acknowledgement exited 0. The inventory changed only from 24 to 23 images and
+the ledger retained production and recovery. Both recovery tags remain. Independent receipt-bound
+post-action review Passed; SHA-256 is
+`2f9bb40935e252856182b511c1491df2db46053b40e8f99927e7b103f6389bd6`.
+
+At clean pushed `274c253ec26ed2a886ec9790d7cb36cb1ed92b2e`, the maintained local build exited 0.
+Its launch record is `2026-10-23T19:53:55.802504Z`; terminal was observed at `20:04:45.862779Z`.
+It produced image
+`sha256:752ff15ebb3b0f34e9bbd1b62feb36288745407559030149dec66d84263c76eb`, context
+`25d17533e132c79adef1ca8220b295b05085c64c2b2d06a078ec35f3c1c7d8ec`, with 151 image inputs,
+420 source pins and 52 served/export pairs unchanged. The enclosing parent terminal remains Fail:
+the bounded builder-stop proof exceeded its deadline, and a first ten-second read-only generation
+query also timed out. New OS facts showed the bound controller, helper and cgroup absent; a
+subsequent read-only same-generation Docker/cgroup check Passed with PID 0. No second stop/start
+or build occurred. Supplemental successful build/identity and stopped-state evidence is separate
+from those failures. The native launcher's private binding preparation also preserved an assertion
+failure that rejected its intentional unresolved-value guard pattern; the corrected exact-value
+check kept that guard. The existing read-only consumer then Passed before runtime. Independent
+current build/source/stage/control review Passed for its prelaunch scope; receipt SHA-256 is
+`d50e7ac5bf0a3a366d27861c43ba05f432c738af8075a7fb7d95f487ca0e5a35`.
+
+The one genuine free DeepSeek native attempt on that image Failed, outer/child exit 2, at
+`2026-10-23T20:14:30.894069Z`–`20:16:14.786909Z`. Readiness reached ready. Owner 0 reached the
+selected model session and matching workspace summary, then returned `provider_unavailable` with
+no answer. Owner 1 returned `worker_unavailable` before a model session; the closed diagnostic
+records `native_request_timeout` at `mcp_discovery`. Neither owner reached search/fetch activity.
+An anonymous provider row records a stream failure with unknown upstream category and no HTTP
+status; failed/cancelled stream rows and a native `message_tool_invariant` warning do not identify
+an owner or establish provider/root cause. Peak local memory was 656,515,072 of 805,306,368 bytes,
+with zero high/max/OOM deltas. Throttling is not causal proof or actual combined 1 GB acceptance.
+All 154 native pins, 420 host-source pins and 52 stage pairs matched at terminal review. Exact
+container/network/volume/listener, port-refusal, process-group/PID and owned Docker-config cleanup
+Passed. Independent result-integrity/cleanup review Passed while retaining native Fail; receipt
+SHA-256 is `b2f186ef55867264696c7b35c973882409b41aed5d906278b53266c965726c6d`.
+Its direct pre-edit pin comparison Passed, but that comparison's exact independent timestamp and
+standalone script hash were not retained and remain Unavailable. No retry or kill trial followed.
+
+Two separate focused reproductions of the failed canonical selectors Passed on current source:
+history concurrent writes/reads, one test in 15.76 seconds; and external-server Playwright config,
+one test in 3.98 seconds. Each reported one warning and 420 unchanged source pins. No application
+repair or earlier failure cause follows, and the failed canonical/full-browser aggregates remain.
+
+Source review found that MCP discovery had an eight-second stage window but aborted on its first
+request-local timeout. Two new synthetic recovery regressions Failed on the unchanged runtime.
+The parent repair retries only read timeouts inside the same stage/turn deadlines, keeping the
+two-second request cap, existing backoff and all turn/tool/resource budgets. Non-200 responses,
+malformed/duplicate/failed/disabled MCP states remain fatal, and cancellation propagates. Ten new
+cases cover these paths. The parent selected run Passed 15 tests, with 272 deselected and two
+warnings, in 25.79 seconds; Ruff check/format and diff checks Passed. Independent QA also Passed
+15 tests with 272 deselected and two warnings, Ruff/security/format/diff checks and 36 unchanged
+source/import/test/config pins. Its receipt SHA-256 is
+`bd80a5a3dca904c88be6f434683939ce0b9ad7b56057ebca80ee026c727a6302`; the immutable command-display
+supplement is `31b34b48ce20b3411f2387e6acb949dff2cec47db4589761c7e117f9deaa7dfd`.
+Parent integrated source/test/documentation and evidence review Passed for this scoped repair.
+This addresses a concrete pre-session failure path, not the separate
+unresolved provider/tool failure, and establishes no new native acceptance. Exact baselines and
+red/green evidence are private under `/var/tmp/r12r/f6-mcp-timeout-repair-274c253-20261023`.
+
+The current image predates this MCP repair. The next bounded work is a clean reviewed checkpoint,
+newly bound image and actual native
+result before the required aggregate/release checks. The desktop news response/axe timeout remains
+unresolved. Unchanged frontend build/stage evidence is reused only within its original scope.
+Production, data, existing 1 GB host/backups and US$15 monthly total are unchanged; the backup
+retention hold remains. No merge, deployment, rollout, resize, backup deletion or email occurred.
+The free Zen live fix and all seven approved features remain active and incomplete.

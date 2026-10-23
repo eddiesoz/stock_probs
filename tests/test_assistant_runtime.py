@@ -6654,6 +6654,171 @@ def test_model_discovery_lock_wait_respects_deadline_and_cancellation() -> None:
     asyncio.run(exercise())
 
 
+@pytest.mark.parametrize("timeout_type", [TimeoutError, httpx.ReadTimeout])
+def test_mcp_discovery_recovers_after_transient_read_timeout(monkeypatch, timeout_type) -> None:
+    """A transient MCP GET timeout can recover before the existing discovery deadline."""
+
+    context = _context()
+    location = f"/run/assistant/worker-locations/{context.execution_id}"
+    descriptor = resolve_native_adapter("openai-compatible-chat", "assistant-proxy")
+    provider_ref = {"id": "assistant-selected", "providerID": "assistant-proxy"}
+    runtime = OpenCodeV2Runtime(
+        SimpleNamespace(assistant_enabled=True),
+        providers=_TestProviders("openai-compatible-chat", "assistant-proxy"),
+        catalog=_Catalog(),
+        supervisor=_Supervisor(),
+    )
+    mcp_timeouts: list[float] = []
+    paths: list[str] = []
+
+    async def verified_model(*_args, **_kwargs):
+        return provider_ref
+
+    async def native_request(method: str, path: str, **kwargs) -> httpx.Response:
+        assert method == "GET"
+        assert kwargs["params"] == {"location[directory]": location}
+        paths.append(path)
+        if path == "/api/location":
+            return httpx.Response(
+                200, json={"directory": location, "project": {"directory": location}}
+            )
+        if path == "/api/mcp":
+            mcp_timeouts.append(float(kwargs["timeout"]))
+            if len(mcp_timeouts) == 1:
+                raise timeout_type("synthetic MCP read timeout")
+            return httpx.Response(
+                200, json={"data": [{"name": "signal-ledger", "status": {"status": "connected"}}]}
+            )
+        assert path == "/api/websearch/provider"
+        return httpx.Response(200, json={"data": []})
+
+    monkeypatch.setattr(runtime, "_verify_location_model", verified_model)
+    monkeypatch.setattr(runtime, "_request", native_request)
+
+    async def exercise():
+        try:
+            return await runtime._verify_location(context, location, descriptor)
+        finally:
+            await runtime.close()
+
+    assert asyncio.run(exercise()) == provider_ref
+    assert paths == ["/api/location", "/api/mcp", "/api/mcp", "/api/websearch/provider"]
+    assert len(mcp_timeouts) == 2
+    assert all(0 < timeout <= 2.0 for timeout in mcp_timeouts)
+
+
+def _run_mcp_discovery_fixture(monkeypatch, mcp_request, *, turn_seconds=None):
+    """Keep unrelated model discovery synthetic while exercising the real MCP loop."""
+
+    context = _context()
+    location = f"/run/assistant/worker-locations/{context.execution_id}"
+    descriptor = resolve_native_adapter("openai-compatible-chat", "assistant-proxy")
+    runtime = OpenCodeV2Runtime(
+        SimpleNamespace(assistant_enabled=True),
+        providers=_TestProviders("openai-compatible-chat", "assistant-proxy"),
+        catalog=_Catalog(),
+        supervisor=_Supervisor(),
+    )
+
+    async def verified_model(*_args, **_kwargs):
+        return {"id": "assistant-selected", "providerID": "assistant-proxy"}
+
+    async def native_request(method: str, path: str, **kwargs):
+        assert method == "GET"
+        assert kwargs["params"] == {"location[directory]": location}
+        if path == "/api/location":
+            return httpx.Response(
+                200, json={"directory": location, "project": {"directory": location}}
+            )
+        assert path == "/api/mcp", "Failed MCP discovery must not reach search or session work"
+        return await mcp_request(float(kwargs["timeout"]))
+
+    monkeypatch.setattr(runtime, "_verify_location_model", verified_model)
+    monkeypatch.setattr(runtime, "_request", native_request)
+
+    async def exercise():
+        deadline = None
+        if turn_seconds is not None:
+            deadline = asyncio.get_running_loop().time() + turn_seconds
+        try:
+            return await runtime._verify_location(
+                context, location, descriptor, turn_deadline=deadline
+            )
+        finally:
+            await runtime.close()
+
+    return asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("turn_seconds", [None, 0.03])
+def test_mcp_discovery_timeout_exhaustion_keeps_stage_and_turn_bounds(monkeypatch, turn_seconds):
+    """Retryable reads keep the earlier discovery/turn deadline and timeout classification."""
+
+    monkeypatch.setattr(assistant_runtime, "_MCP_DISCOVERY_SECONDS", 0.06)
+    timeouts: list[float] = []
+
+    async def timeout_request(timeout):
+        timeouts.append(timeout)
+        await asyncio.sleep(timeout)
+        raise httpx.ReadTimeout("synthetic MCP read timeout")
+
+    started = time.monotonic()
+    if turn_seconds is None:
+        with pytest.raises(assistant_runtime._AssistantRuntimeFailure) as caught:
+            _run_mcp_discovery_fixture(monkeypatch, timeout_request)
+        assert (caught.value.code, caught.value.phase) == (
+            "native_request_timeout",
+            "mcp_discovery",
+        )
+    else:
+        with pytest.raises(TimeoutError):
+            _run_mcp_discovery_fixture(monkeypatch, timeout_request, turn_seconds=turn_seconds)
+    assert time.monotonic() - started < 0.3
+    assert len(timeouts) == 1
+    assert 0 < timeouts[0] <= (turn_seconds or 0.06)
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(401, json={"data": [{"name": "signal-ledger", "status": "connected"}]}),
+        httpx.Response(200, json={"data": None}),
+        httpx.Response(200, json={"data": [{"name": "signal-ledger", "status": "failed"}]}),
+        httpx.Response(200, json={"data": [{"name": "signal-ledger", "status": "disabled"}]}),
+        httpx.Response(200, json={"data": [{"name": "signal-ledger", "status": "connected"}] * 2}),
+    ],
+)
+def test_mcp_discovery_never_retries_denied_invalid_or_failed_responses(monkeypatch, response):
+    """Only request timeouts retry; authorization/protocol failures remain fatal."""
+
+    calls = 0
+
+    async def failed_request(_timeout):
+        nonlocal calls
+        calls += 1
+        return response
+
+    with pytest.raises(assistant_runtime._AssistantRuntimeFailure) as caught:
+        _run_mcp_discovery_fixture(monkeypatch, failed_request)
+    assert caught.value.phase == "mcp_discovery"
+    assert calls == 1
+
+
+def test_mcp_discovery_cancellation_is_not_retried(monkeypatch):
+    """Cancellation propagates without another discovery or model request."""
+
+    calls = 0
+
+    async def cancelled_request(_timeout):
+        nonlocal calls
+        calls += 1
+        raise asyncio.CancelledError
+
+    with pytest.raises(asyncio.CancelledError):
+        _run_mcp_discovery_fixture(monkeypatch, cancelled_request)
+    assert calls == 1
+
+
 def test_location_discovery_exhaustion_respects_turn_deadline(monkeypatch, caplog) -> None:
     """Location retries stop at the earlier stage or existing turn deadline."""
 
