@@ -10822,3 +10822,107 @@ behavior. Ruff, documentation validation (9 categories, 14 topics, 8 governance 
 changed-file coverage (177 mapped, 4 changed) and diff checks Passed for their scopes. The source
 freeze was released after independent review. These are selected synthetic results, not a native
 or release Pass. A clean pushed candidate, newly bound image and real native trial remain required.
+
+
+### R-ASTRA-121 F6 DeepSeek-low failure and non-thinking tool candidate (2026-10-23)
+
+The low-effort candidate was committed and pushed at
+`c74fcd898f4a65169eaca3fa999f5c5a4877e114`; PR #9 remains draft. Parent integrated review
+Passed its selected source/evidence scope (SHA-256
+`abe91a2bb89e22656364e39de1c3d4b9757ee8d77d00e092a735a70f3cf6ed47`).
+The exact failed f504 image was archived and checksum-verified at
+`/var/tmp/r12r/f6-image-deepseek-low-6747977839f9429b91958d850019df9a/candidate-c6d0bc30.tar.gz`,
+183,520,215 bytes, SHA-256
+`08935b54f26615be87d073ca1451f2a2627765fd5c761674cec324c5f3977fd0`.
+After exact full-ID/RootFS/tag/build-receipt/reference checks, the typed local pointer selected
+protected 5ad. Exact `--no-prune` retirement removed only f504 image
+`sha256:c6d0bc309bec88b043ebcd94047f0b6adecf8dc7773cbda5650dd68750649a1b`, verified absence and
+acknowledged the ledger; both protected images remained. Retirement receipt SHA-256:
+`5f77c190d70318dee1d599c8afadea0f87fb6abc72360dfece51cc426059cda7`.
+
+The next single Linux/amd64 build Passed, exit 0, at
+`03:44:27.612826Z`–`03:52:19.286340Z`, 471.675 seconds, producing image
+`sha256:be74f92d5dd154ab736b87eb8e4138e8af9cedc36dcac710aec698af006f7ee6`, context
+`6fed67f13e84fde987efce526eebbb52932358bda2c1e6f66fda6a26c5a8ad77`. All 150 source inputs
+and 53 served/export pairs matched. Only `providers.py` differed in the image allowlist.
+Build receipt SHA-256: `a67a2f4d8c8ef0b10d8aeccbfac450642c56d0de1657e21e05ddecff17313d86`.
+The original typed stop guard **Failed** with `local_builder_stop_deadline_exceeded`.
+A distinct fresh read-only observation confirmed the same started generation stopped, PID 0 and
+cgroup absent; no stop was repeated. That observation does not rewrite the original guard Fail.
+The exact-31-key build binding terminal Passed identity scope while retaining this limitation:
+SHA-256 `9a8e268c1a764d864eaeb026d572c24e729a95ac266ed8bc6a88318a7a4df01a`.
+Packet: `/var/tmp/r12r/f6-image-deepseek-low-6747977839f9429b91958d850019df9a/`.
+
+The actual read-only consumer Passed before fixture allocation. One genuine DeepSeek-low native
+trial **Failed**, exit 2, at `03:54:47.648442Z`–`03:57:29.249516Z`, 161.601 seconds.
+Owner 0 completed a 288-byte answer at 115.116 seconds with matching model/summary evidence.
+Owner 1 timed out at 120.873 seconds with matching model/summary evidence, no answer and no
+search/fetch preview, approval or source. Both conversation deletes returned HTTP 200; owner 0
+had three pending retries. The local 768 MiB failure sample peaked at 531,066,880 bytes with zero
+high/max/OOM deltas. App samples were 108 ready/one unavailable; worker samples were 107 ready,
+one starting/one unavailable. CPU throttling, anonymous timing rows and cancelled stream-lifecycle
+labels do not establish the timeout cause or actual combined 1 GB acceptance.
+Native packet: `/var/tmp/r12r/f6-native-deepseek-low-83c51f60bb1d4845ab2ce367077e5d11/`.
+Raw stdout SHA-256: `ca24b47e95153ab46f91d889bed2a69a1a859ec7d35c4ad59088a27a0e1b4d82`.
+Parent result-review SHA-256: `d52158ba207aa93e77711aafda5d45cea4e13ddaa244c9e193c76942387ad7cd`.
+Independent result/source/stage/cleanup review Passed its scope, retaining native and stop-guard
+Fails. The corrected comparison verifies each 153-path set against its own manifest and all 150
+shared image inputs against each other; the three build-helper and three native-probe paths are
+different sets. All 53 explicit served/export pairs matched. Saved successful bounded inventories
+show exact container/network ID/name and volume absence, empty PGID, no listener and loopback
+refusal. Independent correction receipt:
+`/var/tmp/r12r/f6-native-deepseek-low-independent-cleanup-04f939ec-9f85-4658-ac62-a3e789443ca0/independent-native-result-cleanup-review-v2.json`,
+SHA-256 `b4d5688edd14314ac67f24b2e4529e5f6024072726965f21998631b03bb7f18a`.
+Two earlier private QA receipt-assembly failures and the initial pin-set interpretation failure
+remain preserved. Its contemporaneous live-port binding is Unavailable within that independent
+scope; parent separately recorded the exact live fixture/loopback binding at `03:55:41.405928Z`.
+The source freeze was released after the fresh corrected rehash. No native repeat or kill ran.
+
+Primary research distinguishes [low reasoning effort](https://api-docs.deepseek.com/guides/thinking_mode/)
+from the documented [non-thinking tool mode](https://api-docs.deepseek.com/guides/tool_calls/).
+The next narrow candidate sends `thinking: {type: disabled}` instead of low effort only for exact
+reviewed `opencode-zen/deepseek-v4.1-flash-free`; GLM/MiniMax low effort stays unchanged. It does
+not change the free model selection, tools, confirmations, permissions, reasoning-history support,
+output/byte budgets, deadlines or resources. No paid endpoint or new account is used. The pinned
+public gateway source applies provider-specific modifiers after request conversion; private
+modifier settings remain unobserved, so documentation and outbound fixtures do not establish
+Zen's effective setting or a latency cause. Exact five-file baselines and research are in
+`/var/tmp/r12r/f6-deepseek-nonthinking-8694ed42112741ea80c817c112c4f63f/`.
+The initial regression selection Failed only the two new mode/continuation cases (14 passed,
+two failed); output was complete, pins stable and process/temp cleanup Passed. Selected independent
+verification, a clean pushed revision, new image and actual native result remain required.
+
+The overall goal remains active. Free Zen live restoration, authenticated owner UI, current-image
+shutdown, actual combined 1 GB, security/browser, recovery/rollback and release gates remain open,
+followed by the seven approved visible features. Production, the existing 1 GB host, backups and
+US$15/month total including tax are unchanged. No deployment, rollout, resize or email occurred.
+
+
+The non-thinking candidate Passed 57/57 parent selected checks, exit 0, with 156 stable pins,
+complete bounded output and verified process/temp cleanup. Independent source and selected QA
+also Passed 57/57, no failures/errors/skips and one Starlette/httpx deprecation warning, at
+`04:09:47.707591Z`–`04:09:53.300294Z`. Its 159 pins included all five owned paths and remained
+stable; actual imports, JUnit, output completeness, normal child umask 022 and cleanup were bound.
+Scoped Ruff check, Ruff security with S101 ignored, format and diff checks Passed. Independent
+receipt `/var/tmp/r12r/f6-deepseek-nonthinking-independent-80713ee9-8846-4031-9257-c9e7e0ebbd48/independent-source-and-selected-qa-v1.json`
+has SHA-256 `1c30e65945a78749e117473495f77aefece105847ff487b87acc2e116925d80e`.
+Parent review confirms the exact model-specific fixed field and the removal of DeepSeek alone
+from low effort; the closed public body allowlist still excludes caller-supplied thinking.
+The five-file source/test/documentation review found no blocker for this bounded candidate.
+The freeze was released after independent review; native behavior remains unverified.
+
+The failed low-effort image was checksum-archived at
+`/var/tmp/r12r/f6-image-deepseek-nonthinking-1a445b16a1d5402c98c7b2bc8b26627c/candidate-be74f92d.tar.gz`,
+183,520,428 bytes, SHA-256
+`826b86d0913bc6312b74ce91015022c2f2dcd41c0a0a93d049707fe5d1faed81`.
+The bounded archive producer Passed at `04:04:07.471955Z`–`04:05:11.412632Z`, exit 0;
+its digest and byte count were re-read before exact retirement. Full-ID/RootFS, tag, build-receipt,
+container-reference and protected-inventory checks Passed. After the typed local development
+pointer selected protected 5ad, exact retirement removed only
+`sha256:be74f92d5dd154ab736b87eb8e4138e8af9cedc36dcac710aec698af006f7ee6` with `--no-prune`,
+verified image/tag absence and acknowledged the ledger. Retirement Passed at
+`04:09:32.943401Z`; receipt SHA-256
+`9f9a1fdc9aea76781c90ee1588cbb7432d322f16807a4592732d9de8df9c02ce`.
+Both protected images remain; managed count two. No application, container, volume, production,
+backup or global-cache mutation was performed by retirement. The source candidate still needs
+a clean pushed revision, newly bound image and genuine native result before broader release gates.

@@ -3129,10 +3129,11 @@ class AssistantProviderManager:
         if provider_id == "opencode-zen" and native_model_id in {
             "minimax-m3.1-flash-free",
             "glm-5.3-flash-free",
-            "deepseek-v4.1-flash-free",
         }:
             # Keep these reviewed free models at interactive reasoning depth.
             upstream["reasoning_effort"] = "low"
+        elif provider_id == "opencode-zen" and native_model_id == "deepseek-v4.1-flash-free":
+            upstream["thinking"] = {"type": "disabled"}
         if clean_tools is not None:
             upstream["tools"] = clean_tools
         encoded = json.dumps(

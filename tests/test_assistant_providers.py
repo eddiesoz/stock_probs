@@ -420,13 +420,28 @@ def test_openai_compatible_proxy_rejects_unbounded_output_counts(tmp_path: Path)
             )
 
 
-@pytest.mark.parametrize("provider_id", ("opencode-zen", "openai"))
+@pytest.mark.parametrize(
+    ("provider_id", "model_suffix", "expected_thinking"),
+    [
+        ("opencode-zen", "synthetic-model", None),
+        ("openai", "synthetic-model", None),
+        ("opencode-zen", "deepseek-v4.1-flash-free", "disabled"),
+    ],
+)
 def test_native_gateway_thirteen_tools_dispatch_and_validate_webfetch_continuation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, provider_id: str
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    provider_id: str,
+    model_suffix: str,
+    expected_thinking: str | None,
 ) -> None:
-    """Dispatch the real eleven-tool gateway plus both pinned native builtins."""
+    """Keep all native declarations and continuations valid without thinking content."""
 
-    manager, model_id = _native_gateway_proxy_manager(tmp_path, provider_id)
+    if model_suffix == "synthetic-model":
+        manager, model_id = _native_gateway_proxy_manager(tmp_path, provider_id)
+    else:
+        model_id = f"{provider_id}/{model_suffix}"
+        manager = _policy_manager(tmp_path, _policy_model(model_id, provider_id=provider_id))
     app_tools = AssistantToolGateway.list_tools()
     declarations = _native_compatible_declarations(app_tools)
     assert len(app_tools) == 11
@@ -515,6 +530,11 @@ def test_native_gateway_thirteen_tools_dispatch_and_validate_webfetch_continuati
     assert request["messages"] == messages
     assert request["tool_choice"] == "auto"
     assert request["max_tokens"] == native_output_token_budget()
+    if expected_thinking is None:
+        assert "thinking" not in request
+    else:
+        assert request["thinking"] == {"type": expected_thinking}
+        assert "reasoning_effort" not in request
 
 
 @pytest.mark.parametrize(
@@ -606,31 +626,32 @@ def test_zen_proxy_uses_fixed_route_and_native_public_bearer_without_changing_ot
 
 
 @pytest.mark.parametrize(
-    ("provider_id", "suffix", "expected_effort"),
+    ("provider_id", "suffix", "expected_effort", "expected_thinking"),
     [
-        ("opencode-zen", "minimax-m3.1-flash-free", "low"),
-        ("opencode-zen", "glm-5.3-flash-free", "low"),
-        ("opencode-zen", "deepseek-v4.1-flash-free", "low"),
-        ("opencode-zen", "deepseek-v4.1-flash", None),
-        ("opencode-zen", "other-deepseek-v4.1-flash-free", None),
-        ("openai", "deepseek-v4.1-flash-free", None),
-        ("opencode-zen", "glm-5.3-flash", None),
-        ("opencode-zen", "other-glm-5.3-flash-free", None),
-        ("openai", "glm-5.3-flash-free", None),
-        ("opencode-zen", "longcat-flash-chat", None),
-        ("opencode-zen", "minimax-m3.1-flash", None),
-        ("opencode-zen", "other-minimax-m3.1-flash-free", None),
-        ("openai", "minimax-m3.1-flash-free", None),
+        ("opencode-zen", "minimax-m3.1-flash-free", "low", None),
+        ("opencode-zen", "glm-5.3-flash-free", "low", None),
+        ("opencode-zen", "deepseek-v4.1-flash-free", None, "disabled"),
+        ("opencode-zen", "deepseek-v4.1-flash", None, None),
+        ("opencode-zen", "other-deepseek-v4.1-flash-free", None, None),
+        ("openai", "deepseek-v4.1-flash-free", None, None),
+        ("opencode-zen", "glm-5.3-flash", None, None),
+        ("opencode-zen", "other-glm-5.3-flash-free", None, None),
+        ("openai", "glm-5.3-flash-free", None, None),
+        ("opencode-zen", "longcat-flash-chat", None, None),
+        ("opencode-zen", "minimax-m3.1-flash", None, None),
+        ("opencode-zen", "other-minimax-m3.1-flash-free", None, None),
+        ("openai", "minimax-m3.1-flash-free", None, None),
     ],
 )
-def test_zen_interactive_reasoning_effort_is_model_scoped(
+def test_zen_interactive_reasoning_controls_are_model_scoped(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     provider_id: str,
     suffix: str,
     expected_effort: str | None,
+    expected_thinking: str | None,
 ) -> None:
-    """Request interactive depth only on reviewed free routes; preserve other budgets."""
+    """Keep interactive controls on exact reviewed free routes and preserve budgets."""
 
     model_id = f"{provider_id}/{suffix}"
     manager = _policy_manager(tmp_path, _policy_model(model_id, provider_id=provider_id))
@@ -679,7 +700,10 @@ def test_zen_interactive_reasoning_effort_is_model_scoped(
     assert request["messages"] == messages
     assert request["max_tokens"] == native_output_token_budget()
     assert request["store"] is False
-    assert "thinking" not in request
+    if expected_thinking is None:
+        assert "thinking" not in request
+    else:
+        assert request["thinking"] == {"type": expected_thinking}
     assert captured["timeout_seconds"] == 120.0
     assert captured["max_response_bytes"] == 1_048_576
 

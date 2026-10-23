@@ -298,9 +298,13 @@ without changing provider destinations, ownership, consent or tool permissions. 
 creates a fresh model-bound native session; later app turns reconstruct only stored visible role/text
 history, so private native reasoning is not carried across model selections. Source and synthetic
 checks do not establish live-provider completion or native timeout causation. The exact reviewed
-free Zen MiniMax M3.1 Flash route uses a fixed low reasoning effort for interactive turns, while
-retaining the existing token cap and deadline. Other model/provider identities are unchanged;
-this does not add a caller-controlled request field, provider destination or data-sharing permission.
+free Zen MiniMax M3.1 Flash and GLM-5.3-Flash routes use fixed low reasoning effort for interactive
+turns. Exact reviewed DeepSeek V4.1 Flash Free instead requests the vendor's documented non-thinking
+tool mode, without an effort field. Existing token/deadline bounds, native tool declarations,
+authorization, cancellation and consent remain in force; other model/provider identities are
+unchanged. These are fixed app-owned controls, not caller-controlled request fields, provider
+destinations or data-sharing permissions. Synthetic request checks do not prove Zen's effective
+settings or native completion; see the dated F6 result in the [MVP plan](../../MVP-PLAN.md).
 
 The following E167–E777 records preserve earlier scoped findings and failures. They are historical;
 the E847/E849/E850 scopes above supersede only the bindings and checks they explicitly cover.
