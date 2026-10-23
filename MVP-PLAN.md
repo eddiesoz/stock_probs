@@ -11216,3 +11216,95 @@ integrated diff and receipts. No full-tree security, canonical or release accept
 The final change-aware documentation check initially failed closed because the ARM64 cleanup repair
 also requires durable `AGENTS.md` workflow-policy coverage. The added rule explicitly retains
 in-flight transient reservations; it does not add a new recovery command or claim runtime discovery.
+
+
+### R-ASTRA-121 F6 complete canonical failure and rehearsal contract repair (2026-10-23)
+
+The frozen `466baa2bbea37c3ece8b1fae38f47d3c345c005b` canonical check **Failed**, exit 1,
+from `2026-10-23T10:29:14Z` to `11:47:24Z` on native x86_64. Unlike the earlier timeout,
+this run completed Python and persisted JUnit: 3,874 passed, six failed, four skipped, four
+deselected and 106 warnings, with 86.15% coverage against the unchanged 85% floor.
+Documentation and the approved frontend build/stage (75 tests) completed; the Python check
+failed and the required three-check completion contract was not satisfied. All 557 bound
+source inputs remained unchanged, the SD checkout stayed clean, and all 52 allowlisted
+served/export pairs matched. Exact runner, gate and pytest PIDs and the original cgroup were
+absent after terminal. Coverage and passing subchecks do not change the aggregate result.
+
+The six failures were one database coordination-lock timeout, a stale host-helper source digest,
+three stale positive production-identity fixtures, and a Node subprocess failure in the external
+browser-server configuration test. Independent terminal review retained **Fail** and verified
+its declared source, stage, JUnit and cleanup scope without rerunning tests:
+`/var/tmp/r12r/independent-terminal-review-00044d7d46494e71b425b83e3f9b83ce/terminal-review-v2.json`,
+SHA-256 `347f1aec134334e1b0949f9e2a8803ad9e31c5104f5f160f677f59a5b6db5815`.
+Its initial receipt remains preserved; v2 corrects an estimated stage-check timestamp to
+Unavailable and discloses the corrected reviewer-side manifest comparison. Parent terminal
+review is in `/var/tmp/r12r/f6-canonical-six-repairs-9de3c2ffd47544eaa477b662f4ee7fc6/parent-canonical-terminal-review-v1.json`,
+SHA-256 `701ddda0e1f4d988325c0874f63f07697db3be4bf62bc50a480e20fe951158bc`.
+
+App-managed archival removed the earlier managed checkout during the run. The current R checkout
+was recovered from exact pushed 466 source and attached to this active chat at
+`/home/james/.codex/worktrees/signal-ledger-assistant-fix-1455/stock_probs`. The SD Python
+interpreter remained intact. Its Node alias had pointed through the removed checkout; the parent
+restored that alias to the existing approved Node 22.19.0 distribution at `10:59:18Z`–`10:59:19Z`.
+This environment event is disclosed, not continuous-environment proof or the proven cause of the
+later Node test failure. The frozen SD source did not change. Other feature snapshots and approved
+mockup bindings were preserved; no feature or release acceptance follows from recovery.
+
+After terminal, the parent restored the private editable package to the current R checkout and
+reused the exact current SD frontend export with the maintained staging script, verifying all 52
+served/export pairs. The initial focused reproduction stopped at setup because the recovered R
+stage was absent; that exit-4 attempt is preserved. After stage restoration, all six original
+selectors reproduced their failures in 15.98 seconds with two warnings. The parent rebound the
+controller digest to the unchanged repaired helper and replaced the two stale fixture functions
+with the existing complete Docker identity fixture, retaining their assertions and all fail-closed
+port checks. Missing locked browser dependencies were restored with npm ci (nine packages,
+zero reported vulnerabilities); package source pins stayed unchanged. The ignored R dependency
+wrapper resolves to those same SD packages. No application, repository, history-test or timeout
+source changed.
+
+The affected selection, including the entire rehearsal test file, **Passed** 342 tests with two
+warnings in 16.11 seconds. Two separately bounded lock-timing diagnostics also passed, but neither
+reproduced the coordination timeout; its cause remains **Unproven**. The five-second coordination
+guard and all resource/acceptance limits remain unchanged. These scoped passes do not repair or
+relabel the failed canonical aggregate. Baselines, failed reproductions, dependency restoration,
+raw focused JUnit/logs and timing samples are in
+`/var/tmp/r12r/f6-canonical-six-repairs-9de3c2ffd47544eaa477b662f4ee7fc6`.
+Independent repair verification and a fresh mandatory canonical aggregate remain pending.
+
+The full browser/axe, current-image, actual combined 1 GB, exact-PR recovery/rollback, final guide,
+authenticated owner UI canary, deployment and invited rollout gates remain open. The host backup
+retention choice is still pending; no backup was deleted, no production mutation, resize, merge,
+release or email occurred. The free Zen live fix still precedes the seven unreleased visible
+features. The existing 1 GB host, backups and US$15 total monthly cap including tax remain unchanged.
+
+
+The first change-aware documentation check for this repair Failed because the controller source
+also requires `AGENTS.md` policy coverage. The parent added the complete-consumer pin/fixture
+invariant and reconciled the branch's stale delegation text with the user's supplied parent-led
+feature and archive-path corrections. Model routing and project configuration were not changed;
+no runtime-discovery claim follows. Documentation validation and 177-file coverage including all
+five changed paths then Passed.
+
+Separate bounded local-image review verified all 24 image RootFS inventories, exact d31 build
+ownership/tag/platform/revision, no equal-layer or descendant ambiguity, no container references,
+and exclusion from the setup's protected legacy inventory. Only obsolete task candidate
+`sha256:562561e42d33ba87c017c8f4af483da23733b3bcda650db40470618b8d25d803`
+was removed with `docker image rm --no-prune`. Exact image/tag absence was verified before the
+existing typed retirement acknowledgement updated the ledger from three complete entries to two.
+Production image `78746f600815...` and recovery image `893788c137d1...` remained bound and retained;
+no container, volume, backup or application data was removed. This frees one local build slot and
+is not a new image, runtime or release result. Receipt:
+`/var/tmp/r12r/f6-image-slot-retirement-97704b6d8c2b4301bb493448afc33f60/retirement-result-v1.json`,
+SHA-256 `713ca3cc2a57c0c019b5fdebb6edbe500c66f2a85e8db84800719c567d1b92de`.
+
+
+Independent GPT-6 Luna xhigh repair QA **Passed** the same 342-test selection, exit 0,
+with two deprecation warnings (19.63 seconds), plus scoped Ruff check/format, whitespace and
+source-contract review. All 28 explicit source/test inputs stayed unchanged. Receipt:
+`/var/tmp/r12r/independent-qa-sixrepair-466baa2-20261023T123910Z/immutable-qa-receipt.json`,
+SHA-256 `9c37c30d2a8197ff57815e979eca4c4cd191f0b101d73b503cde67628e5ac044`.
+The parent personally verified its raw JUnit/log/pin hashes and reviewed the integrated five-file
+diff. The earlier interrupted reviewer left only an empty scratch directory and no result; it
+is Unavailable, not acceptance. Authored documentation changes were excluded from independent
+source/test pins and validated separately by the parent. No full canonical or runtime result
+follows from this scoped repair checkpoint; the original failed aggregate remains preserved.

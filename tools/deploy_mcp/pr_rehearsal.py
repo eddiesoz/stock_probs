@@ -204,7 +204,7 @@ SOURCE_ASSETS = {
     "seed": ("scripts/pr_rehearsal_seed.py", "seed.py", 64 * 1024),
     "driver": ("tests/native_assistant_probe.py", "native_driver.py", 2 * 1024 * 1024),
 }
-HOST_HELPER_SOURCE_SHA256 = "0ed584c725b2546985f6c2aebe7a373ae4d8c6f27a12b492ceeb933e9ddd4b86"
+HOST_HELPER_SOURCE_SHA256 = "f7cace7e5c4d396c162b6cc6943f091a73ab0ff90429f6c1e4b74fe0d3581556"
 
 
 class RehearsalError(Exception):

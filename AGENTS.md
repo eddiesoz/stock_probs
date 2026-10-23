@@ -53,20 +53,48 @@ integrated diff and evidence before claiming completion.
 
 For R-ASTRA-120, reuse unchanged application, UI and complete local-gate evidence when only deployment-checker code changes. Verify the narrow checker repair and obtain fresh actual-host evidence; do not restart unchanged frontend/full-suite checks or relax native, resource, recovery, canary or release gates.
 
-For the remainder of `R-ASTRA-120`, the user requests maximum useful parallel delegation.
-Keep all available worker slots occupied with disjoint build, QA, or documentation work when
-independent work is ready, and hand queued work to freed slots promptly. Preserve source freezes
-for live checks, independent QA, the manifest model routing, and parent integrated review. This
-preference does not relax release gates or authorize spending above the existing budget.
-When reusing a completed worker, dispatch a new task turn; message delivery alone does not
-establish that the worker resumed. Check live worker status before reporting active parallel work.
+For exact-source helper changes, update every consumer digest and complete both positive and
+negative protocol fixtures before aggregate or release preparation. A guard repair is incomplete
+while its controller rejects the source bundle or a positive fixture omits the new inspection.
 
-For the current task only, the user explicitly authorized an Astra security audit and a Sol
-documentation audit. These reviewer assignments are task-scoped exceptions and do not change
-the default roles or authorize Astra subagents on other tasks. Start a fresh Codex task after
-Codex project-configuration changes and restart the OpenCode parent after OpenCode configuration
-or profile changes before checking discovery. File presence, synchronization, or parsing does not
-prove runtime loading; no runtime-discovery pass is inferred.
+For OpenCode goal mode, prefer a compatible existing plugin. Do not build custom goal or
+cross-harness synchronization code unless the user explicitly requests it.
+
+For Codex chat archival (user correction, 2026-10-23), do not require another approval or a
+blanket app shutdown for an authorized archive-path repair. Keep active SQLite history in place;
+serialize archive/unarchive mutations, verify an archive-only copy and stable inventories, and
+switch the path atomically with the original retained. Native rename-based archival needs the
+writable archive on the active sessions' filesystem; a readable cross-filesystem symlink is not
+proof that archival works. Verify the requested chat state through the app after repair.
+
+### Feature-by-feature continuation (user correction, 2026-10-20)
+
+For the free Zen assistant repair and the seven-feature plan, the parent does implementation,
+review, and routine checks directly. Use subagents only when necessary (for example, a required
+independent verification gate), explain the need, and use only GPT-6 Luna at `xhigh` workers.
+This supersedes earlier requests to keep all worker slots occupied and prior task-scoped Astra/Sol
+subagent exceptions; historical receipts retain their original attribution. The parent is not a
+subagent. Retain the single-source model-routing projections.
+
+After each feature reaches its tested implementation checkpoint, use the user-level
+`$signal-ledger-feature-handoff` skill to create the next local project thread with GPT-6.1 Sol
+at `medium`. Transfer the complete goal and a per-feature implementation/release checklist;
+the successor must establish its own active goal before continuing. Carry exact worktree/PR
+identities, unchanged-evidence bindings, failures, blockers, approved mockups, and next bounded
+action. Do not call incomplete work complete, mark the overall goal achieved because of a
+handoff, restart passing checks without changed inputs, or work concurrently in both threads.
+The free Zen live fix precedes the seven features, and existing release gates and budget remain.
+The user-level skill does not add an OpenCode project-catalog entry or prove runtime discovery.
+
+Use existing valid local sudo authorization when privileged work is necessary; request a password
+only through a local terminal or OS authentication prompt. Never collect, store, log, or change
+system policy to retain a password. Recheck the actual need first: ordinary task-owned file cleanup
+does not require sudo, and a filesystem-reserve change is unnecessary when usable space already
+meets the build threshold. Do not promise authorization survives sudo expiry or reboot.
+
+Start a fresh Codex task after project configuration changes before checking discovery, and restart
+the OpenCode parent after OpenCode configuration or profile changes. File presence or parsing does
+not prove runtime loading. These handoffs do not relax independent verification or release gates.
 
 For this R-ASTRA-121 repair, the user explicitly requires genuine OpenCode with Zen free models.
 Investigate and repair the native integration before suggesting provider-account substitution.

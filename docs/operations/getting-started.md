@@ -1126,6 +1126,9 @@ schema-compatible disabled recovery image. A rehearsal receipt must contain the 
 The live candidate, registered recovery, and temporary recovery identities all require exactly
 `127.0.0.1:8000` for the sole published `8000/tcp` port. Missing or malformed Docker port metadata,
 wildcard bindings, and additional published ports fail the host identity check.
+After changing the host helper, rebind the controller's exact source digest before preparing
+another rehearsal bundle. Positive identity fixtures must include the same port-inspection
+response as the real helper; a successful image/revision check alone is insufficient.
 The 512 MiB start reserve, 128 MiB running reserve, fixed candidate/recovery limits, production
 health checks and separate actual combined 1 GB acceptance remain unchanged. These source checks
 are not evidence that a host pair ran or that the free-Zen repair was deployed.

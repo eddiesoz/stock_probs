@@ -4898,16 +4898,7 @@ def test_live_production_identity_is_separate_from_migration_origin(monkeypatch)
     monkeypatch.setattr(host_helper, "_memavailable_kib", lambda: host_helper.START_RESERVE_KIB)
     samples = [0]
 
-    def run(command, **kwargs):
-        assert kwargs.get("monitor_production") is False
-        output = (
-            "a" * 64
-            if command[1] == "ps"
-            else f"{baseline['image_id']}|running|{baseline['revision']}"
-        )
-        return CompletedProcess(command, 0, output.encode(), b"")
-
-    monkeypatch.setattr(host_helper, "_run", run)
+    _mock_production_docker_identity(monkeypatch, baseline)
     host_helper._check_production(samples)
     assert samples == [1]
     host_helper._production_container()
@@ -4977,13 +4968,7 @@ def test_host_receipt_accepts_only_pinned_live_baseline():
 def test_recurring_production_guard_rejects_same_schema_replacement(monkeypatch, changed_field):
     live = dict(host_helper.PRODUCTION_BASELINE)
 
-    def run(command, **kwargs):
-        output = (
-            "a" * 64 if command[1] == "ps" else f"{live['image_id']}|running|{live['revision']}"
-        )
-        return CompletedProcess(command, 0, output.encode(), b"")
-
-    monkeypatch.setattr(host_helper, "_run", run)
+    _mock_production_docker_identity(monkeypatch, live)
     monkeypatch.setattr(host_helper, "_memavailable_kib", lambda: host_helper.START_RESERVE_KIB)
     monkeypatch.setattr(
         host_helper, "_readiness", lambda: {"status": "ready", "schema_version": 13}
