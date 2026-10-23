@@ -549,6 +549,13 @@ process reaping. The full browser aggregate must still pass separately.
 
 The later F6 fixture-readiness watchdog sets the fixture startup budget to 30 seconds to match the unchanged Playwright `webServer` timeout. Each readiness fetch uses an abort timeout of `max(1, min(1000, remaining_ms))` milliseconds; retry sleep is capped by remaining time. The 9/9 lifecycle suite uses a fake clock, child process, and fetch; it does not verify real app/browser startup. See the [F6 checkpoint](../../MVP-PLAN.md#r-astra-121-f6-deployment-access-and-startup-diagnostic-checkpoint-2026-10-18).
 
+The shared application fixture also emits `qa_fixture_lifecycle` JSON records to the existing
+bounded runner log when each child starts and exits. Records contain only the fixture runtime name,
+allocated loopback port, actual child PID, and exit code/signal. Retain every generation, including
+restarts and early exits, so final cleanup can check all additional fixture ports and processes.
+An exit record alone does not prove listener, runtime-directory, or process-group absence. Never add
+session values, environment contents, request payloads, or raw application errors to these records.
+
 The supervised native probe retains only normalized diagnostics. Model-discovery warnings use
 closed outcome names and bounded numeric counters for catalog reads and the activation barrier;
 raw log text, request URLs and owner identifiers are excluded. The existing limits remain four

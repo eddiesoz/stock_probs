@@ -11998,3 +11998,105 @@ unresolved. Unchanged frontend build/stage evidence is reused only within its or
 Production, data, existing 1 GB host/backups and US$15 monthly total are unchanged; the backup
 retention hold remains. No merge, deployment, rollout, resize, backup deletion or email occurred.
 The free Zen live fix and all seven approved features remain active and incomplete.
+
+
+### Free Zen restoration: fed native/kill checkpoint and fixture cleanup inventory (2026-10-23)
+
+At clean pushed `fed684a6421db670e3dfa658ea9a41d6c5475787`, the maintained local build
+Passed with actual exit 0, from `2026-10-23T20:48:49.743227Z` to `21:02:17.649244Z`.
+Image `sha256:7597a56140d1860f8ae5c50efdda8ec88b05590447e3b76cd53670739f1cf88a`
+is bound to context `4294ddbd141ee78cc6e2dfec21542c1b7675574437276d02e5890d96a8d4a62c`,
+151 image inputs, 420 source pins and 52 served/export pairs. The exact owned builder was stopped
+and its cgroup was absent. Build-receipt SHA-256 is
+`86ac0f2b03751663f9a9708cd6c91cb1dba6ca4b57241d44beaf0c5cbd30013e`.
+Independent prelaunch review Passed for build/source/stage/control scope; initial audit and first
+correction Failures remain preserved for incorrect receipt-field/cgroup-wrapper and generation-time
+comparisons. Final review SHA-256 is
+`e3b9135da0d497810e57443a60ebb5ee2980bb9265f090939894441afb5c1249`.
+
+Before that build, the superseded `752ff15e` image was retired through fresh exact full-ID,
+receipt/tag/reference/RootFS checks, typed pointer CAS, `image rm --no-prune`, exclusive retirement
+receipt and typed acknowledgement. Only that image disappeared; production and both protected
+recovery tags remained. Initial independent safe-tag/full-tag projection and preparation-umask
+Failures were retained, then the corrected pre-action scope Passed. Post-action receipt review
+Passed (`81b89f586393336a8bebb2495b18bdd84ec6d1315ee1c4d7b3cdd58cc4076943`).
+There was no Docker prune, forced removal, container/volume mutation or production action.
+
+The one current-image genuine native functional trial Passed, actual outer/child exit 0,
+`2026-10-23T21:13:22.504206Z`–`21:15:58.749755Z`. Both synthetic owners completed nonempty
+answers using `opencode-zen/deepseek-v4.1-flash-free`, with matching selected model and owner-scoped
+workspace-summary checks. The raw metric named `native_search_source_count` is nine total source
+events, including one approved exact guarded fetch; its two recorded types imply eight native
+search-text events. Source attribution is unverified. This source-only count interpretation is
+recorded in a new immutable supplement, SHA-256
+`005fb81e5fc68564166f98ca155d8b4ed4a57fff5269b570473726c8ebe21186`;
+earlier nine-search-plus-one-fetch prose was inaccurate. Cross-owner and forged MCP reads returned
+404, both conversation
+deletes returned 200 on their first attempt, and retained cache markers were zero after cleanup.
+All 154 native pins, 420 host pins and 52 stage/export pairs matched. Exact container/network/volume,
+listener and numeric-port refusal, process/group and Docker-config scratch cleanup Passed.
+Peak local memory was 475,885,568 of 805,306,368 bytes with zero high/max/OOM deltas. All 98 app
+samples were ready; the worker had 97 ready samples and one unavailable sample, plus a startup
+warning. This is neither continuous worker readiness nor actual combined 1 GB acceptance. The
+independent result/cleanup supplement Passed with SHA-256
+`0d839c4fec8e8d63752f06c7ff505b44974a9f9f0a9432c8fc25e5b3a59f3375`; initial UTC-format and
+empty-ps-result audit Failures remain. A separate parent read-only path-construction TypeError was
+corrected without repeating the native trial. The prior `274c253` native failure and its unproven
+provider/root cause remain; this single success does not establish general reliability or causation.
+
+The same-image pending-search kill diagnostic also Passed, actual exit 0,
+`2026-10-23T21:24:26.673919Z`–`21:26:04.721423Z`. Search was pending with zero approvals when the
+assistant was disabled. App PID/readiness, private history and two saved records survived; worker
+processes and worker-home files were gone, and six assistant endpoints returned 503. The active
+turn ended `failed`/`provider_unavailable`, not cancelled. Driver `active_scan_ack_invalid` and
+`active_search_scan_acknowledged=false` are retained EOF-without-approval facts and do not prove
+provider execution count. The probe's false container/volume cleanup flag precedes enclosing
+cleanup; separate exact final cleanup Passed. The 768 MiB sample peaked at 507,846,656 bytes with
+zero OOM events. Independent review Passed its declared scope after correcting a parser assumption
+that the raw kill candidate contained a port; the separate actual live-binding receipt supplies it.
+That initial Fail remains. Review SHA-256 is
+`2bd2961727e9f3aa319520db9df0013b47d7d8c7eb4107407deac2ffda991cfc`.
+Parent integrated source/evidence review Passed only for these local scopes; SHA-256 is
+`049dacabe1b11be9f65daafd45162caf1acb30fc72eaae8e41d306816aa3dbee`.
+Independent supplements retain self-recorded windows but no separate supplement process-terminal
+file; they are scoped source/manual reconciliations, not canonical aggregate receipts.
+All these immutable packets are under `/var/tmp/r12r/f6-native-fed684a-current-20261023` and the
+bound independent-review directories. Both one-shot authorizations are consumed.
+
+The unchanged desktop news case Failed again with a private stack-only CLI diagnostic: its second
+forecast response exceeded the existing five-second wait. One periodic stack was inside
+`Repository.record_success` at `connection.commit()` and a separate startup stack was inside a
+migration commit. This does not establish an I/O cause, exact wait duration, or cause of earlier
+failures. Exact fixture cleanup Passed; review SHA-256 is
+`e037e0ad198d9377a9f29c2cec08d784f51615287061d4e033c3b044df3a193a`.
+Three fixed 4 KiB fsync samples on the required SD filesystem took 5.603–35.181 ms; no long wait
+was reproduced. A separate same-case fsync/fdatasync-only syscall diagnostic Passed in 28.591
+seconds, completing the strict zero-violations/zero-incompletes axe assertions. It observed 117 sync
+calls with a maximum 245.509 ms, 420 unchanged source pins and 52 unchanged stage pairs, and exact
+cleanup Passed. Its review SHA-256 is
+`292d4c53b399905b40b6e392fd7edfc81dad948dc03496b45a7fdec4c662ae03`.
+The earlier forecast-delay and final-axe-timeout Failures remain unresolved. No durability,
+filesystem, deadline or assertion change followed; this selected Pass is not a full aggregate.
+
+The prepared full-browser packet `/var/tmp/r12r/f6-full-fed684a-20261023` was held before execution
+when parent source review found the same cleanup-inventory gap as the earlier out-of-session
+fixture: successful additional fixtures did not persist their numeric ports. The parent added two
+fixed-schema spawn/exit JSON records to the existing bounded fixture log, preserving actual PID,
+allocated loopback port and runtime name without session, environment or request data. Existing
+restart/startup/teardown budgets and behavior are unchanged. Two new restart/early-exit regressions
+Failed on the baseline; the repaired lifecycle suite Passed 11/11, and syntax/diff checks Passed.
+Independent source/privacy/test QA Passed 11/11 plus both syntax checks and scoped diff, with
+unchanged JS, Node and config pins; receipt SHA-256 is
+`ca7552d20e2fe0061346e90f0d9885c4ce814838e20f3d1e3e395239210ad4a1`.
+Parent integrated source/evidence review found no blocker for this fixture scope. Static collection
+retained all 200 configured cases (100 desktop, 100 mobile-emulated); no browser was launched. The
+fresh complete browser aggregate remains pending.
+Exact two-file and documentation baselines plus red/green evidence are private under
+`/var/tmp/r12r/f6-fixture-lifecycle-fed684a-20261023`.
+
+The unchanged 89-input, 79-test approved frontend build and 52-file stage evidence remain reused
+within their exact scope. The required current canonical/full-browser/security, actual-host 1 GB,
+PR-bound recovery/rollback, final guide, authenticated owner UI and release gates remain open.
+Production, data, existing 1 GB host/backups, US$15 monthly total and the backup-retention hold are
+unchanged. No merge, deployment, rollout, resize, backup deletion or email occurred. The free Zen
+live restoration still precedes all seven features; the overall goal remains active and incomplete.

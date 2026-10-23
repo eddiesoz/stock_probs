@@ -19,12 +19,14 @@ function loadLaunchApplication(options = {}) {
   const readinessCalls = [];
   const readinessTimeouts = [];
   const fetchAborts = [];
+  const lifecycleRecords = [];
   const spawnError = options.spawnError || null;
 
   class FakeChild extends EventEmitter {
     constructor(childOptions) {
       super();
       this.options = childOptions;
+      this.pid = 50_000 + spawnCount;
       this.stderr = new EventEmitter();
       this.exitCode = null;
       this.killCalls = [];
@@ -150,6 +152,7 @@ function loadLaunchApplication(options = {}) {
     },
     clearTimeout() {},
     queueMicrotask,
+    console: { log(value) { lifecycleRecords.push(JSON.parse(value)); } },
   };
   const testOnlySource = `${fixtureSource}\nexports.__launchApplicationForUnitTest = launchApplication;\n`;
   vm.runInNewContext(testOnlySource, context, { filename: fixturePath });
@@ -167,6 +170,7 @@ function loadLaunchApplication(options = {}) {
     readinessTimeouts,
     fetchAborts,
     timerDelays,
+    lifecycleRecords,
     get now() { return now; },
   };
 }
@@ -247,6 +251,28 @@ test("successful restart preserves runtime data and only replaces the child", as
   assert.equal(harness.children[1].options.env.STOCK_PROBS_DATA_DIR, "/private/restart-runtime");
   await application.stop();
   assert.deepEqual(harness.children[1].killCalls, ["SIGTERM"]);
+});
+
+test("actual fixture identities survive startup, restart, and teardown in bounded lifecycle records", async () => {
+  const harness = loadLaunchApplication();
+  const application = await harness.launch("restart-runtime");
+  await application.restart();
+  await application.stop();
+  assert.deepEqual(harness.lifecycleRecords, [
+    { qa_fixture_lifecycle: "started", runtime: "restart-runtime", port: 45678, pid: 50001 },
+    { qa_fixture_lifecycle: "exited", runtime: "restart-runtime", port: 45678, pid: 50001, code: 0, signal: null },
+    { qa_fixture_lifecycle: "started", runtime: "restart-runtime", port: 45678, pid: 50002 },
+    { qa_fixture_lifecycle: "exited", runtime: "restart-runtime", port: 45678, pid: 50002, code: 0, signal: null },
+  ]);
+});
+
+test("an early fixture exit records its exact allocated identity before readiness failure", async () => {
+  const harness = loadLaunchApplication({ exitCodeBeforeReady: 7, fetchError: true });
+  await assert.rejects(harness.launch("early-exit-runtime"), /exited early \(7\)/);
+  assert.deepEqual(harness.lifecycleRecords, [
+    { qa_fixture_lifecycle: "started", runtime: "early-exit-runtime", port: 45678, pid: 50001 },
+    { qa_fixture_lifecycle: "exited", runtime: "early-exit-runtime", port: 45678, pid: 50001, code: 7, signal: null },
+  ]);
 });
 
 test("synchronous spawn throws retain identity when no child was created", async () => {

@@ -72,10 +72,18 @@ async function launchApplication(testInfo, runtimeName, pythonArguments, label, 
       stdio: ["ignore", "ignore", "pipe"],
     });
     const runningChild = child;
+    // Keep actual fixture ports and PIDs in the existing bounded runner log for cleanup review.
+    console.log(JSON.stringify({
+      qa_fixture_lifecycle: "started", runtime: runtimeName, port, pid: runningChild.pid ?? null,
+    }));
     runningChild.stderr.on("data", (chunk) => {
       processState.stderr = `${processState.stderr}${chunk}`.slice(-16_384);
     });
-    runningChild.once("exit", (code) => {
+    runningChild.once("exit", (code, signal) => {
+      console.log(JSON.stringify({
+        qa_fixture_lifecycle: "exited", runtime: runtimeName, port, pid: runningChild.pid ?? null,
+        code, signal: signal ?? null,
+      }));
       processState.exit = code;
       if (child === runningChild) child = null;
     });
