@@ -2389,3 +2389,11 @@ error, and true historical tag/inventory observations. Fresh same-generation sto
 empty-cgroup and current protected-inventory checks remain mandatory before typed reservation
 release; historical failure receipts are immutable. Completed build-step history or cache presence
 does not establish a completed image or native assistant acceptance.
+
+
+For ARM64 transient-image cleanup, retain every in-flight ledger reservation. An absent tag or
+terminated Docker CLI does not prove that the shared BuildKit backend has finished. Both cleanup
+planning and acknowledgement must fail closed on an in-flight row; completed-image cleanup keeps
+its exact-ID/receipt/absence checks. Release an unfinished reservation only through a separately
+reviewed typed recovery with fresh backend-completion evidence; the local-current recovery command
+is not authorization to reconcile ARM64 transient rows.

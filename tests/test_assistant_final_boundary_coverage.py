@@ -2468,7 +2468,8 @@ def test_opencode_refresh_rotates_only_the_authorized_owner_vault_entry(
     assert current is not None
     updated = asyncio.run(manager._refresh_opencode_credential_if_needed(71, current, authorize))
 
-    assert checks == 3
+    # Entry, pre-request, pre-write, and dispatched policy storage each recheck ownership.
+    assert checks == 4
     assert requests[0][0] == "https://opencode.ai/console/auth/device/token"
     assert requests[0][1]["method"] == "POST"
     assert json.loads(bytes(requests[0][1]["body"])) == {

@@ -3254,6 +3254,32 @@ def test_arm_cleanup_refuses_rebound_tag_and_container_references(
         bounded._plan_arm64_cleanup(tags, revision)
 
 
+@pytest.mark.parametrize("operation", ["plan", "ack"])
+@pytest.mark.parametrize("inflight_count", [1, 2])
+def test_arm_cleanup_preserves_inflight_reservations_without_backend_completion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str, inflight_count: int
+) -> None:
+    tags, revision, image_ids, inventory = _arm_cleanup_fixture(tmp_path, monkeypatch)
+    ledger = json.loads(bounded.LEDGER_FILE.read_bytes())
+    for row in ledger["entries"][:inflight_count]:
+        row["status"] = "inflight"
+        row["image_id"] = bounded._reservation_image_id(row["tag"])
+        row.pop("receipt_path")
+        row.pop("receipt_sha256")
+    bounded.LEDGER_FILE.write_text(json.dumps(ledger), encoding="utf-8")
+    baseline = bounded.LEDGER_FILE.read_bytes()
+    inventory.clear()
+    registered = tuple(sorted(image_ids[tag] for tag in tags[inflight_count:]))
+
+    with pytest.raises(bounded.BuildError, match="arm64_cleanup_inflight_recovery_required"):
+        if operation == "plan":
+            bounded._plan_arm64_cleanup(tags, revision)
+        else:
+            bounded._ack_arm64_cleanup(tags, revision, registered)
+
+    assert bounded.LEDGER_FILE.read_bytes() == baseline
+
+
 def test_schema13_rehearsal_retirement_removes_exact_id_and_frees_next_build_slot(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

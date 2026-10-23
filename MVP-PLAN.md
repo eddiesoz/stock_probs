@@ -11143,3 +11143,76 @@ Documentation validation, 177-file coverage including the five changed paths, an
 checks Passed for their recorded scope. This final ledger append is parent documentation
 reconciliation after that independent snapshot; it does not relabel the original doc hash.
 The approved current-dependency build/stage and mandatory canonical aggregate are still pending.
+
+
+### R-ASTRA-121 F6 canonical timeout and operational security repairs (2026-10-23)
+
+The frozen `a34da7bbf64c0949b25cd1864405ed21684a687c` canonical check **Failed**:
+its reviewed 5,300-second deadline ended the child with exit 143 after 5,303.322 seconds.
+Documentation and the approved frontend build/stage (75 tests) completed; Python did not complete,
+and no JUnit or coverage result exists. All 555 source bindings remained unchanged and the checkout
+was clean at terminal. The recorded runner/gate/pytest PIDs and exact cgroup were subsequently absent.
+Keep the earlier bootstrap failure and deliberately interrupted dependency-obsolete run separate.
+Receipt directory: `/var/tmp/r12r/f6-canonical-a34-7fcc2154059d442584b0b3e6b717c44b`;
+`runner-v9-terminal.json` and `parent-terminal-failure-review-v1.json` record the terminal scope.
+No aggregate Pass follows from the completed subchecks.
+
+The raw Python stream contains three failure markers. A separately recorded exact collection order
+produced selector hypotheses; a focused run reproduced all three failures (5.22 seconds, two warnings).
+The OAuth refresh fixture expected three authorization checks while the current implementation performs
+four, including authorization immediately before dispatched policy storage. Its assertion is repaired
+without changing application authorization. The other failures expose sparse-checkout omissions:
+`tools/browser/tests/performance.spec.js` and the linked `SESSION-EXPORT.md` are absent in that SD checkout.
+Materializing their exact tracked bytes and verifying the affected contracts precedes another aggregate;
+the original failed run is not rewritten. The slower aggregate also recorded resource pressure, which
+is not a proven timeout cause. Do not repeat its unchanged preparation.
+
+Independent static operational security review **Failed** on OPS-P2-01: the exact live candidate image
+and revision could be accepted without inspecting its published ports. Parent reproduction failed all
+eight new cases before repair. The candidate now uses the same exact loopback-only port validator as
+registered and temporary recovery. Wildcard/IPv6-wildcard, extra, missing, malformed, and unavailable
+port metadata fail closed. The affected parent candidate/recovery selection **Passed** 59 tests;
+independent final acceptance is recorded separately, not inferred. Baselines and raw red/green evidence:
+`/var/tmp/r12r/f6-production-port-check-repair-f317b913267742589c274ed424fa3e06`.
+No live exposure was observed and no Docker or host operation ran.
+
+Separate independent static review **Failed** on BD-SG-01, an adjacent existing ARM64 cleanup path:
+absence of a tag did not prove that a timed-out shared BuildKit backend had finished. Four new synthetic
+cases reproduced release of one or two in-flight reservations through plan/ack. Both operations now
+fail closed and preserve those ledger rows; completed-image cleanup remains available. Automatic
+in-flight retirement remains held until a reviewed typed recovery proves backend completion; this repair
+does not claim that such ARM64 recovery has run or is supported by the local-current recovery command.
+The parent selection of ARM cleanup and typed local reconciliation **Passed** 34 tests; independent
+verification remains separate. Evidence and exact source baselines:
+`/var/tmp/r12r/f6-arm-inflight-cleanup-repair-39772afe28dd47768472e6e183a2f29d`.
+
+The browser aggregate remains held pending the repaired preparation and canonical result. Current-image,
+actual combined 1 GB, PR-bound recovery/rollback, operational security, final guide, authenticated owner
+canary, deployment and invited rollout gates remain open. The backup-retention decision is still pending;
+no backup was removed, no production mutation or release occurred, and no announcement was sent.
+The seven visible features remain unreleased; the free Zen live fix remains their first dependency.
+
+Supplemental scoped verification: the parent added both missing SD files from exact a34 tracked
+bytes (checkout remains clean), then both sparse-contract tests **Passed**. The refresh fixture's
+four selected tests **Passed**. Independent ARM cleanup QA **Passed** 34 tests, Ruff and format;
+receipt `/var/tmp/r12r/pr9-arm-inflight-qa-4df87459c9f94373b35c8fd84795ff4a/independent-arm-inflight-cleanup-qa.json`,
+SHA-256 `fde0ad9aebe943801910b50433fb2098d1fcca0299d26c90a03004c10bec4174`.
+Parent integrated source review found no remaining issue in these narrow repairs. Parent Ruff,
+format, documentation validation (9 categories/14 topics/8 governance entries), documentation
+coverage (177 mapped files), and diff checks **Passed**. These are scoped checks, not an aggregate
+or live-runtime acceptance; complete canonical verification remains required after the preparation repair.
+
+Independent port identity repair verification **Passed** 59 tests and scoped Ruff/format/diff checks:
+`/var/tmp/r12r/f6-port-identity-independent-01c92d2b-87ae-4e33-bfb3-ffbd22545273/independent-port-identity-review-v1.json`,
+SHA-256 `ffbdf104562344f73b90082d6ea2c52c69901c79175524bed7f8ab1597ce8eaa`.
+Independent refresh fixture verification **Passed** four tests with actual imported-provider and test
+pins before/after the accepting R-cwd run:
+`/var/tmp/r12r/f6-opencode-refresh-final-boundary-independent-fc01ca5a-8ef7-4f17-8ce7-59b0eb2667f6/independent-opencode-refresh-boundary-review-v1.json`,
+SHA-256 `f662283b73bca33ba0f13fc18a5e8197ab0213350b67eea517d02c7d5ee2fdc1`.
+Reviewer checkout-path attribution and interpreter metadata corrections are supplemental audit facts;
+passing scopes retain their exact test-command and input bindings. Parent personally reviewed the
+integrated diff and receipts. No full-tree security, canonical or release acceptance follows.
+
+The final change-aware documentation check initially failed closed because the ARM64 cleanup repair
+also requires durable `AGENTS.md` workflow-policy coverage. The added rule explicitly retains
+in-flight transient reservations; it does not add a new recovery command or claim runtime discovery.

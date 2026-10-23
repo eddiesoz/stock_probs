@@ -4196,6 +4196,43 @@ def test_recovery_baseline_requires_registered_image_record_and_loopback(monkeyp
     "port_bindings",
     [
         {"8000/tcp": [{"HostIp": "0.0.0.0", "HostPort": "8000"}]},  # noqa: S104
+        {"8000/tcp": [{"HostIp": "::", "HostPort": "8000"}]},
+        {"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}], "9000/tcp": []},
+        {},
+    ],
+)
+def test_live_candidate_rejects_non_loopback_extra_or_missing_ports(monkeypatch, port_bindings):
+    _mock_production_docker_identity(
+        monkeypatch, host_helper.PRODUCTION_BASELINE, port_bindings=port_bindings
+    )
+    monkeypatch.setattr(
+        host_helper, "_readiness", lambda: {"status": "ready", "schema_version": 13}
+    )
+    with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
+        host_helper._production_container()
+
+
+@pytest.mark.parametrize("output", [None, b"not-json", b"null", b"\xff"])
+def test_live_candidate_rejects_unavailable_or_malformed_port_inspection(monkeypatch, output):
+    _mock_production_docker_identity(monkeypatch, host_helper.PRODUCTION_BASELINE)
+    identity_run = host_helper._run
+
+    def run(command, **kwargs):
+        if command[1] == "inspect" and command[3] == "{{json .HostConfig.PortBindings}}":
+            if output is None:
+                raise host_helper.RehearsalError("fixed_command_failed")
+            return CompletedProcess(command, 0, output, b"")
+        return identity_run(command, **kwargs)
+
+    monkeypatch.setattr(host_helper, "_run", run)
+    with pytest.raises(host_helper.RehearsalError, match="production_baseline_mismatch"):
+        host_helper._production_identity()
+
+
+@pytest.mark.parametrize(
+    "port_bindings",
+    [
+        {"8000/tcp": [{"HostIp": "0.0.0.0", "HostPort": "8000"}]},  # noqa: S104
         {"8000/tcp": [{"HostIp": "127.0.0.1", "HostPort": "8000"}], "9000/tcp": []},
     ],
 )

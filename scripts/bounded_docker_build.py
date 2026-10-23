@@ -1858,11 +1858,8 @@ def _plan_arm64_cleanup(tags: tuple[str, ...], revision: str) -> dict[str, objec
             elif _container_uses_image_id(image_id):
                 raise BuildError("arm64_cleanup_image_in_use")
         elif status == "inflight":
-            if row.get("image_id") != _reservation_image_id(tag):
-                raise BuildError("arm64_cleanup_reservation_invalid")
-            if tag in inventory:
-                # An interrupted build has no immutable completed receipt to bind a loaded tag.
-                raise BuildError("arm64_cleanup_inflight_image_unverified")
+            # Tag absence cannot prove that a shared backend has finished loading the image.
+            raise BuildError("arm64_cleanup_inflight_recovery_required")
         else:
             raise BuildError("arm64_cleanup_ledger_status_invalid")
     if not rows:
@@ -1913,9 +1910,9 @@ def _ack_arm64_cleanup(
         if row.get("status") == "complete":
             _validate_arm64_build_receipt(row)
             expected_registered_ids.add(str(row["image_id"]))
-        elif row.get("status") != "inflight" or row.get("image_id") != _reservation_image_id(
-            str(row["tag"])
-        ):
+        elif row.get("status") == "inflight":
+            raise BuildError("arm64_cleanup_inflight_recovery_required")
+        else:
             raise BuildError("arm64_cleanup_ledger_status_invalid")
     if set(registered_ids) != expected_registered_ids:
         raise BuildError("arm64_cleanup_registered_ids_mismatch")

@@ -2149,6 +2149,8 @@ def _production_identity() -> (
     )
     values = result.stdout.decode("ascii", errors="strict").strip().split("|")
     if values == [PRODUCTION_BASELINE["image_id"], "running", PRODUCTION_BASELINE["revision"]]:
+        if not _recovery_port_bindings_match(container_id):
+            raise RehearsalError("production_baseline_mismatch")
         return dict(PRODUCTION_BASELINE)
     if values == [
         RECOVERY_PRODUCTION_BASELINE["image_id"],

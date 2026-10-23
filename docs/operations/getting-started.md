@@ -1123,6 +1123,9 @@ revision `5ad2c3fddfce5a5a631b72cd832a53f24757c44a`, image
 This is separate from the historical schema-12 image used to rehearse migration and build the
 schema-compatible disabled recovery image. A rehearsal receipt must contain the exact live
 `production_baseline` binding, and the local controller rejects missing, stale, or malformed values.
+The live candidate, registered recovery, and temporary recovery identities all require exactly
+`127.0.0.1:8000` for the sole published `8000/tcp` port. Missing or malformed Docker port metadata,
+wildcard bindings, and additional published ports fail the host identity check.
 The 512 MiB start reserve, 128 MiB running reserve, fixed candidate/recovery limits, production
 health checks and separate actual combined 1 GB acceptance remain unchanged. These source checks
 are not evidence that a host pair ran or that the free-Zen repair was deployed.
