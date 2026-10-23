@@ -10539,3 +10539,111 @@ Its earlier v1 review remains **Fail** because its checker incorrectly required 
 two distinct 153-path manifests; the corrected review compares their shared 150 image rows and
 separate three-path scopes. No test/native rerun occurred. Parent review accepted only this
 selected integrity/cleanup scope and retains every functional and wrapper failure above.
+
+
+### R-ASTRA-121 F6 UTC-boundary native answer and GLM effort candidate (2026-10-23)
+
+The user requested further research. Six public upstream files at the manifest-pinned commit
+`ca27d3328fcd0d470588149c902a963452f1abaf` were read and matched against GitHub Git blob IDs.
+The [anonymous limiter source](https://github.com/anomalyco/opencode/blob/ca27d3328fcd0d470588149c902a963452f1abaf/packages/console/app/src/routes/zen/util/ipRateLimiter.ts)
+uses IP daily UTC-date counters, with an optional two-character model-prefix suffix, and computes
+its own retry interval to the next UTC midnight. Numeric allowances and model settings come from
+private service configuration. The outer gateway can also relay a downstream 429 while scrubbing
+most response headers. Thus the closed error type alone does not establish limiter scope/reset
+or prove which deployed layer rejected the earlier request. The current app forwards validated
+native identity/session metadata; no missing-header cause was established. Its lack of a numeric
+retry hint is outside the current contract, not a proven defect or failure cause.
+
+Public-source packet: `/var/tmp/r12r/f6-zen-reset-research-c83929ffa7e34da788167ca5e79fb958/`.
+Parent findings receipt SHA-256:
+`75f95f16f0eebab1c97b08d3cfdcff6a6d1d2ee2a9b1f896feb02ba4bd659620`.
+Two initial dev-branch source reads returned 404; the pinned paths succeeded. Independent source
+and static prelaunch review Passed, preserving its two reviewer-harness setup failures. Receipt:
+`/var/tmp/r12r/f6-native-reset-eba93725bc5140f6b82d4b7c55208f87/independent-reset-static-prelaunch-review-v1.json`,
+SHA-256 `8555d29c67814cdf3b48cd751263e7e6038c6bb43eae234617002c8ab1610844`.
+The full immutable build consumer, checkout-only guard and public catalog metadata checks Passed
+before authorization. Catalog discovery remained metadata-only: 85 public rows with the reviewed
+GLM and DeepSeek IDs present, not inference acceptance.
+
+One genuine same-GLM native reset-hypothesis attempt then ran at
+`2026-10-23T01:50:11.433137Z`–`01:53:06.219021Z`, outer exit 2, 174.786 seconds, complete
+bounded output. The application/image remained c6 (`67064075` full image ID in the prior row);
+the clean pushed checkout was documentation-only `c714ea41a79d1304d3e7a25e7da097f49a2140ea`.
+All original image, receipt and fixture revision bindings stayed c6. No image rebuild occurred.
+Readiness Passed after 43 attempts in 21.898 seconds. Owner 0 completed a 245-byte answer in
+86.763 seconds with matching model/summary evidence. Owner 1 obtained the matching summary,
+approved native search and eight sources, then timed out at 120.684 seconds before WebFetch or
+an answer. The native aggregate remains **Fail**. No 429 failure rows appeared in this result;
+that availability change after UTC rollover does not prove the reset mechanism or a permanent fix.
+Both conversation deletes returned HTTP 200; owner 0 required four pending retries.
+The 768 MiB local failure diagnostic peaked at 594,743,296 bytes with zero high/max/OOM deltas.
+One app/worker unavailable sample and a `supervisor_status` request-timeout warning remain
+unresolved observations; ready-at-end does not establish uninterrupted readiness. This is not
+actual combined 1 GB acceptance or a latency cause.
+
+Native packet: `/var/tmp/r12r/f6-native-reset-eba93725bc5140f6b82d4b7c55208f87/`.
+Stdout SHA-256: `4fc0ca574cd0080178dfee4ccb9d69de93e99f4a8bbaf03143ff01e1dd62a72a`.
+Parent saved-result review SHA-256:
+`3b4485170347486ca3c25c55db3e485ef222ca3707d2a9d31657867c185e4149`.
+Independent terminal/integrity/cleanup review Passed its selected scope, preserving native Fail:
+`independent-native-reset-terminal-review-v1.json`, SHA-256
+`dbeed8b1eb68f7c0ba788d87fc259c3ec73c6b5bb14fe834467d2b1c32d4389b`.
+It verified exact live-bound container/network IDs and names, volume and process-group absence,
+and refusal on the captured loopback port. All 150 image inputs, 153 runtime pins and 53 staged
+pairs matched. The detailed pair list is the retained e40dbc manifest; c6 build/run records bind
+the 53-pair count. This is a local synthetic-owner native answer, not production owner UI or release
+acceptance. The source freeze was released after that independent review.
+
+Further primary research found that [Z.ai's GLM-5 model notes](https://github.com/zai-org/GLM-5)
+and [Flash documentation](https://docs.z.ai/guides/vlm/glm-5.3-flash) support explicit reasoning
+levels, with a maximum-effort default. Current outgoing app requests set `low` only for the old
+MiniMax free model. The parent implemented an exact-model GLM free-route `low` candidate, keeping
+the existing MiniMax behavior, thinking default, model identity, tools, messages, output/token
+limits, `store: false`, deadlines, authorization and cancellation contracts. Other and paid routes
+receive no new parameter. This is not a proven timeout cause or live latency result.
+
+Exact baselines for four owned paths and bounded official documentation reads are saved at
+`/var/tmp/r12r/f6-glm-interactive-effort-c4077072f66e43a798ea87dae6c41bf8/`.
+An initial parent test wrapper Failed at child syntax before pytest and produced no JUnit;
+its raw output remains preserved. The corrected red selection Failed only the new positive GLM
+case (8 passed, 1 failed). After the scoped repair, the same nine-case egress selection Passed,
+exit 0, at `02:01:14.212939Z`–`02:01:19.149120Z`, with exact-worktree imports, 155 unchanged
+pins, complete bounded output, process-group absence and owned-temp cleanup. JUnit files were
+made private after pytest while retaining child umask 022. Ruff check/format and diff checks Passed.
+Independent candidate verification and a newly bound image/native test remain pending. The old
+c6 image does not contain this candidate. No full canonical or browser aggregate was rerun.
+
+The goal remains active. Authenticated owner UI, full native/search/fetch completion, current-image
+shutdown, actual combined 1 GB, security/browser, host recovery/rollback and release gates remain
+open. Existing production, backups, the 1 GB plan and US$15/month including tax are unchanged.
+No paid fallback, new account, production action, resize, rollout, kill or email occurred; the
+prepared support message remains unsent.
+
+Independent candidate source/selected synthetic verification subsequently Passed 37/37 tests,
+no failures, errors or skips, with 157 stable input hashes, exact-worktree imports, complete
+bounded output, normal child umask 022 and verified process/temp cleanup. Child execution was
+`02:09:39.360317Z`–`02:09:46.234901Z`; review ended at `02:09:47.010466Z`.
+Receipt `/var/tmp/r12r/f6-glm-effort-independent-qa-20261023T0204-0e940c4b19604cbf86a949f491807440/independent-terminal-review-v1.json`
+has SHA-256 `e326d7fbc2831e90b4ee9bc7bcf3e4823317e896d96d5666ead2207c6c2168b1`.
+The earlier private QA wrapper failed before child execution because its `ast` import was missing;
+that setup failure and a separate receipt-writer mount-assertion failure remain preserved.
+The corrected single selected test run made no source repairs. These results cover exact model
+scoping, bounded reasoning history/tool continuation, authorization, cancellation and output limits;
+they do not establish that Zen honors the setting or that native latency is repaired. Parent
+integrated source/evidence review accepted this selected scope and released the source freeze.
+
+Before the next build, the exact old c6 image was archived on the UUID-verified artifact filesystem:
+`/var/tmp/r12r/f6-image-effort-9a860cbabda147b89248c31da20e2a19/candidate-67064075.tar.gz`,
+183,520,877 bytes, SHA-256
+`2c0ee52cf35bdaa5ecdb499342d95450d454ee28e9b0b6a99b4dae6c0ed9ad44`.
+The archive producer Passed at `02:07:28.627118Z`–`02:09:23.641260Z`; its checksum and byte count
+were re-read before retirement. Bounded exact-ID/RootFS, tag, ledger, build-receipt and container
+reference checks Passed. The typed local development pointer selected the protected 5ad image,
+then typed retirement removed only full ID
+`sha256:67064075fa64deab92fabf43a701a635c0731cadca6fdcff2a11972bba4cc410`
+with `docker image rm --no-prune`, verified image/tag absence, and acknowledged the ledger.
+Retirement terminal Passed at `02:12:28.177136Z`; receipt SHA-256
+`366825321522b2608b4d39c49251276ae05c6571431e61c79a1d4e6088b944e8`.
+Both protected deployment/recovery images remain; the managed count is two. No application was
+started, and no container, volume, production or global-cache mutation occurred. The new candidate
+still requires its own clean pushed revision, newly bound image and native trial.

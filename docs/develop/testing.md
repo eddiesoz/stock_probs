@@ -40,6 +40,13 @@ legacy `/zen/v1` route and `/inference/openai/v1` must preserve known-model excl
 paths on the same host fail closed, while similarly named unrelated hosts are not globally banned.
 Keep session revalidation and stream cancellation covered without a live provider request.
 
+The exact reviewed GLM-5.3-Flash Free and MiniMax M3.1 Flash Free Zen routes send the app-owned
+`reasoning_effort: low` setting for interactive turns. Other models and paid routes keep their
+existing request parameters. Verify the exact outbound model identity, untouched messages,
+output-token budget, 120-second transport deadline, response-byte bound and `store: false`.
+GLM thinking remains enabled by its model default. This parameter choice is a latency candidate;
+synthetic egress checks do not establish that Zen honors it or that native turns finish in time.
+
 Compatible-chat streams must preserve bounded `reasoning_content` inside the native session so
 the adapter can replay it in assistant tool continuations. It shares the existing history byte
 budget and per-delta limit; malformed values and non-assistant history fields fail closed. Cover

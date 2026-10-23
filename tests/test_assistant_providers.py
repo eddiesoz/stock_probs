@@ -609,13 +609,17 @@ def test_zen_proxy_uses_fixed_route_and_native_public_bearer_without_changing_ot
     ("provider_id", "suffix", "expected_effort"),
     [
         ("opencode-zen", "minimax-m3.1-flash-free", "low"),
+        ("opencode-zen", "glm-5.3-flash-free", "low"),
+        ("opencode-zen", "glm-5.3-flash", None),
+        ("opencode-zen", "other-glm-5.3-flash-free", None),
+        ("openai", "glm-5.3-flash-free", None),
         ("opencode-zen", "longcat-flash-chat", None),
         ("opencode-zen", "minimax-m3.1-flash", None),
         ("opencode-zen", "other-minimax-m3.1-flash-free", None),
         ("openai", "minimax-m3.1-flash-free", None),
     ],
 )
-def test_zen_minimax_interactive_reasoning_effort_is_model_scoped(
+def test_zen_interactive_reasoning_effort_is_model_scoped(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     provider_id: str,
@@ -640,6 +644,8 @@ def test_zen_minimax_interactive_reasoning_effort_is_model_scoped(
         max_response_bytes: int,
     ):
         captured["body"] = json.loads(body)
+        captured["timeout_seconds"] = timeout_seconds
+        captured["max_response_bytes"] = max_response_bytes
         yield (
             b'data: {"choices":[{"index":0,"delta":{"content":"OK"},"finish_reason":"stop"}]}\n\n'
         )
@@ -669,6 +675,9 @@ def test_zen_minimax_interactive_reasoning_effort_is_model_scoped(
     assert request["messages"] == messages
     assert request["max_tokens"] == native_output_token_budget()
     assert request["store"] is False
+    assert "thinking" not in request
+    assert captured["timeout_seconds"] == 120.0
+    assert captured["max_response_bytes"] == 1_048_576
 
 
 def test_zen_route_keeps_authorization_revalidation_and_stream_cancellation(
