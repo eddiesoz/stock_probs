@@ -33,6 +33,10 @@ streams. Active diagnostics expose byte totals, whether an ASGI send is pending,
 names only; they retain no response text or URL payload. A returned ASGI send does not prove that
 the browser received or rendered the bytes. Preserve the original failing result when a later
 diagnostic passes without establishing its cause.
+The news-state journey also records bounded failure-only readiness/history metadata when its
+forecast response wait rejects. Its parallel reads each retain a one-second request limit and
+report only HTTP statuses and fixture event IDs/status. An unexercised diagnostic branch remains
+Unavailable; a later axe timeout does not pass the case or its accessibility scan.
 
 ## Assistant access-failure checks
 

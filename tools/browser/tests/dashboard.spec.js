@@ -2123,13 +2123,40 @@ test("news renders empty partial stale failure busy unreachable and superseded s
     { method: "GET", path: "/api/v1/news", status: 503 },
   );
   await gotoSurface(page, "/");
+  let lastCompletedForecastId = null;
   const submitForecast = async () => {
     const forecastResponsePromise = page.waitForResponse((response) => (
       response.request().method() === "POST"
       && new URL(response.url()).pathname === "/api/v1/forecasts"
     ));
     await page.getByRole("button", { name: "Run forecast" }).click();
-    expect((await forecastResponsePromise).status()).toBe(201);
+    let forecastResponse;
+    try {
+      forecastResponse = await forecastResponsePromise;
+    } catch (error) {
+      const [readiness, history] = await Promise.all([
+        page.request.get(new URL("/api/v1/readiness", page.url()).href, { timeout: 1_000 })
+          .then((response) => ({ status: response.status() })).catch(() => ({ status: null })),
+        page.request.get(new URL("/api/v1/history?page=1&page_size=1&sort_by=event_id&sort_order=desc", page.url()).href, { timeout: 1_000 })
+          .then(async (response) => ({ status: response.status(), body: await response.json() }))
+          .catch(() => ({ status: null, body: null })),
+      ]);
+      const latest = history.body?.items?.[0];
+      const latestId = Number.isSafeInteger(latest?.id) ? latest.id : null;
+      const diagnostic = {
+        readiness_http_status: readiness.status,
+        history_http_status: history.status,
+        last_completed_event_id: lastCompletedForecastId,
+        latest_event_id: latestId,
+        latest_event_status: ["success", "failed"].includes(latest?.status) ? latest.status : null,
+        latest_after_last_completed: latestId !== null && lastCompletedForecastId !== null
+          ? latestId > lastCompletedForecastId : null,
+      };
+      throw new Error(`${error instanceof Error ? error.message : "Forecast response did not arrive."}\nSafe forecast wait diagnostic ${JSON.stringify(diagnostic)}`);
+    }
+    expect(forecastResponse.status()).toBe(201);
+    const completed = await forecastResponse.json();
+    lastCompletedForecastId = Number.isSafeInteger(completed?.event?.id) ? completed.event.id : null;
     const result = page.locator("#result-content");
     await expect(result).toHaveAttribute("aria-busy", "false");
     await expect(result.locator(".forecast-grid .forecast-card")).toHaveCount(2);

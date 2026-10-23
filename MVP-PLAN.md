@@ -11863,3 +11863,61 @@ news case against a fresh maintained server, preserving original assertions and 
 attributing the failure to accumulated fixture state or changing application code. No unchanged full
 aggregate, native/image build, production mutation, backup deletion or email followed. The live fix,
 all remaining release gates and the seven-feature goal remain incomplete.
+
+
+### Free Zen restoration: isolated news failure and bounded wait diagnostic (2026-10-23)
+
+At clean pushed `d5351a2`, the existing desktop news case was run alone against a fresh maintained
+CLI fixture server. It Failed with actual unit/monitor exit 1, one JUnit error and case duration
+37.284 seconds. Four forecasts returned HTTP 201 promptly; the fifth eventually returned 201 in
+14.504768 seconds (14.351902 seconds before headers, 0.152866 receiving). Its click took 0.672824
+seconds, so click time does not explain that response delay. The unchanged five-second response
+wait rejected before the later response; cause remains Unproven. A fresh server progressed further
+than the earlier three-case selection, but this does not establish accumulated fixture state as a
+cause. Parent terminal receipt SHA-256 is
+`d0541d2408f278477e5ec712cd79ff74d2fa062f2681daae40c6721298c59007`.
+
+The parent added a 27-line test-only failed-wait diagnostic to the existing submit helper. It keeps
+the original wait/click/status/UI assertions and 30-second case/300-second global limits. Only
+after rejection, two parallel read-only readiness/history requests each have a one-second request
+limit; output is restricted to HTTP statuses, numeric synthetic event IDs, a closed status enum
+and a comparison boolean. The last successful ID comes from that same response, without another
+fast-path request. No application, SQL, authorization, provider, deadline or production telemetry
+changed. Exact owned baseline bytes and hashes were preserved before editing.
+
+The one modified-source run also Failed, with actual unit/monitor exit 1, one JUnit error and
+33.870-second duration. It reached the news-state assertions, including seven forecast HTTP 201s
+and the deliberate news 502/503 responses, then exceeded the original 30-second case limit during
+axe analysis. The failed-wait branch did not emit and is dynamically Unavailable; no completed axe
+result or accessibility Pass exists. Independent source review and Node syntax Passed, with
+unchanged source hash at Node 22.19.0/x86_64, `2026-10-23T19:27:22.650Z`–`19:27:22.730Z`.
+Independent review retained both failed browser scopes and the unproven cause, without replay;
+receipt SHA-256 is `6b172ab0e69f33139701fa118799449e2428e3941ec68f2425d2d66ac5290bbc`.
+Parent modified-run terminal receipt SHA-256 is
+`366c1afda9113a6d2e077ed2bcbf38ef3ee59758c572c365efa6cb26cb93fafd`.
+
+Each run preserved 420 source pins and 52 served/export pairs. Exact cleanup Passed for the original
+cgroup, 11 recorded PIDs, retained base listener, only declared base runtime and unit; this case
+declares no additional application fixture. The prior out-of-session cleanup limitation remains
+separate and Unavailable. These diagnostics live in
+`/var/tmp/r12r/f6-fixture-lifespan-152670d3c9534ede940573d2662c462c`.
+The 79-test frontend build and its unchanged inputs remain reused only within their original scope.
+No timeout extension, split-case acceptance, raw-axe waiver or unchanged trial follows. The news
+response delay and latest case/axe timeout remain unresolved.
+
+In parallel, a read-only current-image preparation checked the three-entry managed ledger. The
+superseded `326c4da` local candidate has a matching bound receipt and unique tag, no container
+reference, and no equal-layer or strict-prefix child ambiguity in the bounded 24-image RootFS
+inventory. The initial parent preflight Failed with `schema13_rehearsal_image_identity_mismatch`;
+the exact failing image predicate was not retained and its cause remains Unproven. Follow-up
+metadata matches the candidate and shows two retained tags on protected recovery. A single-tag
+assumption would reject that recovery tag set, but this is an inference rather than proof of the
+original failure. The fresh prepared snapshot preserves both recovery tags and keeps
+candidate/production checks strict; its narrative correction is recorded separately without
+rewriting the failed receipt. No selection, deletion or build
+occurred at this checkpoint; independent cleanup review is pending. The proposed operation frees
+one slot using the existing typed local-pointer transition, exact-ID/no-prune retirement and typed
+acknowledgement, retaining production and recovery. A fresh clean-head image/native check is still
+required for the current frontend. Production, data, 1 GB/backups, US$15 monthly total and the
+backup-retention hold remain unchanged. No merge, deployment, rollout, resize, backup deletion or
+email occurred. The free Zen live fix and seven-feature goal remain active and incomplete.
