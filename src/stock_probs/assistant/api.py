@@ -2054,9 +2054,12 @@ def create_assistant_router(
                 "storage": None,
             }
         await assistant.refresh_runtime_status()
-        result = assistant.status(context.user.id)
+        result = await assistant._storage_call(assistant.status, context.user.id)
+        current = await assistant._storage_call(live_assistant_session, request, context)
+        if current is None:
+            raise AssistantUnavailable("assistant_authorization_required", 403)
         result["authorization"] = {
-            "role": context.user.role,
+            "role": current.user.role,
             "admitted": True,
             "rollout_mode": settings.assistant_rollout_mode,
         }

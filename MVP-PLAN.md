@@ -11308,3 +11308,90 @@ diff. The earlier interrupted reviewer left only an empty scratch directory and 
 is Unavailable, not acceptance. Authored documentation changes were excluded from independent
 source/test pins and validated separately by the parent. No full canonical or runtime result
 follows from this scoped repair checkpoint; the original failed aggregate remains preserved.
+
+### R-ASTRA-121 F6 full browser failure and status wait repair (2026-10-23)
+
+The clean pushed `9d903d3ccb60e9e3582638f61486c5da095deb02` full browser run **Failed**,
+exit 1: 181 passed, 16 failed, three skipped and zero flaky across all 200 configured desktop
+and Pixel 7 emulation cases. The run launched at `2026-10-23T13:29:36.476617Z`; Playwright
+recorded `13:29:38.306Z` through calculated `13:52:23.108473Z`, and the terminal receipt was
+published at `13:52:30.090298Z`. All 418 source pins, 150 prospective-image inputs and 52
+served/export pairs stayed unchanged. The full 75-minute envelope, one worker, zero retries,
+30-second cases, five-second actions and existing WebFetch override were retained; this run
+ended normally before its outer deadline. JUnit contains seven failure and nine error elements;
+both count toward the 16 failed cases. Coverage from selected cases does not pass this aggregate.
+
+Failures include real-HTTP assistant completion/preview/keyboard/revocation flows, two screenshot
+timeouts and several dashboard/forecast request or interaction timeouts. Their complete causes
+remain **Unproven**. Independent terminal integrity review **Passed** after a supplemental
+correction to the reviewer's image-map digest calculation; the original aggregate remains Fail.
+The correction receipt is
+`/var/tmp/r12r/independent-terminal-audit-v2-20261023T140542Z/independent-terminal-audit-correction-v2.json`,
+SHA-256 `fb0286856dd89814b133a5cfe508ef08ffbe161bd6561d9d891dd39d8d7bd598`.
+Eight retained selected axe snapshots had zero violations and incompletes; this is selected
+scope only. Original-run cleanup is **Unavailable** because its stop receipt lost the cgroup
+identity. Separate later observations found the exact original cgroups, PIDs and base listener
+absent; they do not reconstruct the missing historical observation. Parent terminal binding
+review is in `/var/tmp/r12r/f6-full-9d903d3-a3dc8253b84041f7ae52de9495d84fe7`.
+
+The parent preserved owned source baselines before repair. Seven red unit cases showed that
+the synthetic provider lacked the policy-authority scope required by the real service. The
+fixture now validates its exact immutable model, policy version and positive integer owner;
+the production guard is unchanged. All 15 fixture tests Passed. A four-case browser replay
+then **Failed**: WebFetch progressed through preview/approval/decline to a later cancellation
+failure, while route-only completion still timed out. The first launch ran zero tests because
+systemd used its default working directory; that setup failure is preserved separately from
+the corrected invocation. The replay retained all existing limits, verified source/stage pins
+and separately verified its exact cgroup, six PIDs and five listeners absent after terminal.
+
+The existing opt-in stack diagnostic captured the event loop waiting in assistant status quota
+projection at `storage.usage -> Repository._coordinated`, with an authentication worker executing
+`auth_touch_session`. This establishes a blocking path, not the complete SQLite timeout cause.
+Two new deterministic regressions reproduced health/readiness waiting behind status storage;
+a third showed a session revoked during that read still receiving HTTP 200. The repair uses
+the existing tracked storage-thread call and rechecks the exact live session before returning
+status metadata. Both affected test files Passed 42 tests, exit 0, in 37.605 seconds. Source,
+raw red/green JUnit, failed replay and bounded stack evidence are in
+`/var/tmp/r12r/f6-fixture-policy-repair-446eb7dc162546c8b0740444d762e442`.
+Independent repair verification and a browser replay of this application change remain pending.
+
+Independent repair tests subsequently Passed 47 cases, including the two affected files and
+selected idle-expiry, owner-isolation, cancellation and status-recovery HTTP checks, with all
+418 captured inputs unchanged. Independent source review found a stale role projection after
+the new wait, without establishing a backend authorization bypass. The parent added a role-change
+regression: its first setup left the fixture's default member role unchanged and therefore did
+not exercise a role transition; the corrected admin-to-member case reproduced the stale admin
+response. The route now projects the role from the revalidated session. The four status-wait
+cases Passed after this correction; independent recheck and browser replay remain pending.
+The 47-test terminal record is
+`/var/tmp/r12r/independent-policy-status-qa-20261023T141044Z-48527eba/pytest-terminal.json`,
+SHA-256 `bc53aa647c5136b238e54d9ac30c5024f2a2d39e3ec26be9f9eef44437fb8263`.
+
+Independent recheck Passed the repaired role projection and four status-wait regressions,
+plus scoped Ruff/security/format/diff checks, with all 418 captured inputs unchanged:
+`/var/tmp/r12r/independent-status-role-recheck-20261023T141715Z-7cb384/independent-role-projection-recheck-receipt.json`,
+SHA-256 `053f94e91ab1eb2d1ff8d0429683bb857a28588c7bfd360c7e4aec80dcff0c3a`.
+This reuses the earlier 47-test result only for its original binding; it is not a new combined
+current-suite aggregate. Parent source/evidence review confirmed the exact live-role response.
+
+The two-case post-repair browser replay Failed: mobile Passed, desktop exceeded its unchanged
+30-second case limit. A subsequent setup-only change replaces an unasserted Overview render
+used to look up a fixture record with parallel reads through the same authenticated browser
+request context. All existing assertions and the actual live-trading navigation remain; an
+explicit history HTTP 200 assertion was added. Independent static review Passed that exact
+spec change, Node 22.19.0 syntax and whitespace checks, with 418 unchanged pins:
+`/var/tmp/r12r/independent-browser-spec-review-20261023T142410Z-58cd31/independent-browser-spec-review-receipt.json`,
+SHA-256 `000c2c96c06fa2c2fbc70db660a2617d6375838efd1a3b3d049d3f8ed2cbafd8`.
+Its separate browser replay again Failed, with one mobile Pass and one desktop timeout;
+no browser repair or complete cause is claimed from this optimization. Both replay packets
+retain their exact source/stage bindings and later exact unit/PID/listener absence checks in
+the parent repair directory. The original 200-case failure and all earlier attempts remain
+preserved; no unchanged full aggregate was restarted. The remaining desktop timing path and
+the other original browser failures remain unresolved.
+
+This API source change requires newly bound image/native evidence and the mandatory final
+canonical/release checks. The free Zen live fix and seven visible features remain incomplete
+and unreleased. Actual combined 1 GB, exact-PR recovery/rollback, security, final guide,
+authenticated owner UI, deployment and invited rollout gates remain open. The pending host
+backup-retention choice is unchanged; no backup deletion, merge, production mutation, resize,
+release or email occurred. The existing 1 GB host, backups and US$15 monthly total cap remain.

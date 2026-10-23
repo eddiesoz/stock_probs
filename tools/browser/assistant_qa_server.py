@@ -22,6 +22,7 @@ import uvicorn
 
 import stock_probs
 from stock_probs.api import create_app
+from stock_probs.assistant.providers import ProviderUnavailable
 from stock_probs.assistant.schemas import AssistantModelPolicy, AssistantTurnResult
 from stock_probs.assistant.storage import ASSISTANT_TURN_SECONDS
 from stock_probs.config import Settings
@@ -141,6 +142,22 @@ class _Catalog:
 
 
 class _Providers:
+    @contextmanager
+    def runtime_policy_scope(self, model_id: str, policy_version: str, *, owner_id: int):
+        """Authorize writes against this fixture's immutable, exact model policy."""
+
+        policy = self.model_policy_state(model_id, owner_id=owner_id)
+        if (
+            type(owner_id) is not int
+            or owner_id <= 0
+            or policy is None
+            or policy["policy_version"] != policy_version
+            or policy["enabled"] is not True
+            or policy["usable"] is not True
+        ):
+            raise ProviderUnavailable("model_unavailable")
+        yield ()
+
     def model_policy_state(self, model_id: str, *, owner_id: int | None = None):
         del owner_id
         if model_id != _MODEL.model_id:

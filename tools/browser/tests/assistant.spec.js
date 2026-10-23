@@ -1963,17 +1963,15 @@ test("real FastAPI assistant flow keeps route-only context and reopens durable p
     if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method())) submitted.csrfHeaders.push(request.headers()["x-csrf-token"]);
   });
 
-  await page.goto(`${origin}/overview`);
-  const savedEventId = await page.evaluate(async () => {
-    const response = await fetch("/api/v1/history");
-    if (!response.ok) throw new Error(`History request failed: ${response.status}`);
-    const payload = await response.json();
-    return payload.items[0].id;
-  });
-  const fixtureStatus = await page.evaluate(async () => {
-    const response = await fetch("/api/v1/assistant/status");
-    return { status: response.status, body: await response.json() };
-  });
+  // Fixture record lookup does not require rendering a separate workspace route.
+  // The request context uses the same isolated browser cookies; route UI/auth checks follow.
+  const [historyResponse, statusResponse] = await Promise.all([
+    page.request.get(`${origin}/api/v1/history`),
+    page.request.get(`${origin}/api/v1/assistant/status`),
+  ]);
+  expect(historyResponse.status()).toBe(200);
+  const savedEventId = (await historyResponse.json()).items[0].id;
+  const fixtureStatus = { status: statusResponse.status(), body: await statusResponse.json() };
   expect(fixtureStatus.status).toBe(200);
   expect(fixtureStatus.body).toMatchObject({ enabled: true, available: true, worker: { status: "ready" } });
   await page.goto(`${origin}/tools/live-trading?symbol=ACDC&asset_type=stock&provider=deterministic%20fixture&exchange=NMS&event_id=${savedEventId}`);

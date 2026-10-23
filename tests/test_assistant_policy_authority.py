@@ -141,6 +141,78 @@ def _policy_app(
     return app, manager, runtime, model
 
 
+@pytest.mark.parametrize("health_path", ["/api/v1/health", "/api/v1/readiness"])
+def test_status_storage_wait_preserves_application_health(settings, monkeypatch, health_path):
+    """A quota read waiting for storage must not stop the application's event loop."""
+
+    app = flows._make_app(settings, flows._PausedRuntime())
+    entered, release, returned = (threading.Event() for _ in range(3))
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = flows._add_signed_in_user(app, 80113)
+        flows._set_browser_session(browser, identity)
+        original = app.state.assistant.storage.usage
+
+        def held_usage(*args, **kwargs):
+            entered.set()
+            release.wait(timeout=3)
+            returned.set()
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(app.state.assistant.storage, "usage", held_usage)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            pending = executor.submit(browser.get, "/api/v1/assistant/status")
+            try:
+                assert entered.wait(timeout=3), "status did not reach storage"
+                assert browser.get(health_path).status_code == 200
+                assert not returned.is_set(), "health waited for the status storage read"
+            finally:
+                release.set()
+                response = pending.result(timeout=5)
+            assert response.status_code == 200
+            assert response.json()["authorization"]["admitted"] is True
+
+
+@pytest.mark.parametrize("change", ["revoke", "role"])
+def test_status_storage_wait_rechecks_session_and_role(settings, monkeypatch, change):
+    """A quota read must return metadata only with the same live session's current role."""
+
+    app = flows._make_app(settings, flows._PausedRuntime())
+    entered, release = threading.Event(), threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = flows._add_signed_in_user(app, 80114, role="admin")
+        flows._set_browser_session(browser, identity)
+        original = app.state.assistant.storage.usage
+
+        def held_usage(*args, **kwargs):
+            entered.set()
+            assert release.wait(timeout=3)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(app.state.assistant.storage, "usage", held_usage)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            pending = executor.submit(browser.get, "/api/v1/assistant/status")
+            try:
+                assert entered.wait(timeout=3), "status did not reach storage"
+                if change == "revoke":
+                    app.state.repository.auth_revoke_session(
+                        str(identity["token_hash"]), flows._NOW.isoformat()
+                    )
+                else:
+                    app.state.repository.auth_update_user(
+                        int(identity["user_id"]), {"role": "member"}
+                    )
+            finally:
+                release.set()
+                response = pending.result(timeout=5)
+            if change == "revoke":
+                assert response.status_code == 403
+                assert response.json()["error"]["code"] == "assistant_authorization_required"
+                assert "storage" not in response.json()
+            else:
+                assert response.status_code == 200
+                assert response.json()["authorization"]["role"] == "member"
+
+
 @pytest.mark.parametrize("operation", ["models", "update"])
 @pytest.mark.parametrize("health_path", ["/api/v1/health", "/api/v1/readiness"])
 def test_policy_contention_preserves_application_health(

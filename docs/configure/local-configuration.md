@@ -13,6 +13,12 @@ JSON before starting SSE, after checking that the application session is still c
 no operator override and does not raise provider limits, guess reset times, or enable paid fallback.
 An error after streaming begins remains an interrupted stream.
 
+Assistant status reads quota/storage data off the event loop so a waiting database read does
+not block health or readiness. The status route rechecks the same live application session
+after that read; revocation during the wait returns an authorization failure without storage
+metadata, and the returned role comes from that revalidated session. No database, turn or tool
+timeout is increased by this behavior.
+
 | Variable | Default | Constraint and effect |
 | --- | --- | --- |
 | `STOCK_PROBS_DATA_DIR` | `data` | Runtime root. The server places `stock_probs.sqlite3`, `backups/`, and `.backup-auth.key` beneath it and hardens sensitive paths. |

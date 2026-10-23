@@ -12,6 +12,13 @@ signed-in tabs and authentication state. Never clear user cookies, browser stora
 reset a test. Do not use production local-login flows or claim an MFA bypass; exercise authentication
 through development fixtures and isolated contexts.
 
+The real-HTTP assistant browser fixture must implement the runtime policy-authority contract:
+accept only its exact immutable model/policy version and a positive integer owner ID. Exercise
+that contract through the real service write scope; do not weaken the production policy guard
+to accommodate a stale fixture. Separately hold the status storage projection and verify that
+health/readiness remain responsive and that revocation during the wait returns no quota data.
+Retain the existing case, action, database and native-turn bounds when diagnosing slow paths.
+
 ## Assistant access-failure checks
 
 Native verification must retain the original turn deadline through diagnostic wrappers. Exact

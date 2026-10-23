@@ -14,6 +14,49 @@ from types import SimpleNamespace
 
 import pytest
 
+from stock_probs.assistant.service import AssistantService
+from stock_probs.assistant.storage import AssistantStorageExecutionStale
+
+
+@pytest.mark.parametrize(
+    "model,version,owner,accepted",
+    [
+        ("current", "current", 1, True),
+        ("other", "current", 1, False),
+        ("current", "stale", 1, False),
+        ("current", "current", None, False),
+        ("current", "current", 0, False),
+        ("current", "current", -1, False),
+        ("current", "current", True, False),
+    ],
+)
+def test_browser_fixture_policy_authority_guards_real_service_writes(
+    model, version, owner, accepted
+):
+    fixture = runpy.run_path(
+        str(Path(__file__).resolve().parents[1] / "tools/browser/assistant_qa_server.py")
+    )
+    provider = fixture["_Providers"]()
+    selected = fixture["_MODEL"]
+    service = SimpleNamespace(providers=provider)
+    before = provider.model_policy_state(selected.model_id, owner_id=1)
+    scope = AssistantService._runtime_policy_scope(
+        service,
+        owner,
+        selected.model_id if model == "current" else "unreviewed/model",
+        selected.policy_version if version == "current" else "stale-policy",
+    )
+    entered = False
+    if accepted:
+        with scope as deadlines:
+            entered = True
+            assert deadlines == ()
+    else:
+        with pytest.raises(AssistantStorageExecutionStale, match="runtime_policy_changed"), scope:
+            entered = True
+    assert entered is accepted
+    assert provider.model_policy_state(selected.model_id, owner_id=1) == before
+
 
 @contextmanager
 def _mcp_response(*, status: int, delay_seconds: float) -> Iterator[str]:
