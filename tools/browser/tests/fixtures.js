@@ -127,7 +127,7 @@ async function launchApplication(testInfo, runtimeName, pythonArguments, label, 
 
 exports.expect = base.expect;
 exports.test = base.test.extend({
-  browserDiagnostics: [async ({ page }, use) => {
+  browserDiagnostics: [async ({ page }, use, testInfo) => {
     const consoleErrors = [];
     const pageErrors = [];
     const failedResponses = [];
@@ -224,6 +224,38 @@ exports.test = base.test.extend({
         },
       });
     } finally {
+      if (testInfo.status !== testInfo.expectedStatus) {
+        let observationTimer;
+        const observation = page.evaluate(() => new Promise((resolve) => {
+          const started = performance.now();
+          const state = { visibility: document.visibilityState, focused: document.hasFocus(), ready: document.readyState };
+          let frames = 0;
+          let frameRequest;
+          const finish = () => {
+            clearTimeout(timer);
+            cancelAnimationFrame(frameRequest);
+            resolve({ ...state, frames, elapsed_ms: performance.now() - started });
+          };
+          const timer = setTimeout(finish, 250);
+          const frame = () => {
+            frames += 1;
+            if (frames === 2) finish();
+            else frameRequest = requestAnimationFrame(frame);
+          };
+          frameRequest = requestAnimationFrame(frame);
+        })).then((state) => ({ status: "observed", ...state }), () => ({ status: "unavailable", reason: "page_evaluation_failed" }));
+        const state = await Promise.race([
+          observation,
+          new Promise((resolve) => {
+            observationTimer = setTimeout(() => resolve({ status: "unavailable", reason: "page_evaluation_deadline" }), 500);
+          }),
+        ]);
+        clearTimeout(observationTimer);
+        await testInfo.attach("browser-action-frame-state.json", {
+          body: Buffer.from(JSON.stringify({ stage: "after_test_failure", page_observation_ms: 250, host_deadline_ms: 500, ...state })),
+          contentType: "application/json",
+        });
+      }
       // Let Chromium deliver the resource console event paired with the final HTTP response.
       await new Promise((resolve) => setTimeout(resolve, 25));
       const expectedHttp = expand(expectedHttpFailures).sort((a, b) => diagnosticKey(a).localeCompare(diagnosticKey(b)));

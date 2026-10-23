@@ -1280,3 +1280,11 @@ failure diagnostic so a click failure cannot bypass it. Do not increase deadline
 accept an unresolved action stall. Source-review success and selected case passes do not replace a
 failed aggregate or establish its cause. See the
 [F6 browser-result checkpoint](../../MVP-PLAN.md#r-astra-121-f6-browser-result-reconciliation-and-bounded-test-repairs-2026-10-23).
+
+
+For unexpected test failures, the existing browser-diagnostics fixture records a fixed anonymous
+post-failure visibility/focus/readiness and two-frame snapshot. Its page observation is 250 ms and
+the host-side bound is 500 ms; evaluation failure or expiry is Unavailable. The attachment's
+`after_test_failure` stage must remain explicit: later frame progress does not establish what
+happened during the failed action, and absence of frames does not establish a root cause. Passing
+cases do not execute this observation. Keep action/assertion/test budgets unchanged.

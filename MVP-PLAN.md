@@ -12184,3 +12184,27 @@ Physical mobile, actual screen reader, true zoom and PDF/UA remain Unavailable. 
 1 GB host/backups, the US$15 monthly total and backup-retention hold are unchanged. No merge,
 deployment, rollout, resize, backup deletion or email occurred. Free Zen live restoration still
 precedes all seven features; the overall goal remains active and incomplete.
+
+
+#### F6 bounded post-failure frame snapshot follow-up (2026-10-23)
+
+At clean pushed `bc6ef4633ff246b6076ced4820cb2bdf7f1164ac`, the parent continued diagnosis
+without subagents. The installed Playwright stability check waits on animation frames; retained
+failed traces stopped inside that check without reporting changing geometry. This is a source
+observation, not proof of an engine, layout, visibility or database cause. An initial search hit a
+large bundled SDK line; the follow-up read was limited to the exact installed method.
+
+The existing browser-diagnostics fixture now attaches a fixed anonymous snapshot only after an
+unexpected test outcome: visibility, focus, document readiness and up to two animation frames over
+250 ms, with a separate 500 ms host-side observation bound. The attachment explicitly labels its
+stage `after_test_failure`; evaluation failure/deadline remains Unavailable. No click, assertion,
+resource observer, test deadline, application code or runtime configuration changed. Parent source
+review, syntax/diff checks and the existing 11 lifecycle regressions Passed. Those unit checks do
+not exercise the new failure branch. One desktop news case Passed in 26.209714 s with normal `022`
+child umask, 420 unchanged source pins, 52 served/export pairs and exact owned cleanup. Because it
+passed, no frame snapshot was emitted; the new observation remains unexercised and the earlier
+failures/cause remain unresolved. Packet: `/var/tmp/r12r/f6-action-frame-diagnostic-bc6ef46-20261023`;
+parent terminal SHA-256 `082c6be84d6d98038e183c15f24c0a739a02ce34708bc4c6c4d05b5437397c85`.
+The next mandatory full browser run may collect this evidence if a test fails. This selected Pass
+is not a new full aggregate, accessibility acceptance or release result; all preceding open gates,
+budget, backups and live-first feature order remain in force.
