@@ -26,6 +26,13 @@ loopback-only publication, `/data` volume, resource/log bounds, non-root image u
 healthcheck are operational containment. Native development remains the `.dev-venv/` plus local CLI path in
 [getting started](../operations/getting-started.md).
 
+In the current source, importing `create_app` constructs no default application. Factory callers
+create their configured app directly; the compatible `stock_probs.api:app` ASGI target constructs
+and caches its default app on first explicit access, including concurrent loaders. Construction
+does not enter the application lifespan or start the assistant worker. This avoids an unused
+second app in factory-based CLI and fixture processes; it does not establish deployed behavior
+or resource acceptance for a new image.
+
 ## Authentication boundary
 
 Production keeps GitHub OAuth as the first factor and uses a six-digit TOTP code from an

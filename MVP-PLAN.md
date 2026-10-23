@@ -11395,3 +11395,188 @@ and unreleased. Actual combined 1 GB, exact-PR recovery/rollback, security, fina
 authenticated owner UI, deployment and invited rollout gates remain open. The pending host
 backup-retention choice is unchanged; no backup deletion, merge, production mutation, resize,
 release or email occurred. The existing 1 GB host, backups and US$15 monthly total cap remain.
+
+### R-ASTRA-121 F6 e0 image, native result and open browser gates (2026-10-23)
+
+The clean pushed application checkpoint `e0ba8f95335d58f9ce34dc58cdf708bdc03bf83a`
+built image `sha256:fde54c39e7b977a2b0b0602f99db0e71b4547e92a55bc06888257cc454e83c30`,
+context `203fbe43b1d9bb932939b0fc8e704f2cd02d52c705b8f88366494ee23d927e22`,
+for local `linux/amd64`. The actual maintained command was
+`/bin/bash ./scripts/local-compose.sh build` in the restored assistant worktree. The
+producer receipt reports built/complete, and the captured terminal exited 0; all 418 source
+pins, 150 image inputs and 52 host served/export pairs stayed unchanged. The first preflight
+failed because the registered builder controller was stopped. Its exact identity/profile was
+verified before starting it; the successful build was followed by a verified same-generation
+controller stop and cgroup absence. The preflight failure remains preserved. Actual worker
+PID/descendant limits and image UI byte parity were not separately observed.
+
+Build evidence is in
+`/var/tmp/r12r/f6-image-e0ba8f9-d132825980ba4e51be10c6449d83827e`.
+The producer receipt SHA-256 is
+`0390b012da27b71d13cad109c4ea12a2709a938e1cb2e121dcbd03c846355b07`.
+Independent build identity review Passed only with its immutable terminal-predicate correction:
+`/var/tmp/r12r/independent-image-terminal-audit-20261023T145457Z-51f0a9/terminal-identity-correction-v1.json`,
+SHA-256 `738eea57f0e7faf31a9244a7232db336aa47c3cacad7d7421f75d4a01947be1e`.
+The earlier audit's false terminal Fail hashed a descriptive annotation instead of the retained
+581-byte stdout; earlier ledger-status and Docker-query setup errors also remain separate.
+No build retry or runtime acceptance follows from those audit corrections.
+
+After independent launcher review and parent review, one newly bound genuine free Zen native
+functional trial Passed, exit 0, at `2026-10-23T15:11:57.210315Z`–`15:14:11.864652Z`
+(134.654 seconds). Both concurrent fixture owners completed answers using
+`opencode-zen/deepseek-v4.1-flash-free`, with 143/692 answer bytes and matching model and
+workspace-summary receipts. The tool owner approved native search and an exact guarded fetch;
+the result reports nine search sources and one guarded-fetch source. Search attribution remains
+unverified. Cross-owner and forged-MCP requests returned 404, both conversation deletes returned
+200, and all checked worker-cache markers were zero after cleanup. All 153 explicit native
+inputs and 52 host stage pairs remained bound. Of those native inputs, 150 matched the previous
+native Pass; the changed inputs were the two frontend package manifests and assistant API source.
+
+The retained native stdout is 25,701 bytes, SHA-256
+`087817d58500b7dc85b4d1a9267ca6d55e6f6bfafec4c7d995409f9fe5be94ce`.
+Independent terminal/input/owned-cleanup review Passed:
+`/var/tmp/r12r/independent-native-terminal-integrity-15bced166856/independent-native-terminal-integrity-receipt-v2.json`,
+SHA-256 `0d2153532ecfa016f5c932e2e63200849a50a2fad2f108bbffcf37e9689a5b0d`.
+Its original reviewer predicate incorrectly compared an inner captured-stdout digest with a
+source-file digest; that failed receipt remains preserved. The inner raw stream was not retained
+separately, so independent recomputation of its digest is Unavailable. The actual outer stdout
+and source files were rehashed separately. The existing local resource sample peaked at
+499,552,256 of 805,306,368 bytes, with zero high/max/OOM deltas. All 86 app samples were ready;
+84 worker samples were ready and two were starting. This is not actual combined 1 GB acceptance.
+
+One same-image pending-search shutdown diagnostic then Passed its cancellation/app-survival
+scope at `2026-10-23T15:22:52.192042Z`–`15:24:18.975378Z`, exit 0 (86.783 seconds).
+The pending turn was cancelled with zero approvals, six assistant endpoints returned 503,
+the app stayed ready with assistant disabled, saved records/private history remained intact,
+and worker processes/home state were cleared. Preserve `active_search_scan_acknowledged=false`
+and `active_scan_ack_invalid`; no provider-side execution-count claim follows. Independent
+source/stage and exact container/network/volume/PID-group cleanup review Passed its declared scope:
+`/var/tmp/r12r/independent-native-terminal-integrity-15bced166856/independent-active-kill-terminal-integrity-v1.json`,
+SHA-256 `e4616dd0075f3ad1a3484971ad837a12e14a8a2def737097130af412659f4512`.
+The numeric allocated port was not retained, so an independent port-specific probe is
+Unavailable; the bound launcher recorded its guarded port-refusal check after cleanup.
+The local 768 MiB sample is not actual-host resource acceptance.
+
+The two affected WebFetch browser cases were then rerun against the status/role repair and
+Failed, exit 1: zero passed, two failed, no skips or flaky results. Playwright recorded
+`2026-10-23T15:28:37.972Z` and 101.029416 seconds. All 418 source pins and 52 host stage pairs
+matched; exact owned unit/cgroup/PID/listener cleanup Passed. Mobile failure diagnostics contain
+persisted meta/preview events, and the later error context contains the confirmation card after
+its unchanged five-second assertion failed. This narrows the timing observation but establishes
+neither a complete cause nor a panel repair. Receipt
+`/var/tmp/r12r/f6-fixture-policy-repair-446eb7dc162546c8b0740444d762e442/webfetch-e0-terminal-v1.json`
+has SHA-256 `92ed63d64966e3ffeea8b71574d55adcd88944c869dd1858286f0b5238f33b74`.
+A separate bounded import-only `--help` diagnostic exited 0 in 3.475 seconds without starting
+an app/provider; it does not explain the whole earlier 13-second fixture setup or fix that case.
+No case/action/native/resource/build limits were extended, and no unchanged full aggregate
+was repeated. The original 200-case failure, route-only desktop timeout and canonical failure
+remain open. Native results are reused only for their unchanged bound inputs.
+
+Parent review accepted these exact scoped results and their limitations. The free Zen live fix
+and all seven visible features remain incomplete and unreleased. Current canonical, full browser,
+required security/accessibility, actual combined 1 GB, exact-PR recovery/rollback, final guide,
+authenticated owner UI and release gates remain open. The host backup-retention choice remains
+pending; no backup deletion, merge, production mutation, resize, rollout, release or email occurred.
+The existing 1 GB host, backups and US$15 monthly total cap remain unchanged.
+
+### R-ASTRA-121 F6 unused default-app construction repair (2026-10-23)
+
+Independent selected source/security review of the e0 stream authorization, exact-URL approval
+and frontend event consumption found no concrete correctness/security defect explaining the
+WebFetch five-second preview failure. Repeated authorization/storage checks are off the event
+loop; no timing evidence establishes them as its cause. This was read-only source review, not a
+test or live security gate. The delayed card observation and complete cause remain unresolved.
+
+A bounded standard Python profile of the maintained fixture's cold setup, with only
+`uvicorn.run` replaced by a no-op, found two API app constructions: the module-level default
+instance and the fixture's configured instance. The parent preserved the exact API baseline
+before source edits. The new fresh-interpreter regression reproduced the unwanted construction
+(one failure). The API module now creates its default ASGI target lazily under a lock while
+factory imports create none. The existing `stock_probs.api:app` import target is preserved.
+
+The first two-test green selection Failed. The new test incorrectly assumed every FastAPI route
+object exposes `.path`; it now checks the public OpenAPI contract. The existing lazy-provider
+test separately exceeded its unchanged ten-second child limit; its cause remains Unproven and
+that failure is not repaired or erased. The corrected new regression Passed alone (one test,
+one warning, 5.27 seconds), including eight concurrent loads resolving to one default instance.
+Parent Ruff, format and whitespace checks Passed their selected scope. Independent selected QA
+then Passed the corrected regression, unchanged lazy-provider regression and three API health/
+readiness tests (five tests in separate selections). The earlier lazy-provider timeout remains
+Unproven; a later scoped Pass does not erase it.
+
+The same cold-setup profile then recorded one construction instead of two, with elapsed time
+7.156 seconds versus the earlier 9.918 seconds. This is instrumented offline setup evidence,
+not a benchmark, full browser repair or WebFetch latency cause. Profiles, original failures and
+JUnit are retained in
+`/var/tmp/r12r/f6-fixture-policy-repair-446eb7dc162546c8b0740444d762e442`.
+All existing case/action/native/resource/build budgets remain unchanged. The first red JUnit
+was created by a normal-022 child and subsequently hardened to 0600 without changing its bytes;
+later private JUnit paths were pre-created at 0600 while keeping child umask 022.
+
+Independent QA retained seven unchanged source/test pins, selected Ruff/security/format and
+whitespace checks. Receipt
+`/var/tmp/r12r/api-init-qa-32456502-2b51-43de-8dd9-38f509f4f11e/independent-qa-receipt-v2.json`
+has SHA-256 `d374c3db611dc4cf2a336693f107315427dd1aaa4c632ec4cb5ba0cfb30177a8`.
+The original receipt's Ruff executable wording was corrected without rerunning checks in the
+immutable command metadata supplement, SHA-256
+`ae26ef658969c42c939ad0ae3eb95c202a5ddedaedaba80c22d07b67368a87e1`.
+Parent personal integrated source/evidence review Passed this narrow repair; receipt
+`startup-import-parent-integrated-review-v1.json` in the fixture repair directory has SHA-256
+`9f8a5d08833fe4f10ccc63cbb494578a0e4e22d4caaf0d89302175daf67979f5`.
+
+The two existing route-only browser cases then Passed on desktop Chromium and emulated Pixel 7:
+exit 0, two passed, no failures, skips or flaky results. Playwright started at
+`2026-10-23T15:56:46.367Z` and recorded 57.848975 seconds overall; cases took 27.044 and 21.148
+seconds under their unchanged 30-second limits. Both retained the six-second artificial answer
+delay, route-only context, saved-chat reopening, durable tool receipts and confirmed theme action.
+All 419 source pins and 52 host served/export pairs matched. The terminal was retained before
+stopping the owned unit; its original cgroup, bound PIDs and three listeners were absent, and
+exact owned cleanup Passed. Receipt
+`/var/tmp/r12r/f6-fixture-policy-repair-446eb7dc162546c8b0740444d762e442/route-lazy-terminal-v1.json`
+has SHA-256 `853c617f7d321305b63773c28651fb3116472bac11b544282da44422aa72df62`.
+This is selected synthetic browser evidence; the earlier full 200-case aggregate and WebFetch
+failures remain preserved. Independent terminal integrity review subsequently Passed the
+selected route and WebFetch cases with the correction recorded below.
+
+The affected WebFetch follow-up then Passed both existing desktop/emulated-mobile cases, exit 0,
+with no failures, skips or flaky results. Playwright started at `2026-10-23T16:04:51.350Z` and
+recorded 101.005612 seconds overall; the cases took 42.235 and 48.747 seconds under their
+unchanged 180-second limits and five-second assertions. The journey retained exact-destination
+visibility, one-time approval/decline, stale-context handling, cancellation and terminal stream
+checks. Its four selected approved/cancelled-preview axe snapshots each recorded zero violations
+and zero incompletes; these are not full-app accessibility acceptance. All 419 source pins and
+52 host stage pairs matched, and exact owned cgroup/PID/listener cleanup Passed. Receipt
+`/var/tmp/r12r/f6-fixture-policy-repair-446eb7dc162546c8b0740444d762e442/webfetch-lazy-terminal-v1.json`
+has SHA-256 `9c58d504165549df2dc6f94622d470e15cd042fb98947bf0b1fd610e99611cf5`.
+This post-repair selected Pass does not establish the complete cause of the earlier preview
+latency or replace the failed 200-case aggregate. No browser spec/assertion or deadline changed.
+Independent terminal integrity review Passed these two selected reruns only. Its final receipt
+`/var/tmp/r12r/route-lazy-integrity-qa-4a1d8b2b-989c-40bd-ac18-5b1e3eb587b2/combined-route-webfetch-integrity-v1-status-correction-v2.json`
+has SHA-256 `4635cbd1054b82eb5b708cdb57048b98d05739b7a8621fe4721d27f2e5cff9c0`.
+The first audit used the wrong JSON level for route systemd fields, and its first supplement
+reused that erroneous status; both metadata-only Fail receipts remain immutable. The final
+correction uses the retained actual terminals and JUnit directly, with no browser rerun.
+Fresh independent checks confirmed both units/cgroups, all recorded PIDs and allocated listeners
+absent, plus 52 matching stage pairs. Only the authored MVP ledger changed after each terminal;
+the other 418 pins matched. Parent review accepted the corrected scoped evidence and original
+failure history.
+
+The superseded e0 task image was retired by its exact full ID with `docker image rm --no-prune`
+after completed producer/ledger identity, all 24 bounded RootFS inventories, single-tag/platform/
+revision, no descendant/equal-layer ambiguity and no container-reference checks. The production
+and registered recovery images remain. The maintained typed retirement acknowledgement reduced
+the managed ledger to two entries, leaving one build slot; no other image, container, volume,
+data or backup was removed. Receipt
+`/var/tmp/r12r/f6-e0-image-retirement-b3c92e136ab84cb8a46215bce5dd03f2/retirement-result-v1.json`
+has SHA-256 `16cb96410e9fd31d5eca5d6f8c620678d0f13635b176b7a8cf43fb87ef74860c`.
+An initial retirement setup stopped before Docker or ledger mutation because the inherited mask
+was 0002; subsequent commands explicitly set 0022. The read-only preflight's incorrect 0022
+metadata is corrected in a separate immutable supplement; private files/directories were created
+with explicit 0600/0700 modes. This is local cache/ledger cleanup, not runtime acceptance.
+
+This changes `src/stock_probs/api.py`, so the e0 image/native/shutdown results above remain
+historical evidence for their original inputs. A newly bound image/native result is required
+after the repair is accepted. The current canonical, full browser, required security/accessibility,
+actual combined 1 GB, exact-PR rollback/recovery, final guide, authenticated owner UI and release
+gates remain open. No backup deletion, production mutation, merge, resize, rollout, release or
+email occurred; the 1 GB host, existing backups and US$15 monthly total cap are unchanged.

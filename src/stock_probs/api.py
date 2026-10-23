@@ -5324,4 +5324,15 @@ def create_app(
     return app
 
 
-app = create_app()
+_DEFAULT_APP_LOCK = threading.Lock()
+
+
+def __getattr__(name: str) -> FastAPI:
+    """Construct the compatible ASGI target only when explicitly requested."""
+
+    if name != "app":
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    with _DEFAULT_APP_LOCK:
+        if "app" not in globals():
+            globals()["app"] = create_app()
+        return globals()["app"]

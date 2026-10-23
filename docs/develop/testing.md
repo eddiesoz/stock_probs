@@ -775,6 +775,13 @@ The approved frontend build and stage passed in a source-bound checkout. These c
 replace current-image native, actual-host resource, recovery, canonical or release acceptance.
 See [E32](../../MVP-PLAN.md#r-astra-121-e32-lazy-provider-startup-and-host-reserve-checkpoint).
 
+`tests/test_api_factory_import.py` separately checks API construction in a fresh interpreter with
+network calls forbidden. Importing the factory must create no unused app; an explicit factory
+call creates one, and eight concurrent loads of the compatible `stock_probs.api:app` target share
+one additional default app. The check uses the public OpenAPI health/readiness paths and retains
+the ten-second child bound. Constructor counts and an offline cold-setup profile are scoped
+diagnostics, not browser timing, current-image runtime or resource acceptance.
+
 The third production-baseline source shape is specifically `temporary_recovery`, not a release or
 the retained A9 recovery role. It requires the separately approved fixed 6359 manifest, matching
 operation/current records, exact Docker image/tag/platform/revision and loopback identity, ready
