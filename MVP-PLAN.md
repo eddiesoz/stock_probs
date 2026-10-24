@@ -12438,3 +12438,65 @@ This is synthetic upstream local app/native/MCP acceptance only. It does not est
 authenticated rendered UI, production trust/resource or release acceptance. Genuine Zen remains
 unverified after the earlier HTTP 429; no additional real provider request was made. Image builds,
 release and all seven subsequent features remain held behind the required restoration checks.
+
+
+### R-ASTRA-121 F6 local browser and quota-cleanup checkpoint (2026-10-24)
+
+The exact `b8741d9257c9ff5a9390df75ac30ee99e7fa021d` default-tracing WebFetch follow-up **Passed**
+both desktop and emulated-mobile cases in one run: 57.822451 seconds, zero failures/skips/retries.
+All 420 source inputs and 52 served/export pairs held. The original tracing-off Pass and earlier
+traced failures remain separate; this result does not prove a tracing cause. Exact fixture PID/port
+cleanup was verified in a supplemental receipt after the initial reader looked only in stderr
+instead of stdout. No lifecycle row or baseline was reconstructed. Packet:
+`/var/tmp/r12r/f6-browser-traced-followup-b8741d9-20261024`.
+
+The next complete browser attempt was intentionally interrupted after one observed original
+30-second desktop real-FastAPI route-only/reopen case failure. Actual child exit was 130; the
+aggregate is **Unavailable**, with raw reporter counts 29 passed, one failed and 170 skipped/unrun.
+Do not promote these partial counts to a complete aggregate. The failed trace shows about 26 seconds
+spent setting up its fixture, leaving only about four seconds for the journey. The late connection
+refusal and closed-page diagnostic are teardown observations, not the initial cause. Exact stopped
+PID/group/cgroup/port checks and owned-runtime cleanup Passed; one interrupted fixture lacked its
+exit log row, which remains missing. All 420 pins and 52 served/export pairs held. Packet:
+`/var/tmp/r12r/f6-browser-full-b8741d9-20261024`.
+
+Isolated fixture readiness took 5.735 seconds. Its initial cProfile attempt is **Unavailable**:
+Uvicorn re-raised SIGTERM before statistics publication, leaving a zero-byte profile and EOFError.
+A separate outer graceful-exit adapter preserved the next profile: readiness 6.081818 seconds,
+route construction 2.1657 seconds and migration 0.9485 seconds. Both were isolated synthetic
+fixtures and stopped with exact owned cleanup; the profile does not explain the full-run 26-second
+startup. Packet: `/var/tmp/r12r/f6-assistant-fixture-startup-profile-b8741d9-20261024`.
+The unchanged affected real-FastAPI journey then **Passed** desktop and mobile together under its
+original 30-second case limit and default tracing: two passes, no failures/skips/retries, 49.628425
+seconds. Its 420 source/52 stage bindings and exact cleanup Passed. Packet:
+`/var/tmp/r12r/f6-browser-real-flow-focused-b8741d9-20261024`. Full-browser acceptance remains open.
+
+Required independent authentication/activity-write source review **Passed** its static scope with
+no P1/P2 findings and seven matching before/after source/test hashes. It did not replay tests or
+establish full security acceptance. The parent reviewed the report and exact bindings. Receipt:
+`/var/tmp/r12r/f6-auth-activity-security-review-b8741d9257c9-20261024/source-security-review-v1.json`,
+SHA-256 `c9d1ee5ad2c31c09d6e2c778f0739883499a0389578cb390ba86bab1b7facac7`.
+
+A controlled synthetic HTTP 429 replay reproduced the local probe's DELETE 503 as
+`assistant_cache_clear_pending`: failure finalization already owned a HOME purge when deletion
+arrived. The observed worker purges themselves cleared; this is a concrete local cleanup race,
+not a diagnosis of upstream quota or proof that the historical real 503 had the same cause. No
+additional real Zen call was made. The initial inherited-pin preparation rejected stale pre-doc-edit
+pins before execution and was rebound to the clean head. Packet:
+`/var/tmp/r12r/f6-native-quota-fault-local-b8741d9-20261024`.
+The local probe now reuses the existing typed bounded-delete helper, with a 24-second deadline,
+fresh exact owner/revision/confirmation reads, and retries only that literal pending code. Existing
+helper tests **Passed** 5/5, with zero JUnit errors/failures/skips. The repaired controlled native
+quota replay retained the zero-answer **Fail** (actual child exit 1), while cleanup separately
+**Passed**: one pending response, two attempts, final HTTP 200, purge cleared. Source pins held,
+bounded output completed and exact worker/process/group/cgroup/temp cleanup Passed. The app port
+was not emitted by this maintained probe, so direct app-port readback is **Unavailable**; in-process
+server stop and actual process absence were verified. Packet:
+`/var/tmp/r12r/f6-local-delete-pending-b8741d9-20261024`. No production purge or authorization rule
+changed, and no original failure was erased.
+
+Genuine Zen answers remain unverified after the earlier HTTP 429. Completed authenticated rendered
+UI answers, full browser/canonical/security, actual combined 1 GB, exact-PR recovery/rollback and
+release gates remain open. Local-first image admission stays closed. No image build, merge,
+deployment, rollout, resize or email occurred; existing data, the 1 GB host/backups and US$15 monthly
+total cap are preserved. The free-Zen restoration remains first; all seven features remain in scope.

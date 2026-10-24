@@ -50,6 +50,11 @@ The local application integration probe replaces only upstream transport. Its va
 must accept and forward the production validator's `include_restricted` keyword unchanged; an
 observer signature mismatch can produce an HTTP 500 before the synthetic transport is reached.
 Do not diagnose that fixture error as provider unavailability or extend the native turn deadline.
+Failure finalization may still be purging worker HOME after the turn becomes terminal. The local
+live probe reuses `_attached_delete_with_pending_retry` within 24 seconds, refreshes the exact
+owner/revision/confirmation before each attempt, and retries only HTTP 503
+`assistant_cache_clear_pending`. Record attempt and pending counts; keep a failed answer verdict
+failed even when cleanup succeeds. Do not retry unrelated failures or make extra model requests.
 
 The real-HTTP assistant browser fixture must implement the runtime policy-authority contract:
 accept only its exact immutable model/policy version and a positive integer owner ID. Exercise

@@ -4388,26 +4388,34 @@ def run_native_live_zen_probe(*, native_guards_verified: bool = False) -> int:
                         if isinstance(item, Mapping) and "outcome" in item
                     ]
                     trace["native_terminal_outcomes"] = native_ids
-                    conversation_row = detail_payload.get("conversation", {})
-                    revision = (
-                        conversation_row.get("revision")
-                        if isinstance(conversation_row, Mapping)
-                        else None
+                    delete_csrf_headers = dict(csrf)
+
+                    def delete_request(
+                        owner_index, method, path, *, timeout, body=None, csrf=False
+                    ):
+                        if owner_index != 0:
+                            raise _AttachedProbeFailure("conversation_owner_mismatch")
+                        response = client.request(
+                            method,
+                            path,
+                            headers=delete_csrf_headers if csrf else None,
+                            json=body,
+                            timeout=timeout,
+                        )
+                        return response, _attached_json(response)
+
+                    delete_diagnostic: dict[str, object] = {}
+                    # A terminal failure can still own the background HOME purge.
+                    close_status, close_error_code = _attached_delete_with_pending_retry(
+                        request=delete_request,
+                        owner_index=0,
+                        conversation_id=str(conversation["id"]),
+                        deadline=time.monotonic() + 24.0,
+                        diagnostic=delete_diagnostic,
                     )
-                    close_response = client.request(
-                        "DELETE",
-                        f"/api/v1/assistant/conversations/{conversation['id']}",
-                        headers=csrf,
-                        json={
-                            "expected_revision": revision,
-                            "confirmation_phrase": f"DELETE {str(conversation['id'])[-8:]}",
-                        },
-                    )
-                    close_status = close_response.status_code
                     trace["conversation_delete_status"] = close_status
-                    trace["conversation_delete_error_code"] = _attached_delete_public_error_code(
-                        _attached_json(close_response), close_status
-                    )
+                    trace["conversation_delete_error_code"] = close_error_code
+                    trace["conversation_delete_diagnostic"] = delete_diagnostic
                     if trace["purge_status"] == "cleared":
                         live_values = {
                             "user_prompt": prompt,
