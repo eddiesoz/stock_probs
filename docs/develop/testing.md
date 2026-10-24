@@ -78,6 +78,16 @@ then verify completion, saved-answer reopen and typed cleanup. This does not est
 or cause of an earlier generic HTTP warning, genuine Zen acceptance, or the full security gate.
 See the [health transport repair](../../MVP-PLAN.md#r-astra-121-f6-verified-worker-health-network-repair-2026-10-24).
 
+For formatted native answers, compare supported rendered blocks with the maintained
+`parseAssistantAnswer` contract rather than requiring raw Markdown to appear as one literal text
+node. Bind the persisted answer bytes/digest separately; test the observer against a literal
+structured fixture, and reject empty or overflowed observations. Record per-block scrolling and
+the screenshot's final scroll position instead of claiming every block is visible simultaneously.
+Keep genuine provider attempts behind the exact recorded retry hint and a fresh clean-source,
+helper and complete served/export binding. An early held launch or offline admission test is
+preparation, not provider availability or a successful genuine answer. See the
+[structured-answer preflight record](../../MVP-PLAN.md#r-astra-121-f6-structured-answer-and-genuine-window-preflight-2026-10-24).
+
 The real-HTTP assistant browser fixture must implement the runtime policy-authority contract:
 accept only its exact immutable model/policy version and a positive integer owner ID. Exercise
 that contract through the real service write scope; do not weaken the production policy guard

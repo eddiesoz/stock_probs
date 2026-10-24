@@ -12715,3 +12715,50 @@ recorded server retry hint, as do current security/browser/canonical, actual com
 exact-PR recovery/rollback, guide/canary and release gates. No image build, merge, deployment,
 rollout, resize or email occurred. Preserve existing data, the 1 GB host/backups and US$15 monthly
 total cap. Free-Zen restoration remains first; all seven approved visible features remain in scope.
+
+### R-ASTRA-121 F6 structured answer and genuine window preflight (2026-10-24)
+
+On clean `e352246aa4f6286e0685c7f31ad72dbd5d0cb287`, the private browser observer was prepared
+for formatted native answers. Its prior literal whole-answer locator covered plain text only.
+The new observer uses the unchanged maintained `parseAssistantAnswer` contract to check headings,
+inline text, lists, table cells and definition rows, with per-block scrolling. A literal golden
+fixture independently checked the parser's five expected block structures; empty and overflowed
+answers were rejected before any browser operation. Those three offline cases **Passed**.
+
+The synthetic upstream/catalog native/browser run **Passed**, actual exit 0, from
+`2026-10-24T03:01:35.106761Z` to `03:02:12.747303Z` (37.641 seconds). Real desktop Send traversed
+FastAPI, pinned native V2 and app MCP to one workspace-summary receipt and a persisted 259-byte
+structured answer (SHA-256 `b427ef92ea95aad2c8acf9606c2ebbb8b0c6f6ab6ffd6f8be5d25fc12e91a9e1`).
+The observer found all five expected block kinds without overflow. Desktop and emulated-mobile
+initial read and reload/reopen passed. The existing exact finite-stream classifier passed; DELETE
+returned 200, native marker purge cleared, runtime/server closed and actual process/group/cgroup,
+ports, browser-profile and native-temp absence cleanup Passed. All 420 source pins and 52
+served/export pairs held, with complete bounded output. Parent review of the retained final-scroll
+captures confirms the visible table/definition content only; the screenshots do not show the whole
+answer at once. No application/frontend source or asset changed and no genuine Zen request ran.
+
+A separately prepared genuine launcher removes synthetic catalog/transport replacements. It first
+requires the exact `2026-10-25T00:00:00.367633Z` server retry hint, then a fresh clean-head binding
+for all maintained source paths, helper digests and the complete 52-file served/export inventory.
+No fresh admission file was created and no future run was scheduled. Six offline time-boundary
+cases **Passed**, including one microsecond before, exact hint, after, timezone-equivalent and
+naive-clock rejection. An actual current-clock invocation **Held** with exit 78 before runtime
+import, reporting zero model requests and no native/browser process start. This does not prove
+post-window admission or provider availability; that execution remains held and unverified.
+Static review found only the intended request/closed-diagnostic observers, with no replacement of
+the genuine catalog or provider transport in that launcher.
+
+The genuine observer also keeps read/reopen failures failed while delegating owned deletion.
+Six offline function cases **Passed** for submitted-turn failure retention, read-failure cleanup,
+and missing/mismatched status/conversation/turn rejection. They used request stubs; no failed
+native-turn integration is inferred. Private packet:
+`/var/tmp/r12r/f6-genuine-browser-preflight-e352246-20261024`, including
+`parent-result-cleanup-review-v1.json`, `semantic-preflight-v1.json`,
+`genuine-admission-preflight-v1.json` and `genuine-observer-branch-preflight-v1.json`.
+
+These are parent preflight/synthetic checks, not independent QA, genuine Zen/native/UI acceptance,
+full browser/accessibility/security/canonical, actual combined 1 GB, exact-PR recovery/rollback or
+release acceptance. The historical generic HTTP failure remains Unproven, and current genuine
+execution remains under the server backoff. No image build, production change, merge, rollout,
+resize or email occurred. Preserve data, the 1 GB host/backups and US$15 monthly total cap.
+Free-Zen restoration remains first; all seven approved visible features remain in the goal.
