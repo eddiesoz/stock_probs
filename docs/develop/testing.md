@@ -19,12 +19,20 @@ before/during/after their request, and an earlier completion cannot clear a newe
 This does not cache settled identities or replace server-side revocation checks.
 
 Internal assistant session checks must re-read current session, factor, account, expiry and
-ownership state without recording browser activity. The HTTP request records activity once;
+ownership state without recording browser activity. A protected workspace request records activity once;
 output checks and event replay must not commit another activity update for every event.
 `tests/test_assistant_runtime_event_http_flows.py` counts actual session-activity SQL updates
 without retaining statements or credential values, and checks expired/revoked sessions, changed
 CSRF and MFA state, disabled accounts and mismatched ownership. These checks establish the local
 authorization/write contract; browser latency and native/provider acceptance remain separate.
+
+`GET /api/v1/auth/session` is a background authority read, not workspace activity. Repeated status
+polls must leave `last_seen_at` and idle expiry unchanged while checking current session revocation,
+expiry and account state. A protected workspace request still records activity and extends idle
+expiry within the absolute limit. `tests/test_auth.py` exercises those HTTP behaviors against real
+SQLite, including idle-expiry, revocation and disabled-account rejection after successful polls.
+Rejecting an invalid session may still persist revocation; read-only polling means no activity
+refresh, not suppression of security mutations.
 
 The real-HTTP assistant browser fixture must implement the runtime policy-authority contract:
 accept only its exact immutable model/policy version and a positive integer owner ID. Exercise

@@ -12269,3 +12269,43 @@ The two changed application inputs require a newly bound image and native verifi
 authenticated UI answers, actual combined 1 GB, PR-bound recovery/rollback, guide and release gates
 remain open. The free-Zen fix still precedes the seven unreleased features. Production, backups and
 the US$15 monthly total cap are unchanged; no merge, deployment, rollout, resize or email occurred.
+
+
+### R-ASTRA-121 F6 session-status polling contention (2026-10-24)
+
+The two affected WebFetch cases on clean pushed `38a8602d2e0d51eb4dbf05d84649b9a56ebaed9e`
+**Failed** with exit 1 (zero passes, two failed, no skips/retries), from
+`2026-10-24T00:17:31.691Z` over 75.603485 seconds. All 420 source pins and 52 served/export pairs
+held; bounded output, actual terminal/JUnit and exact owned cleanup Passed. Packet:
+`/var/tmp/r12r/f6-webfetch-session-readonly-38a8602-20261024`.
+
+Desktop failed before opening the assistant: the unchanged five-second launcher click expired.
+The later DOM snapshot contains the launcher, while the failure screenshot does not. Trace records
+an initial session-status response of 3,332.394 ms and a subsequent assistant-status response of
+2,474.298 ms; this does not establish a rendering cause. Mobile reached WebFetch approval/decline
+and failed on the stale-route conversation activity read with HTTP 500. The opted-in, failure-only
+stack captured the session-status handler inside `auth_touch_session`'s SQLite commit while other
+threads waited or timed out on repository coordination. This identifies a concrete concurrent
+write path, not the I/O root cause or an explanation for every browser failure. Its fixture required
+SIGKILL after graceful shutdown; preserve that observation. The new image build is held.
+
+A separate real SQLite/HTTP regression baseline confirmed three status polls performed three
+activity updates. The initial four-case baseline Failed with three concrete polling-write failures
+and one setup failure from using GET on the POST-only forecasts endpoint. The corrected workspace
+request uses the existing list-read endpoint; its separate baseline Failed when a later status poll
+changed activity timestamps. The first baseline inherited shell umask 0002 (no permission-gate
+claim); later guarded test launches explicitly use the approved 0022 mask. Original outputs and
+exact pre-edit bytes are retained in
+`/var/tmp/r12r/f6-session-status-readonly-38a8602-20261024`.
+
+The narrow repair makes only the session-status endpoint opt out of activity refresh. Authentication
+still reloads authority and performs expiry, revocation, account and MFA checks; invalid sessions
+may still persist security revocation. Protected workspace requests retain activity refresh within
+the absolute deadline. The complete authentication module Passed with exit 0: 72 tests, 73
+warnings and 102.32 seconds, with all three source/test pins held, complete bounded output and
+JUnit, and PID/PGID 81966 absent. The warnings include 71 existing per-request-cookie deprecations.
+Parent source review, configured Ruff/security/format, AST and documentation checks Passed their
+local scope; this is not independent security QA. Browser follow-up remains pending.
+The prior native/kill image has changed inputs and retains historical scope. Current native/UI,
+canonical, security, actual combined 1 GB, recovery/rollback and release gates remain open; the
+free-Zen fix precedes all seven features. Production, backups and the US$15 monthly cap are unchanged.

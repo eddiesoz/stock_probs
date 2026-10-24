@@ -3592,13 +3592,13 @@ def create_app(
         responses=_documented_errors(400, 403, 405, 500, 503),
     )
     def auth_session(request: Request) -> dict[str, object]:
-        """Return the current account without reflecting an invalid cookie as a server error."""
+        """Read current account authority without treating status polling as activity."""
 
         if not auth_manager.enabled:
             return {"authenticated": False, "user": None, "requires_passkey": False}
         try:
             context = auth_manager.authenticate(
-                request.cookies.get(SESSION_COOKIE_NAME), datetime.now(UTC)
+                request.cookies.get(SESSION_COOKIE_NAME), datetime.now(UTC), touch=False
             )
         except AuthError:
             return {"authenticated": False, "user": None, "requires_passkey": False}
