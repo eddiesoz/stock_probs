@@ -446,6 +446,8 @@ def _seed_session(application, now: datetime) -> int:
 
 
 def main() -> None:
+    main_started = time.monotonic()
+    main_entered_unix_ms = round(time.time() * 1000)
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", required=True, type=int)
     args = parser.parse_args()
@@ -476,6 +478,7 @@ def main() -> None:
         assistant_catalog=_Catalog(),
         assistant_providers=_Providers(),
     )
+    application_constructed = time.monotonic()
     _install_lock_failure_diagnostic(application.state.repository)
     runtime.assistant = application.state.assistant
     stream_audits = []
@@ -499,9 +502,13 @@ def main() -> None:
     @asynccontextmanager
     async def fixture_lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Seed after canonical migration, before Uvicorn accepts fixture requests.
+        lifespan_started = time.monotonic()
         async with application_lifespan(app):
+            application_started = time.monotonic()
             user_id = _seed_session(app, assistant_now)
+            session_seeded = time.monotonic()
             app.state.service.search("ACDC", "stock", owner_user_id=user_id)
+            search_seeded = time.monotonic()
             print(
                 json.dumps(
                     {
@@ -509,6 +516,21 @@ def main() -> None:
                         "pid": os.getpid(),
                         "port": args.port,
                         "module_path": stock_probs.__file__,
+                        "startup_timing": {
+                            "main_entered_unix_ms": main_entered_unix_ms,
+                            "ready_unix_ms": round(time.time() * 1000),
+                            "application_construction_ms": round(
+                                (application_constructed - main_started) * 1000, 3
+                            ),
+                            "application_lifespan_ms": round(
+                                (application_started - lifespan_started) * 1000, 3
+                            ),
+                            "session_seed_ms": round(
+                                (session_seeded - application_started) * 1000, 3
+                            ),
+                            "search_seed_ms": round((search_seeded - session_seeded) * 1000, 3),
+                            "main_to_ready_ms": round((search_seeded - main_started) * 1000, 3),
+                        },
                     }
                 ),
                 file=sys.stderr,

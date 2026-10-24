@@ -64,7 +64,11 @@ health/readiness remain responsive and that revocation during the wait returns n
 Retain the existing case, action, database and native-turn bounds when diagnosing slow paths.
 Seed its synthetic account and history inside the real application lifespan, after canonical
 migration and before the server accepts requests. Do not migrate once for seeding and again at
-startup. Cover successful authenticated readiness and seed-failure cleanup through that same
+startup. The fixture's existing `fixture_started` record includes wall-clock anchors and
+monotonic durations for application construction, lifespan startup, session seeding and search
+seeding. `main_to_ready_ms` starts after module imports; it is not total process startup. Use these
+contemporaneous rows to separate setup delays from a timed-out browser action. Do not reconstruct
+missing timing baselines or promote a later fast run to an explanation of an earlier slow run. Cover successful authenticated readiness and seed-failure cleanup through that same
 lifespan in `tests/test_browser_assistant_fixture.py`.
 The fixture's existing stream audit keeps completed streams separate from at most ten active
 streams. Active diagnostics expose byte totals, whether an ASGI send is pending, and closed event

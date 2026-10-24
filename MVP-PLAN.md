@@ -12500,3 +12500,54 @@ UI answers, full browser/canonical/security, actual combined 1 GB, exact-PR reco
 release gates remain open. Local-first image admission stays closed. No image build, merge,
 deployment, rollout, resize or email occurred; existing data, the 1 GB host/backups and US$15 monthly
 total cap are preserved. The free-Zen restoration remains first; all seven features remain in scope.
+
+
+### R-ASTRA-121 F6 startup phases and genuine Zen backoff (2026-10-24)
+
+The existing assistant fixture now adds non-sensitive startup phase durations and wall-clock
+anchors to its private `fixture_started` record. No production code, browser action, timeout,
+permission, provider policy or frontend asset changed. Its 19 existing lifecycle/policy/HTTP tests
+**Passed**, with zero JUnit errors/failures/skips. The parent verified the actual emitted timing
+shape and source bindings. Packet: `/var/tmp/r12r/f6-browser-startup-phases-ba4b0f1-20261024`.
+
+A desktop diagnostic repeated the exact first 21 cases through the prior slow-start journey, using
+the maintained tests, default tracing and unchanged limits. The initial copied runner stopped
+before browser launch on a clean-tree assertion; the corrected private guard bound the exact owned
+fixture-only edit and retained all 420 source/52 served-export checks. The executed prefix **Failed**:
+20 passed, one failed, no skips/retries. Its original slow-start target Passed in 24.792 seconds;
+that fixture recorded 2,943.588 ms from main entry to readiness (construction 1,538.163 ms, lifespan
+708.740 ms, session seed 78.157 ms, search seed 477.750 ms). Module imports precede that main-entry
+measurement. The earlier 26-second setup cause remains **Unproven**.
+The new failure was the synthetic catalog-review journey's final `Verify authenticator` click:
+the element was unstable and outside the viewport within its unchanged five-second action window.
+Exact input/stage and owned PID/group/cgroup/port/runtime cleanup Passed. A separate four-case
+normal/reduced-motion comparison on desktop/mobile **Passed** all four in 40.380359 seconds, with
+zero failures/skips/retries and unchanged source/stage. Both normal-motion cases Passed, so this
+comparison does not confirm the global smooth-scrolling hypothesis and no product CSS repair was
+made. Packet: `/var/tmp/r12r/f6-catalog-motion-ab-ba4b0f1-20261024`. None replaces a full aggregate.
+
+After more than 50 minutes without a real provider call, one bounded genuine native/free-DeepSeek
+turn added only a standardized `Retry-After` observer. The application provider/runtime transport
+files were unchanged from the earlier successful `fed684a` run. The new genuine turn **Failed**:
+HTTP 429 `free_usage_limit_error`, one observed provider request and zero answer bytes. The service
+provided `Retry-After: 80033`, observed at `2026-10-24T01:46:07.463193Z`; the resulting not-before
+hint is approximately `2026-10-25T00:00:00Z`, or **2026-10-24 20:00 America/Toronto**. This is a server
+backoff hint, not a guarantee of model availability. Hold further genuine provider attempts until
+the hint expires; do not guess another reset, poll unchanged failures, change identity/network,
+cycle models to evade the limit, or use a paid fallback. The header observer retained only bounded
+numeric/date projections, no raw headers/body/credentials, and changed no request or authority.
+The private parser passed nine boundary cases before that turn.
+Cleanup separately **Passed** on the actual quota failure: final DELETE 200 after three attempts
+with two exact pending responses retained, purge cleared, runtime/server stopped and all actual
+recorded app/worker ports, PID/group/cgroup and temporary roots absent. All 420 source pins held
+with complete bounded output. Packet:
+`/var/tmp/r12r/f6-native-backoff-observation-ba4b0f1-20261024`.
+
+Genuine completed native and authenticated UI answers remain unverified. Required full browser,
+canonical/security, actual combined 1 GB, exact-PR recovery/rollback, guide/canary and release gates
+remain open; the existing independent authentication source review retains only its original scope.
+No candidate image is admitted while these local restoration requirements remain open. No image
+build, production mutation, merge, rollout, resize or email occurred. Preserve existing data,
+the 1 GB host/backups and US$15 monthly total cap. All seven approved features remain after the free
+Zen restoration; no scope is completed by this checkpoint. The next genuine check requires expiry
+of the observed server backoff and a fresh permitted native/UI verification, not another build.
