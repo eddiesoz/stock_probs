@@ -12597,3 +12597,66 @@ exact-PR recovery/rollback, guide/canary and release remain open. No Docker imag
 admitted, and no merge, deployment, rollout, resize or email occurred. Preserve existing data,
 the 1 GB host/backups and US$15 monthly total cap. Free-Zen restoration remains first and all
 seven approved visible features remain in the four-release objective.
+
+### R-ASTRA-121 F6 local browser native validation (2026-10-24)
+
+Parent-run local diagnostics on clean `12388b5785abb76726d277205b090f75f50469cf` reused the
+maintained native probe, reviewed patched OpenCode V2.0.7 executable, current staged frontend and
+locked Playwright toolchain. Only the external catalog/upstream transport was synthetic; actual
+FastAPI authentication, native model/MCP routing, browser controls and persistence ran locally.
+Generated development-session bootstrap values crossed an anonymous memory descriptor, without
+being logged or written to a credential file. Browser contexts were isolated and all resource
+requests were constrained to the disposable loopback origin. No real Zen request occurred.
+The raw probe mode/model label does not turn this synthetic transport into genuine Zen acceptance.
+
+The initial API-created native turn plus authenticated saved-answer observation **Passed** in
+24.659 seconds, with a completed 44-byte answer, one workspace-summary receipt, desktop/emulated
+mobile initial reads and reload/reopen. This did not exercise browser Send. Packet:
+`/var/tmp/r12r/f6-native-saved-answer-browser-12388b5-20261024`.
+
+The first browser-send observer **Failed** at its 150-second outer bound after reaching answer
+and stream verification. A bounded follow-up **Failed** specifically at `response.finished()`:
+the actual POST was 202, the visible completion and persisted exact answer matched, and the
+event request returned HTTP 200, but Playwright reported one `net::ERR_ABORTED` while that promise
+stayed pending. The failure screenshot shows the complete answer. This identified an overly
+strict private observer, not an application repair. Its replacement follows the existing exact
+finite-stream classification in `tools/browser/tests/fixtures.js`, including one GET, one 200
+event-stream response, one finished or exact aborted outcome, and rejection of unrelated failures.
+Preserve both failed packets: `/var/tmp/r12r/f6-native-browser-send-12388b5-20261024` and
+`/var/tmp/r12r/f6-native-browser-send-diagnostic-12388b5-20261024`.
+
+The classifier retest separately **Failed** the native/browser completion path. Contemporaneous
+timing recorded a failed native turn at 17,302 ms after the workspace-summary read and two synthetic
+provider requests; two `native_api_info` request-timeout warnings were recorded. The UI showed
+EOF without a completion event and no assistant answer. Cause remains **Unproven**; the warnings
+do not establish causation. The observer raised before the full native result and typed deletion
+could be retained, so those results are **Unavailable**. Actual PID/group/cgroup/port/temp absence
+cleanup **Passed** separately. Packet:
+`/var/tmp/r12r/f6-native-browser-send-classifier-12388b5-20261024`.
+
+A further diagnostic preserves the actual browser-submitted turn identity immediately and can
+return it to the maintained probe after a failed observation, retaining the failed verdict and
+allowing full native detail/typed cleanup. It also delegates closed local-failure categories
+without changing runtime outcomes. The follow-up **Passed** from
+`2026-10-24T02:38:57.572688Z` to `02:39:24.116029Z` (26.543 seconds): one desktop Send, one POST 202,
+one exact event GET/HTTP 200, one exact `net::ERR_ABORTED`, visible completion, and an exact saved
+44-byte answer with SHA-256 `f2d0a53efdca2064963975f1fcd8ec6b27036108ec4672a33c2610b7ded631b3`.
+One workspace-summary receipt completed; two isolated desktop/mobile saved-answer cases each
+passed initial read and reload/reopen. Parent visual review passed the send and reloaded views.
+Final DELETE returned 200 on its first attempt, native cache-marker purge cleared, runtime/server
+closed, and actual PID/group/cgroup/ports/browser-profile/native-temp absence cleanup Passed.
+All 420 source pins and 52 served/export pairs held, with complete bounded output. No local-failure
+category was captured in this passing run. The newly prepared failed-result continuation branch
+was not exercised by that Pass and remains unverified. Packet:
+`/var/tmp/r12r/f6-native-browser-send-result-retention-12388b5-20261024`, including
+`parent-result-cleanup-review-v1.json`.
+
+This is parent-observed synthetic upstream scope, not independent QA, native reliability, genuine
+Zen, physical mobile or actual combined 1 GB acceptance. The earlier native failure remains
+unresolved; do not repeat an unchanged trial or infer its cause/fix from the later Pass. Genuine
+native and authenticated UI answers remain open until the recorded server retry hint expires
+and a freshly bound permitted check completes. Browser/canonical/security, resource, exact-PR
+recovery/rollback, guide/canary and release gates remain open. No application source, Docker image,
+production, merge, rollout, resize or email changed in this checkpoint. Preserve existing data,
+the 1 GB host/backups and US$15 monthly cap. Free-Zen restoration remains first; all seven approved
+visible features remain in the four-release goal.

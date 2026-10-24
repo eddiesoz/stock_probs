@@ -56,6 +56,18 @@ owner/revision/confirmation before each attempt, and retries only HTTP 503
 `assistant_cache_clear_pending`. Record attempt and pending counts; keep a failed answer verdict
 failed even when cleanup succeeds. Do not retry unrelated failures or make extra model requests.
 
+Keep browser proof scopes explicit when observing a local native probe. Opening a saved API answer
+does not exercise the browser Send path. For a submitted turn, bind the actual POST 202 identity,
+completed visible answer and persisted response to one exact assistant-event GET, one HTTP 200
+`text/event-stream` response and one terminal browser outcome. Use the maintained finite-stream
+classification in `tools/browser/tests/fixtures.js`: a finished request or the exact
+`net::ERR_ABORTED` outcome may follow a completed finite stream; reject unrelated request failures.
+Do not rely on an unbounded Playwright `response.finished()` promise as the only lifecycle signal.
+Retain failed observer results and distinguish them from application/native failures. Preserve the
+actual submitted turn identity so a failed observation can still collect native detail and perform
+typed cleanup; an unexercised diagnostic branch remains unverified. See the
+[local native/browser checkpoint](../../MVP-PLAN.md#r-astra-121-f6-local-browser-native-validation-2026-10-24).
+
 The real-HTTP assistant browser fixture must implement the runtime policy-authority contract:
 accept only its exact immutable model/policy version and a positive integer owner ID. Exercise
 that contract through the real service write scope; do not weaken the production policy guard
