@@ -84,7 +84,16 @@ export default function AdminPage() {
   function clearInvitationStepUpOnRejection(error: unknown) {
     if (!(error instanceof AuthRequestError) || error.code !== "authorization_denied") return;
     clearFreshVerification();
-    window.requestAnimationFrame(() => document.getElementById("admin-totp-code")?.focus());
+    focusAuthenticatorVerification();
+  }
+
+  function focusAuthenticatorVerification() {
+    window.requestAnimationFrame(() => {
+      const input = document.getElementById("admin-totp-code");
+      if (!input) return;
+      input.scrollIntoView({ block: "center", behavior: "instant" });
+      input.focus({ preventScroll: true });
+    });
   }
 
   async function createInvitation(event: FormEvent<HTMLFormElement>) {
@@ -216,7 +225,7 @@ export default function AdminPage() {
           freshVerified={freshVerified}
           onStepUpRejected={() => {
             clearFreshVerification();
-            window.requestAnimationFrame(() => document.getElementById("admin-totp-code")?.focus());
+            focusAuthenticatorVerification();
           }}
         />
         <section id="invitations" tabIndex={-1} className={`${styles.authPanel} ${styles.widePanel}`} aria-labelledby="invite-heading">

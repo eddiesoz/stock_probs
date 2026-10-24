@@ -12551,3 +12551,49 @@ build, production mutation, merge, rollout, resize or email occurred. Preserve e
 the 1 GB host/backups and US$15 monthly total cap. All seven approved features remain after the free
 Zen restoration; no scope is completed by this checkpoint. The next genuine check requires expiry
 of the observed server backoff and a fresh permitted native/UI verification, not another build.
+
+### R-ASTRA-121 F6 admin verification focus repair (2026-10-24)
+
+On base `af539601bbd9352851db92b282436c831e1347e1`, the existing synthetic catalog-review
+journey gained a rendered regression for the automatic authenticator focus handoff after a 403.
+The pre-repair run **Failed** both desktop Chromium and emulated Pixel 7 cases: the focused input
+and Verify control were below the viewport, and the input moved 28 CSS pixels on desktop and
+209 on mobile across two animation frames. This is direct evidence of an unusable handoff;
+the earlier passing normal/reduced-motion comparison remains separate and does not prove a cause
+for the earlier intermittent click failure.
+
+The administrator page now shares a helper between catalog and invitation rejection paths that
+centers the input with an instant scroll, then focuses it with `preventScroll`. Global scrolling,
+layout, authentication, CSRF, roles, step-up requirements and action/request budgets are unchanged.
+Owned source/documentation baselines and the prior generated export/stage were preserved privately
+before replacement. The full approved `./scripts/build-frontend.sh` ran on an exact-input SD copy
+from `2026-10-24T02:08:41.950430Z` to `02:11:37.291714Z` and **Passed** with actual exit 0:
+typecheck, production build, 79 frontend tests and zero npm audit findings. All 89 frontend build
+inputs held. The maintained `scripts/build_frontend.py` staged the new export into the active
+checkout; all 52 served/export file pairs matched byte for byte.
+
+The unchanged-deadline catalog regression then **Passed** 2/2, zero skips/retries/flaky results,
+in 43.266405 seconds. Both input and Verify button remained fully visible; the measured input
+movement across frames was zero on each viewport. Normal verification restored the catalog.
+A separate affected-flow run **Passed** 6/6 in 36.688074 seconds: secure assistant navigation,
+invitation denial/re-verification and keyboard email invitation entry across desktop/emulated
+mobile. Neither run substitutes for the complete browser aggregate. Each run retained all 420
+source and 52 served/export bindings, complete bounded output and exact owned
+PID/group/cgroup/port/runtime cleanup. Parent screenshot and integrated source/evidence review
+**Passed** for this scope only; this is not independent QA or physical-mobile acceptance.
+
+Private packet: `/var/tmp/r12r/f6-admin-focus-handoff-af53960-20261024`, including separate
+`browser-baseline`, `frontend-build`, `stage-transfer`, `browser-repaired` and `browser-related`
+records and `parent-integrated-review-v1.json`. The repaired-run launcher waited for its oneshot
+unit to finish; an in-flight authoritative readback had already published the correct live PID
+binding, so the launcher's later exclusive-create receipt collision was preserved separately.
+The actual browser child and service both exited 0; that bookkeeping failure is not a test retry.
+
+The current frontend change requires current-input browser/release evidence; earlier unchanged
+backend evidence retains only its original scope. Genuine Zen remains held until the observed
+`2026-10-25T00:00:00Z` retry hint expires; no additional real provider call occurred. Completed
+native and authenticated UI answers, full browser/canonical/security, actual combined 1 GB,
+exact-PR recovery/rollback, guide/canary and release remain open. No Docker image was built or
+admitted, and no merge, deployment, rollout, resize or email occurred. Preserve existing data,
+the 1 GB host/backups and US$15 monthly total cap. Free-Zen restoration remains first and all
+seven approved visible features remain in the four-release objective.

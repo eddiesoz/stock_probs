@@ -1330,3 +1330,16 @@ the host-side bound is 500 ms; evaluation failure or expiry is Unavailable. The 
 `after_test_failure` stage must remain explicit: later frame progress does not establish what
 happened during the failed action, and absence of frames does not establish a root cause. Passing
 cases do not execute this observation. Keep action/assertion/test budgets unchanged.
+
+### Authenticator focus after rejected administrator proof
+
+When a catalog or invitation request rejects fresh administrator verification, check that the
+authenticator input receives focus and that both it and the Verify control are fully visible.
+Sample their positions across animation frames before typing; focus alone does not prove a usable
+handoff while the page scrolls. Retain ordinary clicks and existing action/test deadlines. The
+administrator page now centers this handoff immediately and focuses without initiating another
+scroll; general page scrolling and authentication requirements are unchanged. Use the current
+approved frontend build/stage and verify served/export bytes before rendered checks. See the
+[local focus repair evidence](../../MVP-PLAN.md#r-astra-121-f6-admin-verification-focus-repair-2026-10-24)
+for the original failures and separate scoped retests; those results do not establish a full
+browser aggregate or genuine Zen answer.

@@ -1302,7 +1302,7 @@ test("secure assistant destinations focus the matching account and admin control
   await expect(freePolicy.getByText("Enabled", { exact: true })).toBeVisible();
 });
 
-test("OpenCode catalog review and model approval stay owner-scoped and versioned", async ({ page, browserDiagnostics }) => {
+test("OpenCode catalog review and model approval stay owner-scoped and versioned", async ({ page, browserDiagnostics }, testInfo) => {
   const consoleModelId = `opencode-console/${"c".repeat(64)}`;
   const baseModel = {
     model_id: consoleModelId,
@@ -1546,7 +1546,32 @@ test("OpenCode catalog review and model approval stay owner-scoped and versioned
   await catalog.getByRole("button", { name: "Refresh catalog" }).click();
   await expect(catalog.getByText("Verify your authenticator to inspect this account’s private model catalog.")).toBeVisible();
   await expect(card).toHaveCount(0);
-  await page.getByLabel("Current authenticator code").fill("123456");
+  const verificationCode = page.getByLabel("Current authenticator code");
+  await expect(verificationCode).toBeFocused();
+  const focusHandoff = await verificationCode.evaluate(async (input) => {
+    const button = input.closest("label")?.parentElement?.querySelector("button");
+    const visible = (rect) => Boolean(rect && rect.top >= 0 && rect.left >= 0
+      && rect.bottom <= innerHeight && rect.right <= innerWidth);
+    const sample = () => {
+      const code = input.getBoundingClientRect();
+      const verify = button?.getBoundingClientRect();
+      return { inputTop: code.top, buttonTop: verify?.top ?? null,
+        inputVisible: visible(code), buttonVisible: visible(verify) };
+    };
+    const before = sample();
+    const after = await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(sample()))));
+    return { before, after };
+  });
+  await testInfo.attach("admin-step-up-focus-handoff.json", {
+    body: Buffer.from(JSON.stringify(focusHandoff, null, 2)), contentType: "application/json",
+  });
+  expect(focusHandoff.before.inputVisible && focusHandoff.before.buttonVisible).toBe(true);
+  expect(focusHandoff.after.inputVisible && focusHandoff.after.buttonVisible).toBe(true);
+  expect(Math.abs(focusHandoff.after.inputTop - focusHandoff.before.inputTop)).toBeLessThanOrEqual(1);
+  await testInfo.attach("admin-step-up-focus-handoff.png", {
+    body: await page.screenshot(), contentType: "image/png",
+  });
+  await verificationCode.fill("123456");
   await page.getByRole("button", { name: "Verify authenticator" }).click();
   await expect(card).toBeVisible();
 });
