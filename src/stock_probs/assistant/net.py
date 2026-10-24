@@ -28,7 +28,15 @@ _PROVIDER_403_CONTENT_TYPE_CLASSES = frozenset(
 )
 _PROVIDER_403_CF_MITIGATED_CLASSES = frozenset({"challenge", "absent", "other"})
 _PROVIDER_403_ERROR_TYPE_CLASSES = frozenset(
-    {"region_error", "data_policy_error", "free_usage_limit_error", "other", "malformed", "unknown"}
+    {
+        "region_error",
+        "data_policy_error",
+        "free_usage_limit_error",
+        "free_tier_access_error",
+        "other",
+        "malformed",
+        "unknown",
+    }
 )
 _PROVIDER_RESPONSE_FAILURE_PHASES = frozenset(
     {
@@ -45,6 +53,7 @@ _PROVIDER_403_ERROR_TYPE_MAP = {
     "RegionError": "region_error",
     "DataPolicyError": "data_policy_error",
     "FreeUsageLimitError": "free_usage_limit_error",
+    "FreeTierError": "free_tier_access_error",
 }
 _PROVIDER_403_JSON_BODY_MAX_BYTES = 4096
 _PROVIDER_403_DIAGNOSTIC_TIMEOUT_SECONDS = 1.0
@@ -83,7 +92,11 @@ async def _require_stream_authorization(
     if not callable(check):
         raise PublicHTTPError("provider_authorization_required")
     try:
-        result = check()
+        result = (
+            check()
+            if inspect.iscoroutinefunction(check)
+            else await asyncio.wait_for(asyncio.to_thread(check), timeout=_remaining(deadline))
+        )
         if not inspect.isawaitable(result):
             raise TypeError("authorization check must be awaitable")
         authorized = await asyncio.wait_for(result, timeout=_remaining(deadline))
@@ -107,7 +120,11 @@ async def _require_request_authorization(
     if not callable(check):
         raise PublicHTTPError("provider_authorization_required")
     try:
-        result = check()
+        result = (
+            check()
+            if inspect.iscoroutinefunction(check)
+            else await asyncio.wait_for(asyncio.to_thread(check), timeout=_remaining(deadline))
+        )
         if inspect.isawaitable(result):
             result = await asyncio.wait_for(result, timeout=_remaining(deadline))
     except asyncio.CancelledError:
@@ -167,11 +184,11 @@ class PublicHTTPError(Exception):
         if provider_error_type_class is not None and (
             type(code) is not str
             or code != "provider_upstream_unavailable"
-            or status_code != 403
+            or status_code not in {403, 429}
             or type(provider_error_type_class) is not str
             or provider_error_type_class not in _PROVIDER_403_ERROR_TYPE_CLASSES
         ):
-            raise ValueError("HTTP 403 provider error type class is invalid")
+            raise ValueError("HTTP provider error type class is invalid")
         super().__init__(code)
         self.code = code
         self.status_code = status_code
@@ -779,6 +796,18 @@ async def stream_public_https(
                     status_code=status_code,
                     content_type_class=provider_403_content_type_class or "missing",
                     cf_mitigated_class=provider_403_cf_mitigated_class or "absent",
+                    provider_error_type_class=provider_error_type_class,
+                )
+            if status_code == 429:
+                provider_error_type_class = await _read_provider_403_json_error_type_class(
+                    reader,
+                    response_headers,
+                    deadline=deadline,
+                    authorization_check=live_authorization,
+                )
+                raise PublicHTTPError(
+                    "provider_upstream_unavailable",
+                    status_code=status_code,
                     provider_error_type_class=provider_error_type_class,
                 )
             raise PublicHTTPError("provider_upstream_unavailable", status_code=status_code)

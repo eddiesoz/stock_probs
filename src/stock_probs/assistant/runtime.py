@@ -113,7 +113,15 @@ _TURN_TIMING_PROVIDER_403_CONTENT_TYPE_CLASSES = frozenset(
 )
 _TURN_TIMING_PROVIDER_403_CF_MITIGATED_CLASSES = frozenset({"challenge", "absent", "other"})
 _TURN_TIMING_PROVIDER_403_ERROR_TYPE_CLASSES = frozenset(
-    {"region_error", "data_policy_error", "free_usage_limit_error", "other", "malformed", "unknown"}
+    {
+        "region_error",
+        "data_policy_error",
+        "free_usage_limit_error",
+        "free_tier_access_error",
+        "other",
+        "malformed",
+        "unknown",
+    }
 )
 _TURN_TIMING_PROVIDER_RESPONSE_FAILURE_PHASES = frozenset(
     {
@@ -134,6 +142,7 @@ _MODEL_ACTIVATION_SECONDS = 15.0
 _MODEL_DISCOVERY_SECONDS = 8.0
 _MODEL_DISCOVERY_REQUEST_SECONDS = 2.0
 _MODEL_DISCOVERY_RETRY_SECONDS = 0.2
+_MCP_DISCOVERY_SECONDS = 8.0
 _STARTUP_STATUS_DEADLINE_SECONDS = 3.0
 _STARTUP_STATUS_REQUEST_TIMEOUT_SECONDS = 1.0
 _STARTUP_STATUS_POLL_SECONDS = 0.2
@@ -828,7 +837,11 @@ class _TurnTimingDiagnostics:
         elif content_type_class is not None or cf_mitigated_class is not None:
             return
         if provider_error_type_class is not None and (
-            not is_classified_403
+            not (
+                stage == "upstream_stream"
+                and error_code == "provider_upstream_unavailable"
+                and safe_status in {403, 429}
+            )
             or type(provider_error_type_class) is not str
             or provider_error_type_class not in _TURN_TIMING_PROVIDER_403_ERROR_TYPE_CLASSES
         ):
@@ -1108,7 +1121,7 @@ class _TurnTimingDiagnostics:
                     and (
                         failure_diagnostic.get("stage") != "upstream_stream"
                         or failure_diagnostic.get("error_code") != "provider_upstream_unavailable"
-                        or failure_diagnostic.get("http_status") != 403
+                        or failure_diagnostic.get("http_status") not in {403, 429}
                         or type(failure_diagnostic.get("provider_error_type_class")) is not str
                         or failure_diagnostic["provider_error_type_class"]
                         not in _TURN_TIMING_PROVIDER_403_ERROR_TYPE_CLASSES
@@ -1961,7 +1974,9 @@ class OpenCodeV2Runtime:
                     response = await self._request(
                         "GET", "/api/info", timeout=3.0, allow_startup_probe=True
                     )
-                except (TimeoutError, httpx.TimeoutException) as exc:
+                except (TimeoutError, httpx.TimeoutException, httpx.NetworkError) as exc:
+                    # An uncertain health read closes admission without revoking work on
+                    # the same previously verified worker. Protocol/auth failures stay fatal.
                     return self._mark_startup_unavailable(
                         exc,
                         startup_stage=startup_stage,
@@ -2149,7 +2164,7 @@ class OpenCodeV2Runtime:
                     "provider_unavailable",
                 )
                 return AssistantTurnResult("failed", "provider_unavailable")
-        model = self._model_for_turn(context)
+        model = await self._resolve_turn_model(context)
         if model is None or getattr(model, "available", False) is not True:
             self._record_pre_session_timing_failure(
                 context.execution_id,
@@ -2161,7 +2176,9 @@ class OpenCodeV2Runtime:
         policy_reader = getattr(self.providers, "model_policy_state", None)
         if callable(policy_reader):
             try:
-                model_state = policy_reader(context.model_id, owner_id=context.user_id)
+                model_state = await self._policy_projection(
+                    policy_reader, context.model_id, owner_id=context.user_id
+                )
             except Exception as exc:
                 self._record_pre_session_timing_failure(
                     context.execution_id,
@@ -2192,7 +2209,7 @@ class OpenCodeV2Runtime:
             )
             return AssistantTurnResult("failed", "provider_unavailable")
         try:
-            native_adapter = self._native_adapter_for_model(
+            native_adapter = await self._resolve_native_adapter(
                 context.model_id, owner_id=context.user_id
             )
         except _AssistantRuntimeFailure as exc:
@@ -2687,6 +2704,40 @@ class OpenCodeV2Runtime:
         # execution. Mutating shared OpenCode configuration here would leak between users.
         del provider_id, definition, state
 
+    async def _policy_projection(
+        self, function: Callable[..., Any], *args: object, **kwargs: object
+    ) -> Any:
+        """Use bounded authority admission for real policy reads; keep fixtures off-loop."""
+
+        authority = getattr(self.providers, "_policy_call", None)
+        if callable(authority):
+            return await authority(lambda: function(*args, **kwargs))
+        return await asyncio.to_thread(function, *args, **kwargs)
+
+    async def _resolve_turn_model(self, context: AssistantTurnContext) -> object | None:
+        """Retain the existing unavailable-model outcome when authority admission expires."""
+
+        try:
+            return await self._policy_projection(self._model_for_turn, context)
+        except Exception:
+            return None
+
+    async def _resolve_native_adapter(
+        self, model_id: str, *, owner_id: int
+    ) -> NativeAdapterDescriptor:
+        """Resolve the package off-loop with the existing closed setup-failure category."""
+
+        try:
+            return await self._policy_projection(
+                self._native_adapter_for_model, model_id, owner_id=owner_id
+            )
+        except _AssistantRuntimeFailure:
+            raise
+        except Exception:
+            raise _AssistantRuntimeFailure(
+                "native_adapter_unavailable", "prepare_location"
+            ) from None
+
     def _native_adapter_for_model(self, model_id: str, *, owner_id: int) -> NativeAdapterDescriptor:
         """Resolve one model's exact runtime package from the maintained adapter registry."""
 
@@ -2743,11 +2794,13 @@ class OpenCodeV2Runtime:
         descriptor: NativeAdapterDescriptor | None = None,
     ) -> str:
         execution_id = context.execution_id
-        model = self._model_for_turn(context)
+        model = await self._resolve_turn_model(context)
         if model is None:
             raise _AssistantRuntimeFailure("native_adapter_unavailable", "prepare_location")
         if descriptor is None:
-            descriptor = self._native_adapter_for_model(context.model_id, owner_id=context.user_id)
+            descriptor = await self._resolve_native_adapter(
+                context.model_id, owner_id=context.user_id
+            )
         proxy_url = f"{_APP_BASE_URL}/api/v1/assistant/internal/provider/{execution_id}"
         mcp_url = f"{_APP_BASE_URL}/api/v1/assistant/internal/mcp/{execution_id}"
         response = await self._get_supervisor().prepare_location(
@@ -3038,7 +3091,9 @@ class OpenCodeV2Runtime:
         turn_deadline: float | None = None,
     ) -> Mapping[str, str]:
         if descriptor is None:
-            descriptor = self._native_adapter_for_model(context.model_id, owner_id=context.user_id)
+            descriptor = await self._resolve_native_adapter(
+                context.model_id, owner_id=context.user_id
+            )
         loop = asyncio.get_running_loop()
         location_started = loop.time()
         location_deadline = location_started + _LOCATION_DISCOVERY_SECONDS
@@ -3109,9 +3164,10 @@ class OpenCodeV2Runtime:
         )
 
         connected = False
-        mcp_deadline = loop.time() + 8.0
+        mcp_deadline = loop.time() + _MCP_DISCOVERY_SECONDS
         if turn_deadline is not None:
             mcp_deadline = min(mcp_deadline, turn_deadline)
+        last_mcp_timeout = False
         while loop.time() < mcp_deadline:
             remaining = mcp_deadline - loop.time()
             if remaining <= 0:
@@ -3126,7 +3182,12 @@ class OpenCodeV2Runtime:
             except (TimeoutError, httpx.TimeoutException):
                 if turn_deadline is not None and loop.time() >= turn_deadline:
                     raise TimeoutError from None
-                raise _AssistantRuntimeFailure("native_request_timeout", "mcp_discovery") from None
+                last_mcp_timeout = True
+                await asyncio.sleep(min(0.2, max(0.0, mcp_deadline - loop.time())))
+                continue
+            last_mcp_timeout = False
+            if mcp_response.status_code != 200:
+                raise _AssistantRuntimeFailure("mcp_unavailable", "mcp_discovery")
             mcp_payload = _json_object(mcp_response)
             servers = mcp_payload.get("data") if mcp_payload else None
             if not isinstance(servers, list) or len(servers) > 64:
@@ -3151,6 +3212,8 @@ class OpenCodeV2Runtime:
         if not connected:
             if turn_deadline is not None and loop.time() >= turn_deadline:
                 raise TimeoutError
+            if last_mcp_timeout:
+                raise _AssistantRuntimeFailure("native_request_timeout", "mcp_discovery")
             raise _AssistantRuntimeFailure("mcp_unavailable", "mcp_discovery")
         search_timeout = 5.0
         if turn_deadline is not None:
@@ -3173,6 +3236,11 @@ class OpenCodeV2Runtime:
         search_available = isinstance(search_rows, list) and bool(search_rows)
         self._search_available[context.execution_id] = search_available
         return provider_ref
+
+    def restricted_native_tools_ready(self) -> bool:
+        """Report verified managed execution guards on the current native transport."""
+
+        return self._webfetch_guard_ready is True and self._transport_verified
 
     async def _create_session(
         self,
@@ -3220,6 +3288,16 @@ class OpenCodeV2Runtime:
             {"action": "skill", "resource": "*", "effect": "deny"},
             {"action": "plugins", "resource": "*", "effect": "deny"},
         ]
+        if self._webfetch_guard_ready is True:
+            model = self.catalog.get_model(context.model_id)
+            if model is not None and model.provider_id == "opencode-zen":
+                # The trusted native build forbids execution before either tool body.
+                # Ask keeps genuine SDK registrations; unsupported permission events
+                # separately remain rejected by the application bridge.
+                permissions.extend(
+                    {"action": action, "resource": "*", "effect": "ask"}
+                    for action in ("read", "shell")
+                )
         response = await self._request(
             "POST",
             "/api/session",

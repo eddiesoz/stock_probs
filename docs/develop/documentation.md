@@ -19,6 +19,32 @@ resolve uncertain results with exact-node measurements, independent QA and paren
 review. See [contrast review](testing.md#reviewing-incomplete-contrast-results). A scoped manual
 resolution does not establish full application accessibility or change the raw automated result.
 
+Local image replacement evidence must distinguish selecting a retained current image from retiring
+an obsolete candidate. The bounded builder's typed selection compares the expected full image ID,
+verifies both ledger-bound receipts and Docker identities, and atomically updates only the local
+pointer. Document the private command receipt and keep subsequent provenance, protection, reference,
+RootFS, absence and retirement-acknowledgement evidence separate; selection alone is not cleanup
+acceptance or a product release. See [the local selection procedure](testing.md#selecting-a-retained-local-image).
+
+For a local-build failure, record the primary error, CLI cancellation, actual builder/worker
+state, reservation state and receipt publication separately. A missing historical BuildKit result
+is Unavailable even when fresh history and image inventory show absence. Typed external-observation
+reconciliation is a distinct recovery scope; it does not turn the failed build into a success.
+The genuine-local-failure mode can use fresh proof of the same stopped builder generation and an
+absent/empty bounded cgroup when historical cancellation or history is unavailable. Historical
+false facts still fail closed. Keep that local recovery separate from the temporary production
+baseline's approval/manifest/current-record and host/MCP schema checks; static consumer agreement
+does not prove installation, image availability or a host transition.
+See [the local-build recovery procedure](testing.md#bounded-local-docker-builds-and-worker-verification).
+
+## Local build phase evidence
+
+For the local-build phase observer, publish only its bounded sanitized projection. Raw BuildKit
+vertex names, commands, URLs, digests, logs and warning/error payloads are not evidence artifacts.
+Keep partial or unavailable observations separate from the primary build failure and its cause;
+never infer a successful build from parser tests. The reader uses the pinned Buildx/BuildKit JSON
+shape and leaves existing build deadlines and failure recovery in force.
+
 ## Codex project configuration
 
 Codex loads repository policy from root `AGENTS.md` and trusted-project settings from
@@ -27,6 +53,19 @@ loopback flags in `opencode.json` and raises the instruction byte limit so the f
 policy can load. The project-scoped `luna-build`, `luna-qa`, and `luna-docs` TOML files in
 `.codex/agents/` mirror the current ownership split. Their instructions guide task ownership;
 the active Codex permission mode governs actual filesystem access.
+
+The 2026-10-23 user correction in root `AGENTS.md` permits subagents only when delegation is
+necessary and the task can genuinely proceed asynchronously. The parent handles sequential work
+directly; a delegated task must have clear ownership and allow useful independent parent progress.
+Keep historical reviewer attribution and independent-evidence requirements explicit; a parent check
+does not establish independent QA. Configured agent/model projections alone do not justify
+delegation. This policy-only correction changes no runtime configuration or discovery claim.
+
+Signal Ledger application work follows the user's local-first testing correction, captured in the
+personal `$signal-ledger-local-first-testing` skill: repair and verify current-source behavior before
+building another candidate image. Known application/browser failures hold builds; after local checks
+pass, build one candidate and test that image through the release gates. The personal skill leaves
+the repository's approved project catalog unchanged; file validation does not establish discovery.
 
 [`model-routing.json`](../../model-routing.json) is the single maintained source for model,
 reasoning-effort, and role assignments. Codex and OpenCode model fields are synchronized
@@ -104,6 +143,13 @@ local PR-pair helper
 `python3 scripts/pin_pr_rehearsal_review.py --write` and its fixed metadata contract are described
 in [developer testing](testing.md#exact-pr-pair-review-pins), [local configuration](../configure/local-configuration.md#local-pr-rehearsal-review-metadata),
 and [getting started](../operations/getting-started.md#review-a-pr-pair-before-rehearsal).
+
+The current PR #9 startup-reserve checker has a bounded 30-second read-only observation before its
+unchanged final guard. E22's five-second observation remains historical; the 512/128 MiB floors and
+1,080-second operation budget are unchanged. E29 records independent local source/test review and
+parent review, while a fresh host retry, image, native answer, and actual 1 GB acceptance remain
+unverified. Map coverage for this deployment-review path includes this guide, developer testing,
+local configuration, getting started, and the workflow policy in `AGENTS.md`.
 
 ### Source-bound build recovery
 
@@ -308,8 +354,8 @@ documented in the operations and testing guides when changing that contract.
 Archive-scanner changes also require the testing and operations guides to describe the fixed
 individually provenance-bound artifact exceptions and retained credential checks. Capture and diagnosis allowlists, genuine
 pre-snapshots, and immutable receipts follow the root agent policy.
-The merged application PR #1 is historical evidence. The current fixed rehearsal binding moves
-to follow-on PR #2, retaining exact repository, open state, main base and reviewed-head checks.
+The merged application PR #1 and PR #2 are historical evidence. The current fixed rehearsal
+binding targets restoration PR #9, retaining exact repository, open state, main base and reviewed-head checks.
 A prose statement here does not replace a passing completeness and change-aware
 coverage check.
 
@@ -474,6 +520,14 @@ not credentials, private paths, or copied runtime output.
 4. Run `.dev-venv/bin/python scripts/validate_docs.py`.
 5. Review the changed paths and record the actual pre-change and post-change checkpoint states.
 
+For local-build preparation on removable media, record the verified mount identity, free-space
+admission/stop readings, private audit scratch/receipt modes, and separate exact helper-source
+binding in the task ledger. Keep an approved setup receipt unchanged: it proves setup only. Pair it
+with independent review of the exact helper source and a successful build receipt bound to that
+source before claiming a helper or image build. Preserve Git-tracked executable modes in the
+materialized source context. For interrupted test runs, retain terminal and JUnit evidence
+independently and preserve count disagreements as a failed or unresolved result.
+
 The project `documentation` skill contains the agent-facing version of this workflow. Skill
 or configuration-time changes require an OpenCode restart before discovery can be validated;
 the editing session itself is not proof that the restarted process loaded them.
@@ -515,3 +569,56 @@ than a validator heuristic. These are static governance checks; metadata, the in
 allow-list, and `SKILL.md` frontmatter do not establish that a native loader discovered a skill.
 Native V2's directory-based auto-discovery is the loader boundary, and runtime discovery remains
 **Unavailable** in this harness.
+
+
+## R-ASTRA-121 free OpenCode restoration evidence
+
+The free-only OpenCode restoration precedes the seven-feature releases. The documentation map
+covers the packaged native SDK declaration record, managed execution guards, provider consumers,
+and their regressions. Keep the user correction in `AGENTS.md` and outcomes in `MVP-PLAN.md`.
+A genuine free answer from an isolated application fixture is functional evidence for that fixture.
+If its wrapper supplies guard readiness, it does not verify production receipt enforcement.
+Only the installed root-owned, nonwritable receipt and matching binary can establish the normal
+managed-worker readiness path. Preserve failed baseline and guard-fixture attempts separately;
+never reconstruct a missing contemporaneous wrapper or source binding.
+
+
+The PR #9 rehearsal documents two distinct baselines: the current schema-13 production image
+observed by read-only inspection, and the historical schema-12 migration/recovery origin. Keep
+live production identity and health guards and their consumer receipt validation aligned with the
+exact observed deployment; do not replace the historical migration origin or infer current health
+from it. See [the operational procedure](../operations/getting-started.md) and the R-ASTRA-121
+MVP ledger for source and runtime evidence separately.
+
+
+PR #9 checker diagnostics retain only the closed reserve phase and below-threshold numeric KiB
+readings; host and controller tests validate this boundary. Document actual host failures separately
+from local pair, native and canonical passes. Browser fixture checkpoints record only synthetic
+stage/status/timing and public module/process information, with no user prompts or capabilities.
+A focused browser pass does not replace a failed full aggregate. See the R-ASTRA-121 E14 ledger.
+
+
+Rehearsal baseline changes require the mapped testing, configuration and operations pages plus
+`AGENTS.md`. Document the running candidate or recovery role separately from the immutable
+schema-12 pair seed; an exact image allowlist is a guard, not evidence that the image served
+production or met the resource floors. Keep source checks, local disposable compatibility, signed
+backup verification and actual-host observations separate in the [E19 ledger](../../MVP-PLAN.md#r-astra-121-e19-installed-rollout-repair-and-signed-schema-13-backup).
+
+The lazy-provider startup repair is documented in the API, testing and operations guides and
+[E32](../../MVP-PLAN.md#r-astra-121-e32-lazy-provider-startup-and-host-reserve-checkpoint). Preserve
+its local import-memory and focused QA scope separately from the failed host startup guard.
+Changed recovery-overlay bytes require fresh image/pair bindings; an earlier image cannot inherit
+the source repair or the new frontend build result.
+
+The bounded-build documentation rule covers failure-path fixture corrections as well as
+controller source changes. Record a failed aggregate separately from a passing focused test
+repair, preserve exact source bindings, and distinguish synthetic disk inputs from real build
+admission evidence. The [F6 disk-seam checkpoint](../../MVP-PLAN.md#r-astra-121-f6-canonical-disk-seam-checkpoint-2026-10-17)
+shows this distinction; it does not advance release acceptance.
+
+Typed local-timeout recovery changes need the mapped policy, testing and operations coverage.
+Document explicit-null receipt fields separately from missing fields, preserve failed candidate
+reviews, and bind the repaired source to fresh focused QA and the actual emitted recovery receipt.
+Completed build-step logs and remaining cache records explain a retry decision; they do not
+replace image, native, resource or release checks. See the
+[F6 recovery and history checkpoint](../../MVP-PLAN.md#r-astra-121-f6-typed-timeout-recovery-and-build-history-checkpoint-2026-10-18).

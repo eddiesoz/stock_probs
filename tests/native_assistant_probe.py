@@ -1933,11 +1933,25 @@ def _scan_synthetic_storage(
 class _ProbeRuntimeSupervisor:
     """Exercise the native runtime against a loopback app and disposable worker home."""
 
-    def __init__(self, binary: Path, home: Path, location_root: Path, environment: dict[str, str]):
+    def __init__(
+        self,
+        binary: Path,
+        home: Path,
+        location_root: Path,
+        environment: dict[str, str],
+        *,
+        native_guards_verified: bool = False,
+    ):
+        # Local callers must bind the patched binary/receipt before opting into guarded tools.
+        # This fixture flag does not establish production file ownership or container acceptance.
+        if type(native_guards_verified) is not bool:
+            raise ValueError("native_guard_verification_invalid")
         self.binary = binary
         self.home = home
         self.location_root = location_root
         self.environment = dict(environment)
+        self.environment["STOCK_PROBS_MANAGED_ASSISTANT"] = "1"
+        self._native_guards_verified = native_guards_verified
         self.process: subprocess.Popen[bytes] | None = None
         self.password = ""
         self.locations: set[str] = set()
@@ -2009,6 +2023,7 @@ class _ProbeRuntimeSupervisor:
             "status": "ready" if process is not None and process.poll() is None else "unavailable",
             "api_url": "http://127.0.0.1:4097",
             "api_password": self.password,
+            "webfetch_guard_ready": self._native_guards_verified,
         }
 
     async def prepare_location(self, **values: str) -> dict[str, str]:
@@ -2024,6 +2039,9 @@ class _ProbeRuntimeSupervisor:
             mcp_capability=values["mcp_capability"],
             adapter_id=values["adapter_id"],
             native_provider_id=values["native_provider_id"],
+            provider_id=values["provider_id"],
+            webfetch_guard_ready=self._native_guards_verified,
+            restricted_tools_guard_ready=self._native_guards_verified,
         )
         (location / "opencode.json").write_text(
             json.dumps(document, ensure_ascii=True, separators=(",", ":")), encoding="utf-8"
@@ -2617,7 +2635,12 @@ def _run_application_integration(
     server_thread_started = False
     result: dict[str, object] = {}
 
-    def trace_provider_validation(value: object, app_tools: list[dict[str, object]]):
+    def trace_provider_validation(
+        value: object,
+        app_tools: list[dict[str, object]],
+        *,
+        include_restricted: bool = False,
+    ):
         if isinstance(value, Mapping):
             messages = value.get("messages")
             tools = value.get("tools")
@@ -2737,7 +2760,9 @@ def _run_application_integration(
                     ),
                 }
             )
-        bounded = _validated_provider_request(value, app_tools)
+        bounded = _validated_provider_request(
+            value, app_tools, include_restricted=include_restricted
+        )
         if _APP_PROVIDER_REQUESTS:
             _APP_PROVIDER_REQUESTS[-1]["accepted_by_validator"] = bounded is not None
         return bounded
@@ -3839,7 +3864,7 @@ def run_native_app_integration_probe() -> int:
         return 0 if result["app_native_integration_success"] else 1
 
 
-def run_native_live_zen_probe() -> int:
+def run_native_live_zen_probe(*, native_guards_verified: bool = False) -> int:
     """Run one synthetic FastAPI turn through native V2 to the approved free Zen route."""
 
     import uvicorn
@@ -3951,6 +3976,7 @@ def run_native_live_zen_probe() -> int:
                 "LC_ALL": "C.UTF-8",
                 "OPENCODE_SERVER_USERNAME": "opencode",
             },
+            native_guards_verified=native_guards_verified,
         )
         runtime_module = __import__("stock_probs.assistant.runtime", fromlist=["_APP_BASE_URL"])
         previous_base_url = runtime_module._APP_BASE_URL
@@ -4153,13 +4179,17 @@ def run_native_live_zen_probe() -> int:
 
         original_verify = runtime._verify_location
 
-        async def traced_verify_location(context, directory, descriptor=None):
+        async def traced_verify_location(
+            context, directory, descriptor=None, *, turn_deadline=None
+        ):
             trace["location_verify_started"] = True
             trace["location_verify_directory_matches"] = directory == str(
                 location_root / context.execution_id
             )
             try:
-                result = await original_verify(context, directory, descriptor)
+                result = await original_verify(
+                    context, directory, descriptor, turn_deadline=turn_deadline
+                )
             except Exception as exc:
                 trace["location_verify_error_type"] = type(exc).__name__
                 raise
@@ -4358,23 +4388,34 @@ def run_native_live_zen_probe() -> int:
                         if isinstance(item, Mapping) and "outcome" in item
                     ]
                     trace["native_terminal_outcomes"] = native_ids
-                    conversation_row = detail_payload.get("conversation", {})
-                    revision = (
-                        conversation_row.get("revision")
-                        if isinstance(conversation_row, Mapping)
-                        else None
+                    delete_csrf_headers = dict(csrf)
+
+                    def delete_request(
+                        owner_index, method, path, *, timeout, body=None, csrf=False
+                    ):
+                        if owner_index != 0:
+                            raise _AttachedProbeFailure("conversation_owner_mismatch")
+                        response = client.request(
+                            method,
+                            path,
+                            headers=delete_csrf_headers if csrf else None,
+                            json=body,
+                            timeout=timeout,
+                        )
+                        return response, _attached_json(response)
+
+                    delete_diagnostic: dict[str, object] = {}
+                    # A terminal failure can still own the background HOME purge.
+                    close_status, close_error_code = _attached_delete_with_pending_retry(
+                        request=delete_request,
+                        owner_index=0,
+                        conversation_id=str(conversation["id"]),
+                        deadline=time.monotonic() + 24.0,
+                        diagnostic=delete_diagnostic,
                     )
-                    close_response = client.request(
-                        "DELETE",
-                        f"/api/v1/assistant/conversations/{conversation['id']}",
-                        headers=csrf,
-                        json={
-                            "expected_revision": revision,
-                            "confirmation_phrase": f"DELETE {str(conversation['id'])[-8:]}",
-                        },
-                    )
-                    close_status = close_response.status_code
                     trace["conversation_delete_status"] = close_status
+                    trace["conversation_delete_error_code"] = close_error_code
+                    trace["conversation_delete_diagnostic"] = delete_diagnostic
                     if trace["purge_status"] == "cleared":
                         live_values = {
                             "user_prompt": prompt,
@@ -4485,6 +4526,7 @@ def run_native_live_zen_probe() -> int:
             "finished_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             "binary_version": binary_version,
             "approved_model": model.model_id,
+            "native_guards_verified": native_guards_verified,
             "credential_used": False,
             "synthetic_context_only": True,
             "privacy_policy": {
@@ -5452,15 +5494,44 @@ def run_attached_existing_app_probe() -> int:
             }
             if csrf:
                 headers["x-csrf-token"] = user["csrf_cookie"]
-            request_options = {} if timeout is None else {"timeout": timeout}
-            try:
-                response = clients[owner_index].request(
-                    method, path, json=body, headers=headers, **request_options
-                )
-            except httpx.HTTPError as exc:
-                raise _AttachedProbeFailure(f"transport_{type(exc).__name__.casefold()}") from None
-            parsed = _attached_json(response)
-            return response, parsed
+            poll_read = (
+                failure_stage == "turn_poll_and_search_confirmation"
+                and method == "GET"
+                and body is None
+                and not csrf
+                and timeout is None
+                and owner_index < len(conversations)
+                and path == f"/api/v1/assistant/conversations/{conversations[owner_index]}"
+            )
+            read_retries = 0
+            while True:
+                request_options = {} if timeout is None else {"timeout": timeout}
+                if poll_read:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise _AttachedProbeFailure("transport_readtimeout")
+                    request_options["timeout"] = httpx.Timeout(
+                        min(8.0, remaining), connect=min(2.0, remaining)
+                    )
+                try:
+                    response = clients[owner_index].request(
+                        method, path, json=body, headers=headers, **request_options
+                    )
+                except httpx.ReadTimeout:
+                    # An observation may recover within the original window. Never replay
+                    # writes, retry authorization/protocol errors, or reset that deadline.
+                    remaining = deadline - time.monotonic() if poll_read else 0.0
+                    if not poll_read or read_retries >= 2 or remaining <= 0:
+                        raise _AttachedProbeFailure("transport_readtimeout") from None
+                    read_retries += 1
+                    time.sleep(min(0.1, remaining))
+                    continue
+                except httpx.HTTPError as exc:
+                    raise _AttachedProbeFailure(
+                        f"transport_{type(exc).__name__.casefold()}"
+                    ) from None
+                parsed = _attached_json(response)
+                return response, parsed
 
         attached_request = request
 

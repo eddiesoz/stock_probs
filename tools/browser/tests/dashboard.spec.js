@@ -2103,10 +2103,29 @@ test("news renders empty partial stale failure busy unreachable and superseded s
   browserDiagnostics,
 }) => {
   let mode = "empty";
+  const pendingLookups = new Set();
+  const submittedLookups = new Set();
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (request.method() !== "GET" || url.origin !== new URL(page.url()).origin
+        || url.pathname !== "/api/v1/instruments" || url.search !== "?query=ACDC-D&limit=5") return;
+    pendingLookups.add(request);
+  });
+  page.on("requestfinished", (request) => {
+    pendingLookups.delete(request);
+    submittedLookups.delete(request);
+  });
+  page.on("requestfailed", (request) => {
+    pendingLookups.delete(request);
+    // Submitting this forecast deliberately cancels its pending autocomplete lookup.
+    if (submittedLookups.delete(request) && request.failure()?.errorText === "net::ERR_ABORTED") {
+      browserDiagnostics.expectRequestAborts({ method: "GET", path: "/api/v1/instruments" });
+    }
+  });
   await page.route("**/api/v1/news?*", async (route) => {
     const symbol = new URL(route.request().url()).searchParams.get("symbol");
     if (mode === "provider") return route.fulfill({ status: 502, contentType: "application/json", json: { error: { code: "provider_unavailable", message: "Provider unavailable" } } });
-    if (mode === "busy") return route.fulfill({ status: 503, contentType: "application/json", json: { error: { code: "capacity_busy", message: "Busy" } } });
+    if (mode === "busy") return route.fulfill({ status: 503, contentType: "application/json", json: { error: { code: "provider_busy", message: "Busy" } } });
     const payload = newsPayload(symbol, mode === "empty" ? 0 : 1);
     if (mode === "partial") {
       payload.items[0] = { id: "partial", title: "Headline with partial metadata", publisher: null, published_at: null, url: "https://example.com/partial", related_symbols: null };
@@ -2123,13 +2142,45 @@ test("news renders empty partial stale failure busy unreachable and superseded s
     { method: "GET", path: "/api/v1/news", status: 503 },
   );
   await gotoSurface(page, "/");
+  let lastCompletedForecastId = null;
   const submitForecast = async () => {
+    // Only the single lookup already pending before this submission may be cancelled.
+    expect(pendingLookups.size).toBeLessThanOrEqual(1);
+    for (const request of pendingLookups) submittedLookups.add(request);
     const forecastResponsePromise = page.waitForResponse((response) => (
       response.request().method() === "POST"
       && new URL(response.url()).pathname === "/api/v1/forecasts"
-    ));
-    await page.getByRole("button", { name: "Run forecast" }).click();
-    expect((await forecastResponsePromise).status()).toBe(201);
+    )).then((response) => ({ response }), (error) => ({ error }));
+    let forecastResponse;
+    try {
+      await page.getByRole("button", { name: "Run forecast" }).click();
+      const outcome = await forecastResponsePromise;
+      if (outcome.error) throw outcome.error;
+      forecastResponse = outcome.response;
+    } catch (error) {
+      const [readiness, history] = await Promise.all([
+        page.request.get(new URL("/api/v1/readiness", page.url()).href, { timeout: 1_000 })
+          .then((response) => ({ status: response.status() })).catch(() => ({ status: null })),
+        page.request.get(new URL("/api/v1/history?page=1&page_size=1&sort_by=event_id&sort_order=desc", page.url()).href, { timeout: 1_000 })
+          .then(async (response) => ({ status: response.status(), body: await response.json() }))
+          .catch(() => ({ status: null, body: null })),
+      ]);
+      const latest = history.body?.items?.[0];
+      const latestId = Number.isSafeInteger(latest?.id) ? latest.id : null;
+      const diagnostic = {
+        readiness_http_status: readiness.status,
+        history_http_status: history.status,
+        last_completed_event_id: lastCompletedForecastId,
+        latest_event_id: latestId,
+        latest_event_status: ["success", "failed"].includes(latest?.status) ? latest.status : null,
+        latest_after_last_completed: latestId !== null && lastCompletedForecastId !== null
+          ? latestId > lastCompletedForecastId : null,
+      };
+      throw new Error(`${error instanceof Error ? error.message : "Forecast response did not arrive."}\nSafe forecast wait diagnostic ${JSON.stringify(diagnostic)}`);
+    }
+    expect(forecastResponse.status()).toBe(201);
+    const completed = await forecastResponse.json();
+    lastCompletedForecastId = Number.isSafeInteger(completed?.event?.id) ? completed.event.id : null;
     const result = page.locator("#result-content");
     await expect(result).toHaveAttribute("aria-busy", "false");
     await expect(result.locator(".forecast-grid .forecast-card")).toHaveCount(2);
@@ -2431,12 +2482,20 @@ test("M04 360–1440 layouts, touch targets, reduced motion, and high contrast s
     await themeRadio(page, theme === "light" ? "Light" : "Dark").click();
     await page.keyboard.press("Escape");
     await page.emulateMedia({ media: "print", forcedColors: "none", reducedMotion: "reduce" });
-    printSurfaces[theme] = await page.evaluate(() => Object.fromEntries([
+    const readPrintSurfaces = () => page.evaluate(() => Object.fromEntries([
       ".search-panel", ".horizon-comparison", ".tail-figure", ".history-table th",
     ].map((selector) => {
       const style = getComputedStyle(document.querySelector(selector));
       return [selector, { color: style.color, background: style.backgroundColor }];
     })));
+    // Wait for the emulated media's computed styles; retain both theme-parity assertions below.
+    await expect.poll(readPrintSurfaces, {
+      message: `${theme} print styles did not settle to the required black-on-white surfaces`,
+      timeout: 5_000,
+    }).toEqual(Object.fromEntries([
+      ".search-panel", ".horizon-comparison", ".tail-figure", ".history-table th",
+    ].map((selector) => [selector, { color: "rgb(0, 0, 0)", background: "rgb(255, 255, 255)" }])));
+    printSurfaces[theme] = await readPrintSurfaces();
   }
   expect(printSurfaces.light).toEqual(printSurfaces.dark);
   expect(new Set(Object.values(printSurfaces.dark).map(({ background }) => background))).toEqual(new Set(["rgb(255, 255, 255)"]));

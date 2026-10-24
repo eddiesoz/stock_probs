@@ -6,11 +6,12 @@ import asyncio
 import inspect
 import json
 import re
+import threading
 import time
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from importlib.resources import files
-from typing import Any
+from typing import Any, Protocol, TypeVar, cast
 from urllib.parse import unquote, urlsplit, urlunsplit
 
 from stock_probs.assistant.net import PublicHTTPError, request_public_https
@@ -21,6 +22,92 @@ _ZEN_MODELS_URL = "https://opencode.ai/zen/v1/models"
 _MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,159}$")
 _MODEL_CACHE_SECONDS = 300.0
 _CATALOG_FAILURE_RETRY_SECONDS = 5.0
+
+_AuthorityResult = TypeVar("_AuthorityResult")
+
+
+class _AuthorityLock(Protocol):
+    def acquire(self, blocking: bool = True) -> bool: ...
+
+    def release(self) -> None: ...
+
+
+async def run_policy_authority(
+    lock: _AuthorityLock,
+    operation: Callable[[], _AuthorityResult],
+    authorize: Callable[[], Awaitable[None]],
+    *,
+    admission_seconds: float,
+) -> _AuthorityResult:
+    """Bound admission, then retain an admitted atomic operation through cancellation."""
+
+    deadline = time.monotonic() + admission_seconds
+    abandoned = threading.Event()
+    admitted = threading.Event()
+    admission_gate = threading.Lock()
+
+    def available() -> bool:
+        if not lock.acquire(blocking=False):
+            return False
+        lock.release()
+        return True
+
+    def attempt() -> tuple[bool, _AuthorityResult | None]:
+        if not lock.acquire(blocking=False):
+            return False, None
+        try:
+            # A queued worker must never publish after its caller abandons admission.
+            with admission_gate:
+                if abandoned.is_set() or time.monotonic() >= deadline:
+                    raise TimeoutError
+                admitted.set()
+            return True, operation()
+        finally:
+            lock.release()
+
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError
+        async with asyncio.timeout(remaining):
+            # Probe without blocking or retaining authority on the event loop. A busy
+            # transaction must not consume executor workers merely waiting for its lock.
+            while not available():
+                await asyncio.sleep(0.01)
+            await authorize()
+        pending = asyncio.create_task(asyncio.to_thread(attempt))
+        try:
+            acquired, result = await asyncio.wait_for(
+                asyncio.shield(pending), max(0.0, deadline - time.monotonic())
+            )
+        except (asyncio.CancelledError, TimeoutError) as interruption:
+            with admission_gate:
+                abandoned.set()
+                began = admitted.is_set()
+            if not began:
+                # A queued attempt can be abandoned promptly. The same gate prevents
+                # a dispatched worker from crossing into publication afterward.
+                pending.cancel()
+                pending.add_done_callback(
+                    lambda done: done.exception() if not done.cancelled() else None
+                )
+                raise
+            # Cancellation cannot stop a thread. Drain its actual outcome before the
+            # request retires; later cancellations must not detach an admitted write.
+            cancelled = isinstance(interruption, asyncio.CancelledError)
+            while not pending.done():
+                try:
+                    await asyncio.shield(pending)
+                except asyncio.CancelledError:
+                    cancelled = True
+                except Exception:
+                    break
+            if cancelled:
+                pending.exception()
+                raise asyncio.CancelledError from None
+            acquired, result = pending.result()
+        if acquired:
+            return cast(_AuthorityResult, result)
 
 
 class ModelCatalogAuthorizationError(Exception):
@@ -35,7 +122,11 @@ async def _require_authorization(
     if authorization_check is None:
         return
     try:
-        authorized = authorization_check()
+        authorized = (
+            authorization_check()
+            if inspect.iscoroutinefunction(authorization_check)
+            else await asyncio.to_thread(authorization_check)
+        )
         if inspect.isawaitable(authorized):
             authorized = await authorized
     except Exception as exc:
@@ -155,6 +246,17 @@ class AssistantModel(AssistantModelPolicy):
     cost_disclosure: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class _CatalogSnapshot:
+    """Publish model rows and their freshness timestamps as one immutable generation."""
+
+    zen_models: tuple[AssistantModel, ...] = ()
+    zen_loaded_at: float = 0.0
+    native_models: tuple[AssistantModel, ...] = ()
+    native_loaded_at: float = 0.0
+    retry_at: float = 0.0
+
+
 class AssistantModelCatalog:
     """List models from a fixed provider inventory and fail closed when discovery is stale."""
 
@@ -177,12 +279,21 @@ class AssistantModelCatalog:
         else:
             with open(catalog_path, encoding="utf-8") as source:
                 self._policy = json.load(source)
-        self._models: tuple[AssistantModel, ...] = ()
-        self._loaded_at = 0.0
-        self._retry_at = 0.0
+        self.policy_lock = threading.RLock()
+        self._snapshot = _CatalogSnapshot()
         self._refresh_lock = asyncio.Lock()
-        self._native_models: tuple[AssistantModel, ...] = ()
-        self._native_loaded_at = 0.0
+
+    @property
+    def _models(self) -> tuple[AssistantModel, ...]:
+        return self._snapshot.zen_models
+
+    @property
+    def _loaded_at(self) -> float:
+        return self._snapshot.zen_loaded_at
+
+    @property
+    def _retry_at(self) -> float:
+        return self._snapshot.retry_at
 
     async def refresh(
         self,
@@ -217,8 +328,9 @@ class AssistantModelCatalog:
             return await self._refresh_locked()
 
     def _fresh_for(self, minimum_validity_seconds: float) -> bool:
-        age = self._clock() - self._loaded_at
-        return self._loaded_at > 0 and age + minimum_validity_seconds < _MODEL_CACHE_SECONDS
+        snapshot = self._snapshot
+        age = self._clock() - snapshot.zen_loaded_at
+        return snapshot.zen_loaded_at > 0 and age + minimum_validity_seconds < _MODEL_CACHE_SECONDS
 
     async def _refresh_locked(
         self,
@@ -273,25 +385,56 @@ class AssistantModelCatalog:
                 in {"provider_authorization_required", "provider_authorization_timeout"}
             ):
                 raise ModelCatalogAuthorizationError from None
-            self._models = ()
-            self._loaded_at = 0.0
-            self._retry_at = self._clock() + _CATALOG_FAILURE_RETRY_SECONDS
+            await self._publish_zen_authorized(
+                (), 0.0, self._clock() + _CATALOG_FAILURE_RETRY_SECONDS, authorization_check
+            )
             return self.list_models()
         models = self._parse_zen_rows(payload["data"])
         await _require_authorization(authorization_check)
-        self._models = models
-        self._loaded_at = self._clock()
-        self._retry_at = 0.0
+        await self._publish_zen_authorized(models, self._clock(), 0.0, authorization_check)
         return self.list_models()
+
+    async def _publish_zen_authorized(
+        self,
+        models: tuple[AssistantModel, ...],
+        loaded_at: float,
+        retry_at: float,
+        authorization_check: Callable[[], Awaitable[object] | object] | None,
+    ) -> None:
+        """Recheck publication authorization after contention without awaiting under the lock."""
+
+        try:
+            await run_policy_authority(
+                self.policy_lock,
+                lambda: self._publish_zen(models, loaded_at, retry_at),
+                lambda: _require_authorization(authorization_check),
+                admission_seconds=7.0,
+            )
+        except TimeoutError:
+            raise PublicHTTPError("model_catalog_unavailable") from None
+
+    def _publish_zen(
+        self, models: tuple[AssistantModel, ...], loaded_at: float, retry_at: float
+    ) -> None:
+        """Serialize only the snapshot replacement; callers perform network work beforehand."""
+
+        with self.policy_lock:
+            self._snapshot = replace(
+                self._snapshot, zen_models=models, zen_loaded_at=loaded_at, retry_at=retry_at
+            )
 
     def list_models(self) -> tuple[AssistantModel, ...]:
         """Return current eligible models; an expired or failed inventory is unavailable."""
 
-        zen_models = self._models if self._clock() - self._loaded_at < _MODEL_CACHE_SECONDS else ()
+        snapshot = self._snapshot
+        now = self._clock()
+        zen_models = (
+            snapshot.zen_models if now - snapshot.zen_loaded_at < _MODEL_CACHE_SECONDS else ()
+        )
         native_models = (
-            self._native_models
-            if self._native_loaded_at > 0
-            and self._clock() - self._native_loaded_at < _MODEL_CACHE_SECONDS
+            snapshot.native_models
+            if snapshot.native_loaded_at > 0
+            and now - snapshot.native_loaded_at < _MODEL_CACHE_SECONDS
             else ()
         )
         combined: dict[str, AssistantModel] = {}
@@ -302,8 +445,20 @@ class AssistantModelCatalog:
     def set_native_models(self, models: tuple[AssistantModel, ...]) -> None:
         """Replace bounded provider-adapter discovery from supported live inventories."""
 
-        self._native_models = tuple(models)
-        self._native_loaded_at = self._clock()
+        with self.policy_lock:
+            self._snapshot = replace(
+                self._snapshot, native_models=tuple(models), native_loaded_at=self._clock()
+            )
+
+    def policy_deadlines(self, model_id: str) -> tuple[tuple[Callable[[], float], float], ...]:
+        """Return pure clock bounds for the exact model's current snapshot."""
+
+        snapshot = self._snapshot
+        if any(model.model_id == model_id for model in snapshot.zen_models):
+            return ((self._clock, snapshot.zen_loaded_at + _MODEL_CACHE_SECONDS),)
+        if any(model.model_id == model_id for model in snapshot.native_models):
+            return ((self._clock, snapshot.native_loaded_at + _MODEL_CACHE_SECONDS),)
+        return ()
 
     def _parse_zen_rows(self, rows: list[object]) -> tuple[AssistantModel, ...]:
         policy = self._policy["zen"]

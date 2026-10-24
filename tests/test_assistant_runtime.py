@@ -58,6 +58,7 @@ from tests.native_assistant_probe import (
     _attached_totp_code,
     _attached_worker_diagnostic,
     _AttachedProbeFailure,
+    _ProbeRuntimeSupervisor,
 )
 
 _TEST_MODEL_ID = "fixture-provider/" + secrets.token_hex(8)
@@ -1915,13 +1916,16 @@ def test_runtime_latches_supervisor_disabled_without_starting_native_api() -> No
     asyncio.run(exercise())
 
 
-def test_unverified_native_api_info_timeout_does_not_enable_transport() -> None:
+@pytest.mark.parametrize("failure", (httpx.ReadTimeout, httpx.ReadError))
+def test_unverified_native_api_info_timeout_does_not_enable_transport(
+    failure: type[httpx.HTTPError],
+) -> None:
     """A first health timeout cannot promote a client before its API identity is verified."""
 
     supervisor = _MutableHealthSupervisor()
 
     async def native_api(_request: httpx.Request) -> httpx.Response:
-        raise httpx.ReadTimeout("synthetic initial API info timeout")
+        raise failure("synthetic initial API info failure")
 
     runtime = OpenCodeV2Runtime(
         SimpleNamespace(assistant_enabled=True),
@@ -1944,7 +1948,7 @@ def test_unverified_native_api_info_timeout_does_not_enable_transport() -> None:
     asyncio.run(exercise())
 
 
-@pytest.mark.parametrize("replacement_probe", ("timeout", "gateway_error"))
+@pytest.mark.parametrize("replacement_probe", ("timeout", "network_error", "gateway_error"))
 def test_password_replacement_api_info_failure_cannot_retain_old_transport(
     replacement_probe: str,
 ) -> None:
@@ -1958,6 +1962,8 @@ def test_password_replacement_api_info_failure_cannot_retain_old_transport(
         if fail_api_info:
             if replacement_probe == "timeout":
                 raise httpx.ReadTimeout("synthetic replacement API info timeout")
+            if replacement_probe == "network_error":
+                raise httpx.ReadError("synthetic replacement API connection reset")
             return httpx.Response(
                 503,
                 headers={"content-type": "application/json"},
@@ -2313,6 +2319,131 @@ def test_run_turn_closes_admission_on_same_generation_readiness_uncertainty(
         assert response.status_code == 200
         assert native_paths == ["/api/info", "/api/info"]
         await runtime.close()
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize(
+    ("failure", "preserve_active"),
+    (
+        ("connect", True),
+        ("read", True),
+        ("write", True),
+        ("close", True),
+        ("timeout", True),
+        ("protocol", False),
+        ("unauthorized", False),
+        ("forbidden", False),
+        ("invalid_json", False),
+    ),
+)
+def test_native_health_failure_separates_active_stream_from_new_admission(
+    failure: str, preserve_active: bool
+) -> None:
+    """A network observation failure must not revoke an admitted provider response."""
+
+    from stock_probs.assistant.api import _provider_proxy_chunks
+
+    fail_next_probe = False
+    supervisor = _MutableHealthSupervisor()
+    failures = {
+        "connect": httpx.ConnectError,
+        "read": httpx.ReadError,
+        "write": httpx.WriteError,
+        "close": httpx.CloseError,
+        "timeout": httpx.ReadTimeout,
+        "protocol": httpx.RemoteProtocolError,
+    }
+
+    async def native_api(_request: httpx.Request) -> httpx.Response:
+        nonlocal fail_next_probe
+        if fail_next_probe:
+            fail_next_probe = False
+            if failure in failures:
+                raise failures[failure]("synthetic native health failure")
+            status = {"unauthorized": 401, "forbidden": 403, "invalid_json": 200}[failure]
+            return httpx.Response(
+                status,
+                headers={"content-type": "application/json"},
+                stream=_NativeBody(b"not json"),
+            )
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/json"},
+            stream=_NativeBody(b'{"version":"v2"}'),
+        )
+
+    runtime = OpenCodeV2Runtime(
+        SimpleNamespace(assistant_enabled=True),
+        providers=_TestProviders(),
+        catalog=_Catalog(),
+        supervisor=supervisor,
+        http_client_factory=lambda **kwargs: httpx.AsyncClient(
+            transport=httpx.MockTransport(native_api), **kwargs
+        ),
+    )
+
+    async def stop_monitor() -> None:
+        task, runtime._monitor_task = runtime._monitor_task, None
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    async def exercise() -> None:
+        nonlocal fail_next_probe
+        release = asyncio.Event()
+        waiting = asyncio.Event()
+        pending: asyncio.Task[bytes] | None = None
+
+        async def upstream():
+            yield b"first admitted chunk"
+            waiting.set()
+            await release.wait()
+            yield b"second admitted chunk"
+
+        try:
+            assert (await runtime.start()).status == "ready"
+            await stop_monitor()
+            original_client = runtime._client
+            context = _context()
+            runtime._active[context.execution_id] = "ses_0123456789abABCDEFGHIJKLMN"
+            runtime._native_project_ids[context.execution_id] = "global"
+            approved = runtime.native_provider_metadata(context.execution_id)
+            assert approved is not None
+            proxy = _provider_proxy_chunks(
+                upstream(),
+                lambda: runtime.native_provider_metadata(context.execution_id) == approved,
+            )
+            assert await proxy.__anext__() == b"first admitted chunk"
+            pending = asyncio.create_task(proxy.__anext__())
+            await asyncio.wait_for(waiting.wait(), timeout=1.0)
+
+            fail_next_probe = True
+            assert (await runtime.start(preserve_ready=True)).status == "unavailable"
+            await stop_monitor()
+            with pytest.raises(RuntimeError, match="worker_unavailable"):
+                runtime._require_ready_worker()
+            release.set()
+            if preserve_active:
+                assert await asyncio.wait_for(pending, timeout=1.0) == b"second admitted chunk"
+                assert runtime._client is original_client
+                assert runtime.native_provider_metadata(context.execution_id) == approved
+                with pytest.raises(StopAsyncIteration):
+                    await proxy.__anext__()
+            else:
+                with pytest.raises(AssistantUnavailable):
+                    await asyncio.wait_for(pending, timeout=1.0)
+                assert runtime.native_provider_metadata(context.execution_id) is None
+            assert (await runtime.start(preserve_ready=True)).status == "ready"
+        finally:
+            release.set()
+            if pending is not None:
+                if not pending.done():
+                    pending.cancel()
+                with contextlib.suppress(Exception, asyncio.CancelledError):
+                    await pending
+            await runtime.close()
 
     asyncio.run(exercise())
 
@@ -3565,6 +3696,7 @@ def test_native_timeout_snapshot_caches_closed_counts_without_content_or_extra_r
     assert snapshot.text_parts == 2
     assert snapshot.text_nonempty_parts == 1
     assert snapshot.reasoning_parts == 1
+    assert private_reasoning not in json.dumps(events)
     assert snapshot.tool_parts == 4
     assert snapshot.other_parts == 1
     assert (
@@ -6653,6 +6785,171 @@ def test_model_discovery_lock_wait_respects_deadline_and_cancellation() -> None:
     asyncio.run(exercise())
 
 
+@pytest.mark.parametrize("timeout_type", [TimeoutError, httpx.ReadTimeout])
+def test_mcp_discovery_recovers_after_transient_read_timeout(monkeypatch, timeout_type) -> None:
+    """A transient MCP GET timeout can recover before the existing discovery deadline."""
+
+    context = _context()
+    location = f"/run/assistant/worker-locations/{context.execution_id}"
+    descriptor = resolve_native_adapter("openai-compatible-chat", "assistant-proxy")
+    provider_ref = {"id": "assistant-selected", "providerID": "assistant-proxy"}
+    runtime = OpenCodeV2Runtime(
+        SimpleNamespace(assistant_enabled=True),
+        providers=_TestProviders("openai-compatible-chat", "assistant-proxy"),
+        catalog=_Catalog(),
+        supervisor=_Supervisor(),
+    )
+    mcp_timeouts: list[float] = []
+    paths: list[str] = []
+
+    async def verified_model(*_args, **_kwargs):
+        return provider_ref
+
+    async def native_request(method: str, path: str, **kwargs) -> httpx.Response:
+        assert method == "GET"
+        assert kwargs["params"] == {"location[directory]": location}
+        paths.append(path)
+        if path == "/api/location":
+            return httpx.Response(
+                200, json={"directory": location, "project": {"directory": location}}
+            )
+        if path == "/api/mcp":
+            mcp_timeouts.append(float(kwargs["timeout"]))
+            if len(mcp_timeouts) == 1:
+                raise timeout_type("synthetic MCP read timeout")
+            return httpx.Response(
+                200, json={"data": [{"name": "signal-ledger", "status": {"status": "connected"}}]}
+            )
+        assert path == "/api/websearch/provider"
+        return httpx.Response(200, json={"data": []})
+
+    monkeypatch.setattr(runtime, "_verify_location_model", verified_model)
+    monkeypatch.setattr(runtime, "_request", native_request)
+
+    async def exercise():
+        try:
+            return await runtime._verify_location(context, location, descriptor)
+        finally:
+            await runtime.close()
+
+    assert asyncio.run(exercise()) == provider_ref
+    assert paths == ["/api/location", "/api/mcp", "/api/mcp", "/api/websearch/provider"]
+    assert len(mcp_timeouts) == 2
+    assert all(0 < timeout <= 2.0 for timeout in mcp_timeouts)
+
+
+def _run_mcp_discovery_fixture(monkeypatch, mcp_request, *, turn_seconds=None):
+    """Keep unrelated model discovery synthetic while exercising the real MCP loop."""
+
+    context = _context()
+    location = f"/run/assistant/worker-locations/{context.execution_id}"
+    descriptor = resolve_native_adapter("openai-compatible-chat", "assistant-proxy")
+    runtime = OpenCodeV2Runtime(
+        SimpleNamespace(assistant_enabled=True),
+        providers=_TestProviders("openai-compatible-chat", "assistant-proxy"),
+        catalog=_Catalog(),
+        supervisor=_Supervisor(),
+    )
+
+    async def verified_model(*_args, **_kwargs):
+        return {"id": "assistant-selected", "providerID": "assistant-proxy"}
+
+    async def native_request(method: str, path: str, **kwargs):
+        assert method == "GET"
+        assert kwargs["params"] == {"location[directory]": location}
+        if path == "/api/location":
+            return httpx.Response(
+                200, json={"directory": location, "project": {"directory": location}}
+            )
+        assert path == "/api/mcp", "Failed MCP discovery must not reach search or session work"
+        return await mcp_request(float(kwargs["timeout"]))
+
+    monkeypatch.setattr(runtime, "_verify_location_model", verified_model)
+    monkeypatch.setattr(runtime, "_request", native_request)
+
+    async def exercise():
+        deadline = None
+        if turn_seconds is not None:
+            deadline = asyncio.get_running_loop().time() + turn_seconds
+        try:
+            return await runtime._verify_location(
+                context, location, descriptor, turn_deadline=deadline
+            )
+        finally:
+            await runtime.close()
+
+    return asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("turn_seconds", [None, 0.03])
+def test_mcp_discovery_timeout_exhaustion_keeps_stage_and_turn_bounds(monkeypatch, turn_seconds):
+    """Retryable reads keep the earlier discovery/turn deadline and timeout classification."""
+
+    monkeypatch.setattr(assistant_runtime, "_MCP_DISCOVERY_SECONDS", 0.06)
+    timeouts: list[float] = []
+
+    async def timeout_request(timeout):
+        timeouts.append(timeout)
+        await asyncio.sleep(timeout)
+        raise httpx.ReadTimeout("synthetic MCP read timeout")
+
+    started = time.monotonic()
+    if turn_seconds is None:
+        with pytest.raises(assistant_runtime._AssistantRuntimeFailure) as caught:
+            _run_mcp_discovery_fixture(monkeypatch, timeout_request)
+        assert (caught.value.code, caught.value.phase) == (
+            "native_request_timeout",
+            "mcp_discovery",
+        )
+    else:
+        with pytest.raises(TimeoutError):
+            _run_mcp_discovery_fixture(monkeypatch, timeout_request, turn_seconds=turn_seconds)
+    assert time.monotonic() - started < 0.3
+    assert len(timeouts) == 1
+    assert 0 < timeouts[0] <= (turn_seconds or 0.06)
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(401, json={"data": [{"name": "signal-ledger", "status": "connected"}]}),
+        httpx.Response(200, json={"data": None}),
+        httpx.Response(200, json={"data": [{"name": "signal-ledger", "status": "failed"}]}),
+        httpx.Response(200, json={"data": [{"name": "signal-ledger", "status": "disabled"}]}),
+        httpx.Response(200, json={"data": [{"name": "signal-ledger", "status": "connected"}] * 2}),
+    ],
+)
+def test_mcp_discovery_never_retries_denied_invalid_or_failed_responses(monkeypatch, response):
+    """Only request timeouts retry; authorization/protocol failures remain fatal."""
+
+    calls = 0
+
+    async def failed_request(_timeout):
+        nonlocal calls
+        calls += 1
+        return response
+
+    with pytest.raises(assistant_runtime._AssistantRuntimeFailure) as caught:
+        _run_mcp_discovery_fixture(monkeypatch, failed_request)
+    assert caught.value.phase == "mcp_discovery"
+    assert calls == 1
+
+
+def test_mcp_discovery_cancellation_is_not_retried(monkeypatch):
+    """Cancellation propagates without another discovery or model request."""
+
+    calls = 0
+
+    async def cancelled_request(_timeout):
+        nonlocal calls
+        calls += 1
+        raise asyncio.CancelledError
+
+    with pytest.raises(asyncio.CancelledError):
+        _run_mcp_discovery_fixture(monkeypatch, cancelled_request)
+    assert calls == 1
+
+
 def test_location_discovery_exhaustion_respects_turn_deadline(monkeypatch, caplog) -> None:
     """Location retries stop at the earlier stage or existing turn deadline."""
 
@@ -8972,3 +9269,69 @@ def test_native_webfetch_permission_requires_exact_public_destination_approval(
         and resources[0] == "https://example.test/report"
     ):
         assert observed == [resources[0]]
+
+
+def test_local_native_probe_always_activates_compiled_managed_guards(tmp_path, monkeypatch):
+    """The local worker cannot accidentally run patched tools in unmanaged mode."""
+
+    monkeypatch.setattr(_ProbeRuntimeSupervisor, "_launch_worker", lambda self: None)
+    supervisor = _ProbeRuntimeSupervisor(
+        tmp_path / "native", tmp_path / "home", tmp_path / "locations", {}
+    )
+    assert supervisor.environment["STOCK_PROBS_MANAGED_ASSISTANT"] == "1"
+
+
+@pytest.mark.parametrize(
+    "provider_id,verified,expected_restricted",
+    [("opencode-zen", True, "ask"), ("opencode-zen", False, "deny"), ("openai", True, "deny")],
+)
+def test_local_native_probe_preserves_production_guard_configuration(
+    tmp_path, monkeypatch, provider_id, verified, expected_restricted
+):
+    """The local native config and readiness agree with its verified artifact capability."""
+
+    def launch(supervisor):
+        supervisor.process = SimpleNamespace(poll=lambda: None)
+
+    monkeypatch.setattr(_ProbeRuntimeSupervisor, "_launch_worker", launch)
+    locations = tmp_path / "locations"
+    locations.mkdir(mode=0o700)
+    supervisor = _ProbeRuntimeSupervisor(
+        tmp_path / "native", tmp_path / "home", locations, {}, native_guards_verified=verified
+    )
+    values = {
+        "execution_id": "a" * 32,
+        "provider_id": provider_id,
+        "adapter_id": "openai-compatible-chat",
+        "native_provider_id": "assistant-proxy",
+        "proxy_base_url": "http://127.0.0.1:8000/provider",
+        "proxy_capability": "x" * 48,
+        "mcp_url": "http://127.0.0.1:8000/mcp",
+        "mcp_capability": "y" * 48,
+    }
+    prepared = asyncio.run(supervisor.prepare_location(**values))
+    configuration = json.loads((locations / values["execution_id"] / "opencode.json").read_text())
+    rules = {rule["action"]: rule["effect"] for rule in configuration["permissions"]}
+    assert prepared["directory"] == str(locations / values["execution_id"])
+    assert rules["read"] == rules["shell"] == expected_restricted
+    assert all(rules[action] == "deny" for action in ("execute", "edit", "write", "subagent"))
+    assert rules["webfetch"] == ("ask" if verified else "deny")
+    assert asyncio.run(supervisor.status())["webfetch_guard_ready"] is verified
+    assert supervisor.environment["STOCK_PROBS_MANAGED_ASSISTANT"] == "1"
+
+
+def test_local_native_probe_rejects_truthy_guard_attestation_before_launch(tmp_path, monkeypatch):
+    """A string cannot opt an unverified runtime into restricted native registration."""
+
+    def unexpected_launch(_supervisor):
+        pytest.fail("Invalid guard attestation must not start a worker")
+
+    monkeypatch.setattr(_ProbeRuntimeSupervisor, "_launch_worker", unexpected_launch)
+    with pytest.raises(ValueError, match="native_guard_verification_invalid"):
+        _ProbeRuntimeSupervisor(
+            tmp_path / "native",
+            tmp_path / "home",
+            tmp_path / "locations",
+            {},
+            native_guards_verified="false",
+        )

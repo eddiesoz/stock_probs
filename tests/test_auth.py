@@ -2784,3 +2784,125 @@ def test_passkey_deep_link_redirects_to_authenticator_and_rejects_external_next(
         )
         assert external.status_code == 303
         assert external.headers["location"] == "/authenticator?mode=enroll&next=%2Foverview"
+
+
+@pytest.mark.parametrize("invalid_state", ["idle_expired", "revoked", "disabled"])
+def test_session_status_polling_is_read_only_and_keeps_live_authority(
+    tmp_path, monkeypatch, invalid_state
+) -> None:
+    """Background status reads cannot refresh idle activity or cache account authority."""
+
+    clock = [datetime.now(UTC)]
+
+    class RequestClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock[0].astimezone(tz) if tz is not None else clock[0].replace(tzinfo=None)
+
+    monkeypatch.setattr("stock_probs.api.datetime", RequestClock)
+    settings = Settings(
+        data_dir=tmp_path,
+        database_path=tmp_path / "stock_probs.sqlite3",
+        backup_dir=tmp_path / "backups",
+        provider="fixture",
+        auth_mode="local",
+        auth_session_secret="p" * 48,
+        auth_public_origin="http://testserver",
+        auth_session_idle_seconds=300,
+        auth_session_max_seconds=3600,
+        bootstrap_username="admin",
+        bootstrap_password="development-password-123",  # noqa: S106
+    )
+    application = create_app(settings, FixtureProvider(), lambda: clock[0])
+    repository = application.state.repository
+    with TestClient(application) as client:
+        login = client.post(
+            "/api/v1/auth/local/login",
+            json={"username": "admin", "password": "development-password-123"},
+        )
+        assert login.status_code == 200, login.text
+        token_hash = hashlib.sha256(client.cookies[SESSION_COOKIE_NAME].encode()).hexdigest()
+        issued = repository.auth_get_session(token_hash)
+        assert issued is not None
+        touches = []
+        original_touch = repository.auth_touch_session
+
+        def observed_touch(fields):
+            touches.append(1)
+            return original_touch(fields)
+
+        monkeypatch.setattr(repository, "auth_touch_session", observed_touch)
+        for seconds in (60, 180, 299):
+            clock[0] = datetime.fromisoformat(issued["created_at"]) + timedelta(seconds=seconds)
+            response = client.get("/api/v1/auth/session")
+            assert response.status_code == 200
+            assert response.json()["authenticated"] is True
+        current = repository.auth_get_session(token_hash)
+        assert current is not None
+        assert touches == []
+        assert current["last_seen_at"] == issued["last_seen_at"]
+        assert current["idle_expires_at"] == issued["idle_expires_at"]
+        if invalid_state == "idle_expired":
+            clock[0] = datetime.fromisoformat(issued["idle_expires_at"])
+        elif invalid_state == "revoked":
+            repository.auth_revoke_session(token_hash, clock[0].isoformat())
+        else:
+            repository.auth_update_user(issued["user_id"], {"status": "disabled"})
+        rejected = client.get("/api/v1/auth/session")
+        assert rejected.status_code == 200
+        assert rejected.json()["authenticated"] is False
+        assert touches == []
+
+
+def test_workspace_request_still_refreshes_activity_after_read_only_session_poll(
+    tmp_path, monkeypatch
+) -> None:
+    """User workspace activity extends idle expiry while a session status poll does not."""
+
+    clock = [datetime.now(UTC)]
+
+    class RequestClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock[0].astimezone(tz) if tz is not None else clock[0].replace(tzinfo=None)
+
+    monkeypatch.setattr("stock_probs.api.datetime", RequestClock)
+    settings = Settings(
+        data_dir=tmp_path,
+        database_path=tmp_path / "stock_probs.sqlite3",
+        backup_dir=tmp_path / "backups",
+        provider="fixture",
+        auth_mode="local",
+        auth_session_secret="r" * 48,
+        auth_public_origin="http://testserver",
+        auth_session_idle_seconds=300,
+        auth_session_max_seconds=3600,
+        bootstrap_username="admin",
+        bootstrap_password="development-password-123",  # noqa: S106
+    )
+    application = create_app(settings, FixtureProvider(), lambda: clock[0])
+    repository = application.state.repository
+    with TestClient(application) as client:
+        login = client.post(
+            "/api/v1/auth/local/login",
+            json={"username": "admin", "password": "development-password-123"},
+        )
+        assert login.status_code == 200, login.text
+        token_hash = hashlib.sha256(client.cookies[SESSION_COOKIE_NAME].encode()).hexdigest()
+        issued = repository.auth_get_session(token_hash)
+        assert issued is not None
+        clock[0] += timedelta(seconds=120)
+        response = client.get("/api/v1/lists?kind=portfolio")
+        assert response.status_code == 200, response.text
+        active = repository.auth_get_session(token_hash)
+        assert active is not None
+        assert datetime.fromisoformat(active["last_seen_at"]) == clock[0]
+        assert datetime.fromisoformat(active["idle_expires_at"]) == clock[0] + timedelta(
+            seconds=300
+        )
+        clock[0] += timedelta(seconds=60)
+        assert client.get("/api/v1/auth/session").json()["authenticated"] is True
+        after_poll = repository.auth_get_session(token_hash)
+        assert after_poll is not None
+        assert after_poll["last_seen_at"] == active["last_seen_at"]
+        assert after_poll["idle_expires_at"] == active["idle_expires_at"]

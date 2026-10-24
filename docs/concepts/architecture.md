@@ -13,7 +13,7 @@ production deployment runs on an operator-managed host. Node is not a production
 deployed R-ASTRA-120 release adds one supervised OpenCode worker process inside the same image and
 container; it does not add a companion service or image.
 
-The presentation source is a Next.js `16.3.8` / React `19.3` App Router project, but it is a
+The presentation source is a Next.js `16.4.2` / React `19.3` App Router project, but it is a
 static build-time input rather than another runtime. Run `./scripts/build-frontend.sh` to create
 the static export and stage it for the Python package. The export has the stable build ID
 `stock-probs`; generated `frontend/.next/`, `frontend/out/`, and
@@ -26,7 +26,20 @@ loopback-only publication, `/data` volume, resource/log bounds, non-root image u
 healthcheck are operational containment. Native development remains the `.dev-venv/` plus local CLI path in
 [getting started](../operations/getting-started.md).
 
+In the current source, importing `create_app` constructs no default application. Factory callers
+create their configured app directly; the compatible `stock_probs.api:app` ASGI target constructs
+and caches its default app on first explicit access, including concurrent loaders. Construction
+does not enter the application lifespan or start the assistant worker. This avoids an unused
+second app in factory-based CLI and fixture processes; it does not establish deployed behavior
+or resource acceptance for a new image.
+
 ## Authentication boundary
+
+Concurrent browser consumers share only an in-flight session check. Its result is discarded
+when the request settles, and later checks still use the no-store session endpoint. API mutations
+invalidate the shared request before dispatch and after completion, so a check cannot reuse a
+pending result from before an account change. Server-side session and permission checks remain
+authoritative for every protected operation.
 
 Production keeps GitHub OAuth as the first factor and uses a six-digit TOTP code from an
 authenticator app as the sole ongoing application second factor. Invitations are resolved to a

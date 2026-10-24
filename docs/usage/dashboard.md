@@ -11,25 +11,28 @@ it is not a brokerage or order-entry system.
 
 ## Ledger assistant status
 
-The Ledger assistant is an R-ASTRA-120 candidate and is not available in the current production
-release. Production remains at schema 12 with the assistant disabled. Its acceptance work remains
-in progress; see the [assistant visual guide](../develop/design-system.md) for the design and the
-[authoritative R-ASTRA-120 ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on)
-for current evidence and open gates.
+The Ledger assistant was enabled for invited users on the tested schema-13 release recorded in
+[E850](../../MVP-PLAN.md#r-astra-120-e850-owner-canary-invited-rollout-and-release-notice).
+On October 12, native requests to the reviewed Zen free models returned an upstream access
+rejection. Worker readiness does not guarantee that the selected provider can answer. Restoration
+is pending; see the [incident record](../../MVP-PLAN.md#r-astra-121-assistant-access-incident).
 
-### Planned assistant handoff on mobile
+A local repair preserves the safe provider-failure explanation after completion and saved-chat
+reopening. It is not deployed and does not restore provider access. Questions remain saved; retries
+and model selection are explicit user actions.
 
-This interaction is part of the candidate design and is not enabled in production. When enabled,
-open the assistant launcher on Live Trading and ask it to set or clear a note, or remove an alert.
+### Assistant handoff on mobile
+
+Open the assistant launcher on Live Trading and ask it to set or clear a note, or remove an alert.
 Review the exact action preview and confirm the handoff in the assistant. On mobile, that handoff
 closes the assistant and focuses the matching workspace control. Review and complete the change
 there; confirmation of the handoff alone does not edit or delete a note or alert. To review its
 receipt afterward, reopen the assistant, open conversation history, and select the same conversation.
 An added alert is limited to the active Live Trading page/session and is not a server-owned record.
 
-### Planned model choice, privacy, and search
+### Model choice, privacy, and search
 
-The candidate model picker does not select a model automatically. Choose one shown as
+The model picker does not select a model automatically. Choose one shown as
 approved and available, then review its exact provider privacy and billing disclosures before
 sending. Provider terms vary; models whose terms allow prompt or context collection require your
 explicit opt-in. Models whose terms prohibit this use remain unavailable even with consent. The
@@ -42,10 +45,17 @@ are stored in owner-scoped Signal Ledger application storage until you delete th
 storage limits. Do not put passwords, API keys, authenticator or recovery codes, or invitation
 codes in a prompt.
 
-The candidate uses OpenCode V2's built-in **WebSearch**. Before each search, review the exact
+The assistant uses OpenCode V2's built-in **WebSearch**. Before each search, review the exact
 public query and approve it; remove private details first. **WebFetch** is separate and asks you
 to approve the exact public HTTPS URL. Redirects require a new approval. Treat results as
 untrusted leads and check each destination.
+
+In the unreleased assistant candidate, changing the page or selected references removes a pending
+WebFetch approval immediately, including while the new context preview is loading or unavailable.
+Use **Stop response** before asking again, then review a new preview for the current page. An old
+approval cannot authorize a request in the new context. The
+[focused browser checkpoint](../../MVP-PLAN.md#r-astra-121-f6-stale-approval-repair-and-focused-browser-checkpoint-2026-10-17)
+records the candidate's verification and remaining release checks.
 
 ## Navigate the research workspace
 

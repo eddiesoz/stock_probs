@@ -104,6 +104,25 @@
         "docs/develop/testing.md",
         "docs/operations/getting-started.md"
       ]
+    },
+    {
+      "name": "native-managed-execution-guards",
+      "match": [
+        "src/stock_probs/assistant/native_restricted_tools.json",
+        "src/stock_probs/assistant/native_provider_adapters.py",
+        "src/stock_probs/assistant/api.py",
+        "src/stock_probs/assistant/providers.py",
+        "src/stock_probs/assistant/runtime.py",
+        "src/stock_probs/container_supervisor.py",
+        "tools/opencode-v2-security-patch/**",
+        "tests/test_native_restricted_tools.py",
+        "tests/test_opencode_webfetch_build.py",
+        "tests/test_container_supervisor.py"
+      ],
+      "docs": [
+        "docs/develop/testing.md",
+        "docs/configure/local-configuration.md"
+      ]
     }
   ],
   "additional": [

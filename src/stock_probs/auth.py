@@ -1678,8 +1678,10 @@ class AuthManager:
         )
         return SessionIssue(session_token, csrf_token, context, expires)
 
-    def authenticate(self, session_token: str | None, now: datetime) -> AuthContext:
-        """Resolve a cookie value against its hash and enforce idle and absolute expiry."""
+    def authenticate(
+        self, session_token: str | None, now: datetime, *, touch: bool = True
+    ) -> AuthContext:
+        """Resolve fresh session authority, recording activity only for active requests."""
 
         if not session_token or len(session_token) > 256:
             raise AuthenticationRequired()
@@ -1712,10 +1714,11 @@ class AuthManager:
         user = self.user_from_record(user_record)
         if not user.active:
             raise AuthenticationRequired()
-        idle = min(current + timedelta(seconds=self.settings.session_idle_seconds), expires)
-        self.store.auth_touch_session(
-            token_hash, {"last_seen_at": _iso(current), "idle_expires_at": _iso(idle)}
-        )
+        if touch:
+            idle = min(current + timedelta(seconds=self.settings.session_idle_seconds), expires)
+            self.store.auth_touch_session(
+                token_hash, {"last_seen_at": _iso(current), "idle_expires_at": _iso(idle)}
+            )
         raw_session_id = record.get("session_id")
         csrf_hash = record.get("csrf_token_hash")
         auth_method = record.get("auth_method", "local")

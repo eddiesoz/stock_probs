@@ -635,7 +635,7 @@ test("assistant history filter confirmation applies all bounded form fields and 
   expect(applicationRequests.every((request) => new URL(request).origin === url.origin && new URL(request).pathname.startsWith("/api/v1/"))).toBe(true);
 });
 
-test("assistant filter reset handoff renders explicit default sort and page size after mobile dialog closes", async ({ page }) => {
+test("assistant filter reset handoff renders explicit default sort and page size after mobile dialog closes", async ({ page, browserDiagnostics }) => {
   const filters = {
     query: "",
     asset_type: "",
@@ -650,6 +650,7 @@ test("assistant filter reset handoff renders explicit default sort and page size
   };
   await installFeatureHarness(page, {
     route: "/",
+    browserDiagnostics,
     scenarios: [actionScenario({
       actionType: "filters.apply",
       payload: filters,
@@ -694,6 +695,7 @@ for (const format of ["csv", "json"]) {
     browserDiagnostics.expectRequestAborts({ method: "GET", path: destination.path });
     const state = await installFeatureHarness(page, {
       route: "/",
+      browserDiagnostics,
       scenarios: [actionScenario({
         actionType: `history.export.${format}`,
         title: `Download the filtered ${format.toUpperCase()} export`,

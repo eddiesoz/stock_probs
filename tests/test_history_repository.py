@@ -14,6 +14,7 @@ from importlib.resources import files
 
 import pytest
 
+from stock_probs.config import Settings
 from stock_probs.domain import HistoryFilters, calculate_forecasts
 from stock_probs.provider import FixtureProvider
 from stock_probs.repository import HISTORY_EXPORT_LIMIT, Repository
@@ -464,7 +465,9 @@ def test_bulk_export_query_count_is_constant_and_memory_is_capped(settings, monk
     assert sum(record["record_type"] == "event" for record in exported["records"]) <= 100
 
 
-def test_concurrent_audit_writes_and_bounded_reads_remain_complete(settings):
+def test_concurrent_audit_writes_and_bounded_reads_remain_complete(settings: Settings) -> None:
+    """Interleaved finite waves preserve all audit writes and bounded read results."""
+
     repository = _repository(settings)
 
     def write(index: int) -> tuple[int, int]:
@@ -484,16 +487,16 @@ def test_concurrent_audit_writes_and_bounded_reads_remain_complete(settings):
             ),
         )
 
+    indexed_event_ids: list[tuple[int, int]] = []
     with ThreadPoolExecutor(max_workers=8) as workers:
-        writes = [workers.submit(write, index) for index in range(100)]
-        reads = [
-            workers.submit(repository.history, owner_user_id=OWNER_USER_ID, page_size=7)
-            for _ in range(20)
-        ]
-        indexed_event_ids = [future.result(timeout=10) for future in writes]
-        for read in reads:
+        # RLock has no fairness guarantee for workers continuously dequeuing another write.
+        for start in range(0, 100, 5):
+            writes = [workers.submit(write, index) for index in range(start, start + 5)]
+            read = workers.submit(repository.history, owner_user_id=OWNER_USER_ID, page_size=7)
+            indexed_event_ids.extend(future.result(timeout=10) for future in writes)
             payload = read.result(timeout=10)
             assert len(payload["items"]) <= 7
+            assert start <= payload["total"] <= start + 5
 
     first = repository.history(owner_user_id=OWNER_USER_ID, page=1, page_size=50)
     second = repository.history(owner_user_id=OWNER_USER_ID, page=2, page_size=50)

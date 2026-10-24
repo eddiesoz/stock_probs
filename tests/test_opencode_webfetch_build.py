@@ -185,6 +185,7 @@ def test_build_environment_does_not_inherit_credentials_or_project_overrides(
         "AWS_ACCESS_KEY_ID",
         "OPENCODE_DISABLE_PROJECT_CONFIG",
         "HTTPS_PROXY",
+        "BUN_OPTIONS",
     ):
         monkeypatch.setenv(name, "synthetic-secret-marker")
 
@@ -202,6 +203,52 @@ def test_build_environment_does_not_inherit_credentials_or_project_overrides(
         "HUSKY": "0",
     }
     assert "synthetic-secret-marker" not in repr(environment)
+
+
+def test_native_compile_launch_uses_headless_smol_without_host_bun_options(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("BUN_OPTIONS", "--preload=/host/injected.js")
+    captured: dict[str, object] = {}
+
+    def capture_run(command: list[str], **kwargs: object) -> None:
+        captured["command"] = command
+        captured.update(kwargs)
+
+    monkeypatch.setattr(build_native.subprocess, "run", capture_run)
+    work = tmp_path / "work"
+    source_root = tmp_path / "source"
+    output_dir = work / "out"
+    bun_executable = work / "bun"
+
+    build_native._run_native_compile(
+        bun_executable=bun_executable,
+        source_root=source_root,
+        work=work,
+        version="2.0.7",
+        build_target="opencode-linux-x64-baseline",
+        output_dir=output_dir,
+    )
+
+    assert captured == {
+        "command": [
+            str(bun_executable),
+            "run",
+            "packages/cli/script/build.ts",
+            "--single",
+            "--target=opencode-linux-x64-baseline",
+            f"--outdir={output_dir}",
+            "--skip-install",
+            "--skip-web-ui",
+        ],
+        "cwd": source_root,
+        "env": {
+            **build_native._build_environment(work, "2.0.7"),
+            "BUN_OPTIONS": "--smol",
+        },
+        "check": True,
+        "timeout": 1800,
+    }
 
 
 def test_build_requires_private_caller_owned_temporary_directory(
@@ -234,6 +281,10 @@ def test_native_build_receipt_has_the_exact_guarded_artifact_contract(tmp_path: 
         "webfetch_guard_sha256": opencode["webfetch_guard_sha256"],
         "mcp_tool_source_sha256": opencode["mcp_tool_sha256"],
         "mcp_tool_patched_sha256": opencode["mcp_tool_patched_sha256"],
+        "read_source_sha256": opencode["read_sha256"],
+        "read_patched_sha256": opencode["read_patched_sha256"],
+        "shell_source_sha256": opencode["shell_sha256"],
+        "shell_patched_sha256": opencode["shell_patched_sha256"],
     }
     oauth_receipt = {
         "oauth_broker_sha256": opencode["oauth_broker_sha256"],
@@ -267,6 +318,10 @@ def test_native_build_receipt_has_the_exact_guarded_artifact_contract(tmp_path: 
         "webfetch_guard_sha256",
         "mcp_tool_source_sha256",
         "mcp_tool_patched_sha256",
+        "read_source_sha256",
+        "read_patched_sha256",
+        "shell_source_sha256",
+        "shell_patched_sha256",
         "mcp_patch_script_sha256",
         "native_integration_test",
         "manifest_sha256",
@@ -346,13 +401,27 @@ def test_native_binary_target_rejects_unknown_architecture() -> None:
         build_native.target_name("s390x")
 
 
-def test_build_install_is_filtered_to_app_cli_and_required_cpu_variants() -> None:
+def test_build_install_serializes_scripts_and_keeps_pinned_filters_and_architecture() -> None:
     amd64 = build_native.install_arguments(target_arch="amd64", build_arch="amd64")
     arm64_cross = build_native.install_arguments(target_arch="arm64", build_arch="amd64")
 
-    assert "--os=linux" in amd64
-    assert "--cpu=x64" in amd64
-    assert "--filter=@opencode/cli" in amd64
-    assert "--filter=@opencode/app" in amd64
-    assert "--cpu=*" in arm64_cross
-    assert all("darwin" not in item and "win32" not in item for item in arm64_cross)
+    assert amd64 == [
+        "install",
+        "--frozen-lockfile",
+        "--os=linux",
+        "--cpu=x64",
+        "--filter=@opencode/cli",
+        "--filter=@opencode/app",
+        "--network-concurrency=8",
+        "--concurrent-scripts=1",
+    ]
+    assert arm64_cross == [
+        "install",
+        "--frozen-lockfile",
+        "--os=linux",
+        "--cpu=*",
+        "--filter=@opencode/cli",
+        "--filter=@opencode/app",
+        "--network-concurrency=8",
+        "--concurrent-scripts=1",
+    ]

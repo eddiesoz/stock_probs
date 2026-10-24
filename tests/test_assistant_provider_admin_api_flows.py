@@ -658,9 +658,10 @@ def test_provider_validation_rechecks_admin_step_up_after_awaits(
         providers.validation_started = threading.Event()
         providers.validation_release = threading.Event()
 
-    with TestClient(client_app, client=("127.0.0.1", 52123)):
+    with TestClient(client_app, client=("127.0.0.1", 52123)) as client:
         admin = _add_identity(application, 810_109, role="admin")
-        client = _browser(client_app, admin)
+        client.cookies.set(SESSION_COOKIE_NAME, str(admin["token"]), path="/")
+        client.cookies.set(CSRF_COOKIE_NAME, str(admin["csrf"]), path="/")
         release = release_body or providers.validation_release
         started = body_received or providers.validation_started
         assert isinstance(release, threading.Event)
@@ -683,7 +684,6 @@ def test_provider_validation_rechecks_admin_step_up_after_awaits(
             assert providers.provider_probes == (0 if hold == "body" else 1)
         finally:
             release.set()
-            client.close()
 
 
 def test_model_policy_route_uses_revision_cas_and_rejects_unreviewed_adapter_enable(
@@ -1013,9 +1013,7 @@ def test_active_event_stream_stops_before_emitting_after_session_revocation(
                     )
                     response = browser.get(events_path, params={"after": 0})
                 assert response.status_code == 200, response.text
-                assert response.content == (
-                    b'id: 1\nevent: token\ndata: {"text":"first synthetic chunk"}\n\n'
-                )
+                assert response.content == b""
                 assert projected_events == [(1, {"text": "first synthetic chunk"})]
                 assert timeline == ["project:1", "repository-revoke:committed"]
                 session_record = application.state.repository.auth_get_session(

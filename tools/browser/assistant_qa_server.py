@@ -3,20 +3,33 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+import faulthandler
 import hashlib
 import json
+import os
 import re
+import sys
+import threading
+import time
+from collections.abc import AsyncIterator
+from contextlib import ExitStack, asynccontextmanager, contextmanager, suppress
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
 import uvicorn
+from fastapi import FastAPI
 
+import stock_probs
 from stock_probs.api import create_app
+from stock_probs.assistant.providers import ProviderUnavailable
 from stock_probs.assistant.schemas import AssistantModelPolicy, AssistantTurnResult
+from stock_probs.assistant.storage import ASSISTANT_TURN_SECONDS
 from stock_probs.config import Settings
 from stock_probs.provider import FixtureProvider
+from stock_probs.repository import RepositoryOperationalError
 
 _CATALOG_PATH = (
     Path(__file__).resolve().parents[2]
@@ -67,8 +80,17 @@ _MODEL = AssistantModelPolicy(
 _SESSION = "browser-assistant-fixture-session-not-a-production-credential"
 _CSRF = "browser-assistant-fixture-csrf-token-not-a-production-credential"
 _GITHUB_ID = 120120120
-_EVENT_STREAM_PATH = re.compile(
-    r"^/api/v1/assistant/conversations/[^/]+/turns/[^/]+/events$"
+_EVENT_STREAM_PATH = re.compile(r"^/api/v1/assistant/conversations/[^/]+/turns/[^/]+/events$")
+_AUDIT_EVENT_TYPES = (
+    "meta",
+    "token",
+    "tool",
+    "source",
+    "proposed_action",
+    "private_context_preview",
+    "webfetch_preview",
+    "error",
+    "complete",
 )
 
 
@@ -78,6 +100,7 @@ class _AssistantStreamAudit:
     def __init__(self, application, records):
         self.application = application
         self.records = records
+        self.active_records = []
 
     async def __call__(self, scope, receive, send):
         if (
@@ -93,19 +116,47 @@ class _AssistantStreamAudit:
         complete_event_seen = False
         body_tail = b""
         body_ended = False
+        active = {
+            "path": scope.get("path", ""),
+            "status": None,
+            "body_bytes": 0,
+            "body_bytes_sent": 0,
+            "sent_event_types": [],
+            "body_end": False,
+            "send_pending": False,
+        }
+        self.active_records.append(active)
+        del self.active_records[:-10]
+        observed_types = []
 
         async def capture(message):
             nonlocal response_status, body_bytes, complete_event_seen, body_tail, body_ended
             if message.get("type") == "http.response.start":
                 response_status = message.get("status")
+                active["status"] = response_status
             elif message.get("type") == "http.response.body":
                 body = message.get("body", b"")
                 body_bytes += len(body)
                 body_tail = body_tail + body
                 complete_event_seen = complete_event_seen or b"event: complete" in body_tail
+                for event_type in _AUDIT_EVENT_TYPES:
+                    if event_type not in observed_types and (
+                        f"event: {event_type}\n".encode() in body_tail
+                    ):
+                        observed_types.append(event_type)
                 body_tail = body_tail[-32:]
                 body_ended = not message.get("more_body", False)
-            await send(message)
+                active["body_bytes"] = body_bytes
+                active["body_end"] = body_ended
+            active["send_pending"] = True
+            try:
+                await send(message)
+            finally:
+                active["send_pending"] = False
+            if message.get("type") == "http.response.body":
+                # ASGI acceptance is distinct from the browser receiving/rendering bytes.
+                active["body_bytes_sent"] += len(message.get("body", b""))
+                active["sent_event_types"] = list(observed_types)
 
         error_class = None
         try:
@@ -114,14 +165,19 @@ class _AssistantStreamAudit:
             error_class = type(error).__name__
             raise
         finally:
-            self.records.append({
-                "path": scope.get("path", ""),
-                "status": response_status,
-                "body_bytes": body_bytes,
-                "complete_event": complete_event_seen,
-                "body_end": body_ended,
-                "error": error_class,
-            })
+            self.active_records[:] = [
+                record for record in self.active_records if record is not active
+            ]
+            self.records.append(
+                {
+                    "path": scope.get("path", ""),
+                    "status": response_status,
+                    "body_bytes": body_bytes,
+                    "complete_event": complete_event_seen,
+                    "body_end": body_ended,
+                    "error": error_class,
+                }
+            )
             del self.records[:-10]
 
 
@@ -131,6 +187,22 @@ class _Catalog:
 
 
 class _Providers:
+    @contextmanager
+    def runtime_policy_scope(self, model_id: str, policy_version: str, *, owner_id: int):
+        """Authorize writes against this fixture's immutable, exact model policy."""
+
+        policy = self.model_policy_state(model_id, owner_id=owner_id)
+        if (
+            type(owner_id) is not int
+            or owner_id <= 0
+            or policy is None
+            or policy["policy_version"] != policy_version
+            or policy["enabled"] is not True
+            or policy["usable"] is not True
+        ):
+            raise ProviderUnavailable("model_unavailable")
+        yield ()
+
     def model_policy_state(self, model_id: str, *, owner_id: int | None = None):
         del owner_id
         if model_id != _MODEL.model_id:
@@ -154,6 +226,40 @@ class _Providers:
         yield b"data: [DONE]\n\n"
 
 
+def _install_lock_failure_diagnostic(repository):
+    """Dump stacks once on an exact coordination timeout in an opted-in local fixture."""
+
+    if os.environ.get("STOCK_PROBS_BROWSER_LOCK_DIAGNOSTIC") != "1":
+        return
+    original = repository._coordinated
+    diagnostic_lock = threading.Lock()
+    emitted = False
+
+    @contextmanager
+    def coordinated():
+        nonlocal emitted
+        with ExitStack() as stack:
+            try:
+                stack.enter_context(original())
+            except RepositoryOperationalError as error:
+                if error.args == ("database coordination lock timed out",):
+                    with diagnostic_lock:
+                        first = not emitted
+                        emitted = True
+                    if first:
+                        with suppress(Exception):
+                            print(
+                                "Fixture repository coordination timeout stack:",
+                                file=sys.stderr,
+                                flush=True,
+                            )
+                            faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+                raise
+            yield
+
+    repository._coordinated = coordinated
+
+
 class _Runtime:
     def __init__(self, origin: str):
         self.origin = origin
@@ -168,6 +274,12 @@ class _Runtime:
         return None
 
     async def run_turn(self, *, context, prompt, emit):
+        # Fixture-only checkpoints exclude prompts, identities, capabilities and model data.
+        print(
+            json.dumps({"qa_stage": "turn_started", "monotonic": time.monotonic()}),
+            file=sys.stderr,
+            flush=True,
+        )
         if prompt.strip() in {
             "fixture webfetch approval",
             "fixture webfetch decline",
@@ -178,14 +290,16 @@ class _Runtime:
         }:
             # Exercise the real FastAPI confirmation waiter without making an external request.
             exact_url = "https://example.com/research?fixture=browser-qa&view=research%2Fsummary"
-            await emit({
-                "type": "meta",
-                "data": {
-                    "model_id": context.model_id,
-                    "policy_version": _MODEL.policy_version,
-                    "context_version": context.context_version,
-                },
-            })
+            await emit(
+                {
+                    "type": "meta",
+                    "data": {
+                        "model_id": context.model_id,
+                        "policy_version": _MODEL.policy_version,
+                        "context_version": context.context_version,
+                    },
+                }
+            )
             approved_url = await self.assistant.await_webfetch_approval(context, exact_url, emit)
             if approved_url == exact_url:
                 text = (
@@ -197,7 +311,9 @@ class _Runtime:
             await emit({"type": "token", "data": {"text": text}})
             return AssistantTurnResult(status="completed")
 
-        async with httpx.AsyncClient(timeout=3.0, trust_env=False) as client:
+        # The application owns the tool/turn deadline; transport setup stays bounded locally.
+        timeout = httpx.Timeout(3.0, read=float(ASSISTANT_TURN_SECONDS))
+        async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
             response = await client.post(
                 f"{self.origin}/api/v1/assistant/internal/mcp/{context.execution_id}",
                 headers={
@@ -219,22 +335,63 @@ class _Runtime:
             raise RuntimeError(
                 f"synthetic browser MCP call returned HTTP {response.status_code} ({error_code})"
             )
-        await emit({
-            "type": "meta",
-            "data": {
-                "model_id": context.model_id,
-                "policy_version": _MODEL.policy_version,
-                "context_version": context.context_version,
-            },
-        })
-        await emit({
-            "type": "token",
-            "data": {"text": "Synthetic research response from the local browser fixture."},
-        })
-        await emit({
-            "type": "proposed_action",
-            "data": {"action_type": "theme.set", "payload": {"theme": "dark"}},
-        })
+        print(
+            json.dumps(
+                {
+                    "qa_stage": "workspace_summary_received",
+                    "status": response.status_code,
+                    "monotonic": time.monotonic(),
+                }
+            ),
+            file=sys.stderr,
+            flush=True,
+        )
+        if prompt == "Explain this page without selected references (delayed browser fixture)":
+            # Exercise a valid asynchronous response beyond the former five-second poll.
+            print(
+                json.dumps(
+                    {
+                        "qa_stage": "response_delay_started",
+                        "monotonic": time.monotonic(),
+                        "delay_seconds": 6,
+                    }
+                ),
+                file=sys.stderr,
+                flush=True,
+            )
+            await asyncio.sleep(6)
+            print(
+                json.dumps({"qa_stage": "response_delay_completed", "monotonic": time.monotonic()}),
+                file=sys.stderr,
+                flush=True,
+            )
+        await emit(
+            {
+                "type": "meta",
+                "data": {
+                    "model_id": context.model_id,
+                    "policy_version": _MODEL.policy_version,
+                    "context_version": context.context_version,
+                },
+            }
+        )
+        await emit(
+            {
+                "type": "token",
+                "data": {"text": "Synthetic research response from the local browser fixture."},
+            }
+        )
+        await emit(
+            {
+                "type": "proposed_action",
+                "data": {"action_type": "theme.set", "payload": {"theme": "dark"}},
+            }
+        )
+        print(
+            json.dumps({"qa_stage": "runtime_completed", "monotonic": time.monotonic()}),
+            file=sys.stderr,
+            flush=True,
+        )
         return AssistantTurnResult(status="completed")
 
 
@@ -244,14 +401,16 @@ def _digest(value: str) -> str:
 
 def _seed_session(application, now: datetime) -> int:
     repository = application.state.repository
-    user = repository.auth_create_user({
-        "github_id": _GITHUB_ID,
-        "github_login": "browser-fixture-admin",
-        "display_name": "Browser fixture admin",
-        "role": "admin",
-        "status": "active",
-        "created_at": now,
-    })
+    user = repository.auth_create_user(
+        {
+            "github_id": _GITHUB_ID,
+            "github_login": "browser-fixture-admin",
+            "display_name": "Browser fixture admin",
+            "role": "admin",
+            "status": "active",
+            "created_at": now,
+        }
+    )
     user_id = int(user["id"])
     with repository.connect() as connection:
         cursor = connection.execute(
@@ -287,6 +446,8 @@ def _seed_session(application, now: datetime) -> int:
 
 
 def main() -> None:
+    main_started = time.monotonic()
+    main_entered_unix_ms = round(time.time() * 1000)
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", required=True, type=int)
     args = parser.parse_args()
@@ -317,11 +478,14 @@ def main() -> None:
         assistant_catalog=_Catalog(),
         assistant_providers=_Providers(),
     )
+    application_constructed = time.monotonic()
+    _install_lock_failure_diagnostic(application.state.repository)
     runtime.assistant = application.state.assistant
     stream_audits = []
+    stream_audit = _AssistantStreamAudit(application, stream_audits)
 
     async def assistant_stream_audit():
-        return {"items": list(stream_audits)}
+        return {"items": list(stream_audits), "active_items": list(stream_audit.active_records)}
 
     application.add_api_route(
         "/__qa/assistant-stream-audit",
@@ -333,12 +497,50 @@ def main() -> None:
     # fixed historical clock for deterministic saved-event context.
     assistant_now = datetime.now(UTC).replace(microsecond=0)
     application.state.assistant.clock = lambda: assistant_now
-    settings.ensure_local_dirs()
-    application.state.repository.migrate()
-    user_id = _seed_session(application, assistant_now)
-    application.state.service.search("ACDC", "stock", owner_user_id=user_id)
+    application_lifespan = application.router.lifespan_context
+
+    @asynccontextmanager
+    async def fixture_lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # Seed after canonical migration, before Uvicorn accepts fixture requests.
+        lifespan_started = time.monotonic()
+        async with application_lifespan(app):
+            application_started = time.monotonic()
+            user_id = _seed_session(app, assistant_now)
+            session_seeded = time.monotonic()
+            app.state.service.search("ACDC", "stock", owner_user_id=user_id)
+            search_seeded = time.monotonic()
+            print(
+                json.dumps(
+                    {
+                        "qa_stage": "fixture_started",
+                        "pid": os.getpid(),
+                        "port": args.port,
+                        "module_path": stock_probs.__file__,
+                        "startup_timing": {
+                            "main_entered_unix_ms": main_entered_unix_ms,
+                            "ready_unix_ms": round(time.time() * 1000),
+                            "application_construction_ms": round(
+                                (application_constructed - main_started) * 1000, 3
+                            ),
+                            "application_lifespan_ms": round(
+                                (application_started - lifespan_started) * 1000, 3
+                            ),
+                            "session_seed_ms": round(
+                                (session_seeded - application_started) * 1000, 3
+                            ),
+                            "search_seed_ms": round((search_seeded - session_seeded) * 1000, 3),
+                            "main_to_ready_ms": round((search_seeded - main_started) * 1000, 3),
+                        },
+                    }
+                ),
+                file=sys.stderr,
+                flush=True,
+            )
+            yield
+
+    application.router.lifespan_context = fixture_lifespan
     uvicorn.run(
-        _AssistantStreamAudit(application, stream_audits),
+        stream_audit,
         host="127.0.0.1",
         port=args.port,
         log_level="warning",

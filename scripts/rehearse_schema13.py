@@ -26,6 +26,8 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
 BASE_SHA = "da2764e8477698fa7d686be93a4711e35478e802"
+SCHEMA12_PROVIDER_SHA256 = "246ffca78620841ec5ecbd8466c1790f8f100124baa31dc607f795109684563f"
+LAZY_PROVIDER_OVERLAY_SHA256 = "1b4a4c94f049a3068985d11919e96f1b5c4b459bdfdae7e985bec8b888eb3ad1"
 DEPLOYED_BASELINE = {
     "source_revision": BASE_SHA,
     "image_id": "sha256:d3e21ae9de800f0151c1eba74fb3d16423e1171985c33ea03057acbfe2278ec1",
@@ -557,7 +559,32 @@ def _replace_once(path: Path, old: str, new: str) -> None:
 
 
 def _apply_recovery_overlay(repository_root: Path, context: Path) -> dict[str, object]:
-    """Apply the fixed schema-13 migration, readiness, restore, and UID-drop overlay."""
+    """Apply the fixed schema-13 and lazy-provider app-only recovery overlay."""
+
+    provider_target = context / "src/stock_probs/provider.py"
+    try:
+        base_provider_info = provider_target.lstat()
+    except OSError as exc:
+        raise RehearsalError("the fixed schema-12 provider source is unavailable") from exc
+    if not stat.S_ISREG(base_provider_info.st_mode):
+        raise RehearsalError("the fixed schema-12 provider source is not a regular file")
+    try:
+        base_provider = provider_target.read_bytes()
+    except OSError as exc:
+        raise RehearsalError("the fixed schema-12 provider source is unavailable") from exc
+    if _sha256(base_provider) != SCHEMA12_PROVIDER_SHA256:
+        raise RehearsalError("the fixed schema-12 provider source digest does not match")
+
+    provider_source = repository_root / "src/stock_probs/provider.py"
+    provider_stage = provider_target.with_name(f".provider.py.overlay-{uuid.uuid4().hex}")
+    try:
+        _copy_regular_no_follow(provider_source, provider_stage)
+        if _sha256(provider_stage.read_bytes()) != LAZY_PROVIDER_OVERLAY_SHA256:
+            raise RehearsalError("the reviewed lazy-provider overlay source digest changed")
+        provider_stage.chmod(stat.S_IMODE(base_provider_info.st_mode))
+        os.replace(provider_stage, provider_target)
+    finally:
+        provider_stage.unlink(missing_ok=True)
 
     repository_path = context / "src/stock_probs/repository.py"
     _replace_once(repository_path, "SCHEMA_VERSION = 12", "SCHEMA_VERSION = 13")
@@ -722,6 +749,7 @@ if __name__ == "__main__":
         "Dockerfile",
         "src/stock_probs/api.py",
         "src/stock_probs/migrations/013_assistant_conversations.sql",
+        "src/stock_probs/provider.py",
         "src/stock_probs/recovery_supervisor.py",
         "src/stock_probs/repository.py",
     )
@@ -2290,7 +2318,7 @@ def _verify_local_pr_head(repository_root: Path, expected_sha: str) -> None:
 
 
 def _verify_reviewed_pr(repository_root: Path, expected_sha: str) -> None:
-    """Call the fixed adjacent PR-2 verifier and expose only its closed safe result."""
+    """Call the fixed adjacent PR-9 verifier and expose only its closed safe result."""
 
     scripts_directory = repository_root / "scripts"
     verifier_path = scripts_directory / "pr_rehearsal_bootstrap.py"
@@ -2338,7 +2366,7 @@ def build_pr_candidate(
     reviewed_sha: str,
     receipt_path: Path,
 ) -> dict[str, object]:
-    """Build one private local image for the exact open PR-2 head."""
+    """Build one private local image for the exact open PR-9 head."""
 
     if re.fullmatch(r"[0-9a-f]{40}", reviewed_sha) is None:
         raise RehearsalError("reviewed PR head must be an exact commit SHA")
@@ -2390,7 +2418,7 @@ def build_pr_candidate(
         "task": "R-ASTRA-120 PR-head candidate image build",
         "status": "built",
         "repository": "eddiesoz/stock_probs",
-        "pull_request": 2,
+        "pull_request": 9,
         "reviewed_head": reviewed_sha,
         "source_context_sha256": context_sha256,
         "candidate_image": {
@@ -2972,11 +3000,11 @@ def main() -> int:
     parser.add_argument(
         "--build-pr-candidate",
         action="store_true",
-        help="build a private local image from the exact clean open PR #2 head",
+        help="build a private local image from the exact clean open PR #9 head",
     )
     parser.add_argument(
         "--reviewed-pr-head",
-        help="exact lowercase commit SHA reviewed for PR #2 candidate building",
+        help="exact lowercase commit SHA reviewed for PR #9 candidate building",
     )
     parser.add_argument(
         "--overlay-manifest",
