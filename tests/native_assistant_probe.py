@@ -2635,7 +2635,12 @@ def _run_application_integration(
     server_thread_started = False
     result: dict[str, object] = {}
 
-    def trace_provider_validation(value: object, app_tools: list[dict[str, object]]):
+    def trace_provider_validation(
+        value: object,
+        app_tools: list[dict[str, object]],
+        *,
+        include_restricted: bool = False,
+    ):
         if isinstance(value, Mapping):
             messages = value.get("messages")
             tools = value.get("tools")
@@ -2755,7 +2760,9 @@ def _run_application_integration(
                     ),
                 }
             )
-        bounded = _validated_provider_request(value, app_tools)
+        bounded = _validated_provider_request(
+            value, app_tools, include_restricted=include_restricted
+        )
         if _APP_PROVIDER_REQUESTS:
             _APP_PROVIDER_REQUESTS[-1]["accepted_by_validator"] = bounded is not None
         return bounded

@@ -12407,3 +12407,34 @@ native and authenticated UI answers, canonical/security/resource/recovery/rollba
 remain open. Production, existing data, the 1 GB host/backups and US$15 monthly cap are unchanged;
 no new image build, merge, deployment, rollout, resize or email occurred. All seven features remain
 after the unreleased free-Zen fix.
+
+
+### R-ASTRA-121 F6 local application validation observer repair (2026-10-24)
+
+The first local two-owner application/native integration on clean `b285de4` **Failed**, child exit 1,
+after its unchanged 12-second continuation wait. No synthetic provider call was recorded. The
+original packet and three bounded diagnostics are retained under
+`/var/tmp/r12r/f6-local-app-integration-b285de4-20261024`. The first diagnostic's role-only projection
+was insufficient for V2's native message shape; the next identified an assistant retry field;
+the final closed projection observed an HTTP 500 retry. All retained failed scopes completed and
+passed exact process/group/cgroup, worker-port and owned-runtime cleanup. No real model call or
+image build occurred in these runs.
+
+Source inspection and a direct pre-edit call reproduced `TypeError`: the fixture's validation
+observer did not accept the production route's `include_restricted` keyword. The test-only repair
+accepts and forwards that flag to the unchanged production validator. It changes no permissions,
+model policy, turn deadline, continuation wait or acceptance assertion. Exact owned source/docs
+baseline bytes are in `/var/tmp/r12r/f6-local-provider-trace-repair-b285de4-20261024/baseline`.
+
+The repaired original local application integration **Passed**, actual exit 0 in 34.917 seconds:
+both owners completed and persisted answers, both workspace-summary receipts completed, cross-owner
+MCP returned 404 and transcript access was denied, four synthetic model/provider-manager calls
+completed, and both worker purges cleared. All 420 source pins held with complete bounded output;
+app/worker ports, captured cgroup, runner/child PID/group and owned temporary roots were absent.
+The initial result-reader attempt applied `len()` to an integer count and failed before receipt
+publication; corrected readback did not rerun the product or overwrite a receipt. Parent receipt:
+`/var/tmp/r12r/f6-local-provider-trace-repair-b285de4-20261024/integration/parent-result-cleanup-review-v1.json`.
+This is synthetic upstream local app/native/MCP acceptance only. It does not establish genuine Zen,
+authenticated rendered UI, production trust/resource or release acceptance. Genuine Zen remains
+unverified after the earlier HTTP 429; no additional real provider request was made. Image builds,
+release and all seven subsequent features remain held behind the required restoration checks.

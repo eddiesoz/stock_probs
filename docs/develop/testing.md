@@ -46,6 +46,10 @@ keeps guarded native registration disabled by default. With verified artifacts, 
 provider and guarded-tool capability to the same config builder used in production. This is local
 functional fixture parity, not production file-ownership, UID, resource or image acceptance.
 Retain rate/access-limit failures without switching to a paid provider or claiming an answer.
+The local application integration probe replaces only upstream transport. Its validation observer
+must accept and forward the production validator's `include_restricted` keyword unchanged; an
+observer signature mismatch can produce an HTTP 500 before the synthetic transport is reached.
+Do not diagnose that fixture error as provider unavailability or extend the native turn deadline.
 
 The real-HTTP assistant browser fixture must implement the runtime policy-authority contract:
 accept only its exact immutable model/policy version and a positive integer owner ID. Exercise
