@@ -1933,11 +1933,25 @@ def _scan_synthetic_storage(
 class _ProbeRuntimeSupervisor:
     """Exercise the native runtime against a loopback app and disposable worker home."""
 
-    def __init__(self, binary: Path, home: Path, location_root: Path, environment: dict[str, str]):
+    def __init__(
+        self,
+        binary: Path,
+        home: Path,
+        location_root: Path,
+        environment: dict[str, str],
+        *,
+        native_guards_verified: bool = False,
+    ):
+        # Local callers must bind the patched binary/receipt before opting into guarded tools.
+        # This fixture flag does not establish production file ownership or container acceptance.
+        if type(native_guards_verified) is not bool:
+            raise ValueError("native_guard_verification_invalid")
         self.binary = binary
         self.home = home
         self.location_root = location_root
         self.environment = dict(environment)
+        self.environment["STOCK_PROBS_MANAGED_ASSISTANT"] = "1"
+        self._native_guards_verified = native_guards_verified
         self.process: subprocess.Popen[bytes] | None = None
         self.password = ""
         self.locations: set[str] = set()
@@ -2009,6 +2023,7 @@ class _ProbeRuntimeSupervisor:
             "status": "ready" if process is not None and process.poll() is None else "unavailable",
             "api_url": "http://127.0.0.1:4097",
             "api_password": self.password,
+            "webfetch_guard_ready": self._native_guards_verified,
         }
 
     async def prepare_location(self, **values: str) -> dict[str, str]:
@@ -2024,6 +2039,9 @@ class _ProbeRuntimeSupervisor:
             mcp_capability=values["mcp_capability"],
             adapter_id=values["adapter_id"],
             native_provider_id=values["native_provider_id"],
+            provider_id=values["provider_id"],
+            webfetch_guard_ready=self._native_guards_verified,
+            restricted_tools_guard_ready=self._native_guards_verified,
         )
         (location / "opencode.json").write_text(
             json.dumps(document, ensure_ascii=True, separators=(",", ":")), encoding="utf-8"
@@ -3839,7 +3857,7 @@ def run_native_app_integration_probe() -> int:
         return 0 if result["app_native_integration_success"] else 1
 
 
-def run_native_live_zen_probe() -> int:
+def run_native_live_zen_probe(*, native_guards_verified: bool = False) -> int:
     """Run one synthetic FastAPI turn through native V2 to the approved free Zen route."""
 
     import uvicorn
@@ -3951,6 +3969,7 @@ def run_native_live_zen_probe() -> int:
                 "LC_ALL": "C.UTF-8",
                 "OPENCODE_SERVER_USERNAME": "opencode",
             },
+            native_guards_verified=native_guards_verified,
         )
         runtime_module = __import__("stock_probs.assistant.runtime", fromlist=["_APP_BASE_URL"])
         previous_base_url = runtime_module._APP_BASE_URL
@@ -4379,6 +4398,9 @@ def run_native_live_zen_probe() -> int:
                     )
                     close_status = close_response.status_code
                     trace["conversation_delete_status"] = close_status
+                    trace["conversation_delete_error_code"] = _attached_delete_public_error_code(
+                        _attached_json(close_response), close_status
+                    )
                     if trace["purge_status"] == "cleared":
                         live_values = {
                             "user_prompt": prompt,
@@ -4489,6 +4511,7 @@ def run_native_live_zen_probe() -> int:
             "finished_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             "binary_version": binary_version,
             "approved_model": model.model_id,
+            "native_guards_verified": native_guards_verified,
             "credential_used": False,
             "synthetic_context_only": True,
             "privacy_policy": {

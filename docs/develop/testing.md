@@ -38,6 +38,15 @@ SQLite, including idle-expiry, revocation and disabled-account rejection after s
 Rejecting an invalid session may still persist revocation; read-only polling means no activity
 refresh, not suppression of security mutations.
 
+For a local native probe, check the executable against the project's reviewed runtime pin first;
+the operator's installed CLI can be newer. Bind an existing patched executable to its exact digest,
+reviewed build receipt and current patch manifest before passing `native_guards_verified=True` to
+`run_native_live_zen_probe`. Its local supervisor always sets the managed-worker environment and
+keeps guarded native registration disabled by default. With verified artifacts, forward the selected
+provider and guarded-tool capability to the same config builder used in production. This is local
+functional fixture parity, not production file-ownership, UID, resource or image acceptance.
+Retain rate/access-limit failures without switching to a paid provider or claiming an answer.
+
 The real-HTTP assistant browser fixture must implement the runtime policy-authority contract:
 accept only its exact immutable model/policy version and a positive integer owner ID. Exercise
 that contract through the real service write scope; do not weaken the production policy guard

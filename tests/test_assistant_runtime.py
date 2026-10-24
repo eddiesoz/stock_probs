@@ -58,6 +58,7 @@ from tests.native_assistant_probe import (
     _attached_totp_code,
     _attached_worker_diagnostic,
     _AttachedProbeFailure,
+    _ProbeRuntimeSupervisor,
 )
 
 _TEST_MODEL_ID = "fixture-provider/" + secrets.token_hex(8)
@@ -9138,3 +9139,69 @@ def test_native_webfetch_permission_requires_exact_public_destination_approval(
         and resources[0] == "https://example.test/report"
     ):
         assert observed == [resources[0]]
+
+
+def test_local_native_probe_always_activates_compiled_managed_guards(tmp_path, monkeypatch):
+    """The local worker cannot accidentally run patched tools in unmanaged mode."""
+
+    monkeypatch.setattr(_ProbeRuntimeSupervisor, "_launch_worker", lambda self: None)
+    supervisor = _ProbeRuntimeSupervisor(
+        tmp_path / "native", tmp_path / "home", tmp_path / "locations", {}
+    )
+    assert supervisor.environment["STOCK_PROBS_MANAGED_ASSISTANT"] == "1"
+
+
+@pytest.mark.parametrize(
+    "provider_id,verified,expected_restricted",
+    [("opencode-zen", True, "ask"), ("opencode-zen", False, "deny"), ("openai", True, "deny")],
+)
+def test_local_native_probe_preserves_production_guard_configuration(
+    tmp_path, monkeypatch, provider_id, verified, expected_restricted
+):
+    """The local native config and readiness agree with its verified artifact capability."""
+
+    def launch(supervisor):
+        supervisor.process = SimpleNamespace(poll=lambda: None)
+
+    monkeypatch.setattr(_ProbeRuntimeSupervisor, "_launch_worker", launch)
+    locations = tmp_path / "locations"
+    locations.mkdir(mode=0o700)
+    supervisor = _ProbeRuntimeSupervisor(
+        tmp_path / "native", tmp_path / "home", locations, {}, native_guards_verified=verified
+    )
+    values = {
+        "execution_id": "a" * 32,
+        "provider_id": provider_id,
+        "adapter_id": "openai-compatible-chat",
+        "native_provider_id": "assistant-proxy",
+        "proxy_base_url": "http://127.0.0.1:8000/provider",
+        "proxy_capability": "x" * 48,
+        "mcp_url": "http://127.0.0.1:8000/mcp",
+        "mcp_capability": "y" * 48,
+    }
+    prepared = asyncio.run(supervisor.prepare_location(**values))
+    configuration = json.loads((locations / values["execution_id"] / "opencode.json").read_text())
+    rules = {rule["action"]: rule["effect"] for rule in configuration["permissions"]}
+    assert prepared["directory"] == str(locations / values["execution_id"])
+    assert rules["read"] == rules["shell"] == expected_restricted
+    assert all(rules[action] == "deny" for action in ("execute", "edit", "write", "subagent"))
+    assert rules["webfetch"] == ("ask" if verified else "deny")
+    assert asyncio.run(supervisor.status())["webfetch_guard_ready"] is verified
+    assert supervisor.environment["STOCK_PROBS_MANAGED_ASSISTANT"] == "1"
+
+
+def test_local_native_probe_rejects_truthy_guard_attestation_before_launch(tmp_path, monkeypatch):
+    """A string cannot opt an unverified runtime into restricted native registration."""
+
+    def unexpected_launch(_supervisor):
+        pytest.fail("Invalid guard attestation must not start a worker")
+
+    monkeypatch.setattr(_ProbeRuntimeSupervisor, "_launch_worker", unexpected_launch)
+    with pytest.raises(ValueError, match="native_guard_verification_invalid"):
+        _ProbeRuntimeSupervisor(
+            tmp_path / "native",
+            tmp_path / "home",
+            tmp_path / "locations",
+            {},
+            native_guards_verified="false",
+        )

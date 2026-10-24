@@ -61,6 +61,12 @@ Keep historical reviewer attribution and independent-evidence requirements expli
 does not establish independent QA. Configured agent/model projections alone do not justify
 delegation. This policy-only correction changes no runtime configuration or discovery claim.
 
+Signal Ledger application work follows the user's local-first testing correction, captured in the
+personal `$signal-ledger-local-first-testing` skill: repair and verify current-source behavior before
+building another candidate image. Known application/browser failures hold builds; after local checks
+pass, build one candidate and test that image through the release gates. The personal skill leaves
+the repository's approved project catalog unchanged; file validation does not establish discovery.
+
 [`model-routing.json`](../../model-routing.json) is the single maintained source for model,
 reasoning-effort, and role assignments. Codex and OpenCode model fields are synchronized
 projections; maintain the manifest, then run `python3 scripts/sync_model_routing.py --write` to

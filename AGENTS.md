@@ -39,6 +39,13 @@ the parent's work. Give any necessary asynchronous subtask a clear ownership bou
 useful independent work. Preserve historical reviewer attribution and independent-evidence
 requirements; parent checks are not independent QA. Configured roles alone do not justify delegation.
 
+For Signal Ledger application work (user correction, 2026-10-23), use the user-level
+`$signal-ledger-local-first-testing` workflow: repair and test current source locally before building
+another candidate image. Do not build images while known application or affected browser failures
+remain unresolved. Once local behavior works and its affected checks pass, build one candidate and
+test that image through the required release gates. Local results do not replace image acceptance.
+This personal skill does not add an OpenCode project-catalog entry or prove runtime discovery.
+
 ### Current model routing
 
 Maintain model, effort, and role assignments only in `model-routing.json`. The model fields in

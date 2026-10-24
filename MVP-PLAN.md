@@ -12337,3 +12337,73 @@ include the two new discovery write-count checks, completed-stream replay, and c
 create-turn authorization-change races. They do not rerun the complete module or establish a browser,
 provider, native or release gate. Parent source/static review Passed; independent security review
 and fresh browser follow-up remain pending. No image/native rerun or release acceptance follows.
+
+
+The fresh `355fa52835e604ff11c84ea95ba498f957edde7a` two-case retest **Failed**: mobile Passed;
+desktop Failed initial `/overview` navigation at its unchanged ten-second load deadline before an
+assistant turn. The run started `2026-10-24T00:30:13.412Z` and lasted 75.367277 seconds, with no skips
+or retries. All 420 source pins and 52 served/export pairs held; exact terminal/output and owned
+fixture/PID/group/cgroup/port/runtime cleanup Passed. Neither fixture emitted the opted-in
+coordination-timeout stack. The desktop trace reports the main HTML response at 108.705 ms and long
+static-resource receive timings; browser/network/I/O cause remains unproven. Teardown connection
+refusals remain retained. Parent receipt `df76c780cac75caaf192312211023ef56b364ce868b336dfe643bd05572e9fe6`
+in `/var/tmp/r12r/f6-webfetch-rechecks-355fa52-20261024`. Do not combine its mobile Pass with the
+preceding failed run's desktop Pass into acceptance.
+
+The user reinforced local-first testing: make the source work locally, then build one candidate and
+test the image. Builds remain held while known application/affected browser failures are unresolved.
+The new personal `$signal-ledger-local-first-testing` skill records this workflow and preserves
+image-bound security/resource/recovery/rollback and release gates. It changes no OpenCode catalog or
+runtime configuration. Static skill validation is not runtime discovery. Continue local diagnosis of
+navigation/asset delivery before another unchanged browser journey; the maintained local live-Zen
+probe is also available for current-source functional verification without an image build. No new
+image, production mutation, rollout, resize or email occurred; the full goal remains incomplete.
+
+
+### R-ASTRA-121 F6 local native runtime and tracing diagnosis (2026-10-24)
+
+Local-first preflight found both maintained operator CLI paths report OpenCode 2.1.1, while this
+application requires reviewed patched 2.0.7. It stopped before a model call. The existing `7597a561`
+image supplied its already-built native executable and receipt through a never-started, exact-ID
+container; no image was built or pulled, and the operator installation was unchanged. The copied
+binary's SHA-256 is `92dc756cb73a48d6ea040ee3b8226bba2291b3c1ea552a71f7a09d955f35c93d`,
+187,966,944 bytes. Its receipt and all current fixed patch fields/manifest matched. The initial
+extraction wrapper exited 1 because its removal readback expected capitalized `No such`; Docker
+returned lowercase `no such object`. The separate readback confirmed removal, with no extraction
+retry. Packet: `/var/tmp/r12r/f6-local-runtime-export-355fa52-20261024`.
+
+The first current-source local FastAPI/native/free-DeepSeek probe **Failed**: Zen returned HTTP 403
+`free_tier_access_error`, zero sanitized chunks/answer bytes and no workspace-summary receipt.
+The local probe's configuration omitted production's managed flag and verified guarded native
+registration. A distinct configuration-parity diagnostic on the same pinned runtime/model and turn
+limits instead received HTTP 429 `free_usage_limit_error`, still with zero answer bytes; read/shell
+were now genuinely registered with compiled managed guards active. This does not prove a general
+403 cause or a quota reset time. Both runs retained DELETE 503/purge failures. Their eventual exact
+process/group/cgroup, port and temporary-runtime cleanup Passed, without erasing those failures.
+Both used one synthetic owner and a task-owned executable copy; neither establishes native answer,
+UI, production UID/file trust, actual 1 GB or release acceptance. Further provider calls are held
+after the 429. Packets: `/var/tmp/r12r/f6-local-live-zen-355fa52-20261024` and its `guarded-config-v2/`.
+
+An isolated, no-model worker lifecycle diagnostic **Passed**: initial readiness 857 ms, recycle
+921 ms, new password HTTP 200, old password HTTP 401 and exact cleanup. It does not explain the
+application's cache-clear 503. Packet: `/var/tmp/r12r/f6-local-worker-recycle-355fa52-20261024`.
+The maintained local probe now supports explicit verified guarded-runtime configuration, always
+sets the managed-worker flag, forwards the provider/guard capability and records a closed DELETE
+error code. Defaults remain closed; this changes test infrastructure, not production trust rules.
+The initial regression invocation could not import the repository tests namespace; the corrected
+`python -m pytest` baseline Failed on the missing managed flag. The repaired offline selection
+**Passed** 27 cases with two warnings in 19.06 seconds, including five new fixture checks and
+existing restricted-tool contracts. No new provider run follows those source edits. Exact owned
+baselines and runs: `/var/tmp/r12r/f6-local-probe-parity-355fa52-20261024`.
+
+Separately, the same two local synthetic WebFetch journeys **Passed** in one complete tracing-off
+diagnostic: two passed, zero failures/skips/retries, 71.494264 seconds from
+`2026-10-24T00:48:06.349Z`; all 420 bound files and 52 served/export pairs held during the run,
+and exact cleanup Passed. Packet: `/var/tmp/r12r/f6-browser-trace-off-355fa52-20261024`. This raises
+tracing/timing overhead as a hypothesis; it does not prove the earlier navigation cause, waive a
+gate, combine separate runs, or establish full-browser/axe or genuine UI acceptance. Original traced
+failures remain retained. New image builds remain held until local behavior works. Actual completed
+native and authenticated UI answers, canonical/security/resource/recovery/rollback and release gates
+remain open. Production, existing data, the 1 GB host/backups and US$15 monthly cap are unchanged;
+no new image build, merge, deployment, rollout, resize or email occurred. All seven features remain
+after the unreleased free-Zen fix.
