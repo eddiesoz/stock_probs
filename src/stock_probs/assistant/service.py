@@ -4062,10 +4062,10 @@ class AssistantService:
         token_hash: str,
         expected_csrf_hash: str | None = None,
     ) -> AuthContext | None:
-        """Resolve current session, factor, and account state without trusting a cached context."""
+        """Re-read session authority without turning internal checks into browser activity."""
 
         try:
-            record = self.repository.get_session(token_hash, now=self.now(), touch=True)
+            record = self.repository.get_session(token_hash, now=self.now(), touch=False)
             if (
                 not record
                 or record.get("session_id") != session_id

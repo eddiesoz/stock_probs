@@ -2489,12 +2489,20 @@ def create_assistant_router(
         )
         if after_value > latest + 1:
             raise AssistantUnavailable("event_cursor_ahead", 409)
-        cookie = request.cookies.get(SESSION_COOKIE_NAME)
 
         def authorize_stream_event() -> tuple[AuthContext, dict[str, object]] | None:
             """Check current authorization after all potentially waiting event projection."""
 
-            current = auth_manager.authenticate(cookie, datetime.now(UTC))
+            # The HTTP request records activity once. Repeated stream checks still resolve
+            # durable session/factor/account authority without committing an activity update.
+            current = assistant._live_auth_context(
+                user_id=initial.user.id,
+                session_id=initial.session_id,
+                token_hash=initial.token_hash,
+                expected_csrf_hash=initial.csrf_token_hash,
+            )
+            if current is None:
+                raise AssistantUnavailable("session_revoked", 403)
             assistant.require_access(current)
             current_turn = assistant.storage.get_turn(current.user.id, conversation_id, turn_id)
             if current_turn.get("status") in {"queued", "running"}:

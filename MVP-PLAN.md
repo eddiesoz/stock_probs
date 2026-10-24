@@ -12208,3 +12208,64 @@ parent terminal SHA-256 `082c6be84d6d98038e183c15f24c0a739a02ce34708bc4c6c4d05b5
 The next mandatory full browser run may collect this evidence if a test fails. This selected Pass
 is not a new full aggregate, accessibility acceptance or release result; all preceding open gates,
 budget, backups and live-first feature order remain in force.
+
+### R-ASTRA-121 F6 browser failure and internal session activity writes (2026-10-24)
+
+The full frozen `beb164c10c10955feb85bfe6e7a37f44d3461b7f` browser run **Failed** with exit 1:
+187 passed, 10 failed, three skipped and zero flaky, from `2026-10-23T23:29:09.475Z` through
+`23:52:14.343875Z`. JUnit records 200 cases, five failures, five errors and three skips. All 420
+source pins, 151 image inputs and 52 served/export pairs stayed unchanged. Independent integrity
+and exact cleanup review Passed: 24 fixture generations matched, 403 recorded PIDs and PGID 33690
+were absent, 23 ports refused, and 23 runtime directories and the captured original cgroup were
+absent. Preserve the raw sampler's false/null cleanup fields as Unavailable; the captured-path
+absence is separate evidence. Parent receipt SHA-256
+`cf2ae9403746aa0e8ea64fd7926c960dc31ccbcf46370b23def81a6a6c28a8ee`; independent receipt
+`6bbc2f5c74876b76e56c4531e66afcf5f0107efc0c1d3071250b3c56d2e00327`.
+Packet: `/var/tmp/r12r/f6-full-beb164c-20261023`.
+
+Both WebFetch cases failed at the cancellation preview with a conversation-read HTTP 500 and a
+repository error. Other failures covered click/navigation/forecast waits, consent status and a
+mobile completion wait; no shared cause is established. The mobile threshold case failed before
+geometry assertions. The failure-only frame branch ran; later visible/focused/complete state and
+two frames do not establish conditions during a failed action. Raw axe/frame review was Skipped
+in the independent aggregate audit. The separate 13-source static security review Passed only
+its original `beb` scope (receipt `60f28943e401cfb2370ccb466981779fa200aacfe96033077b9c2a656bcd1dee`).
+Separate parent report-only inventory found 18 retained raw assistant axe snapshots with zero
+violations/incompletes, and ten observed post-failure frame attachments. All later pages were
+visible/focused/complete with two frames; one reported 254.9 ms because JS scheduling can delay
+the nominal 250 ms page timer under the separate 500 ms host guard. Preserve that measured value.
+Receipt `9173b1649100d2158d14657cd9ee113b73244a7ec1b5b9574ec4edc32c907d0b` does not establish
+conditions during the failed actions, independently replay a case, or establish full-app accessibility.
+
+The focused WebFetch diagnostic first failed before launch because the outer wrapper omitted the
+user bus coordinates. The corrected attempt Failed at the first preview, rather than reproducing
+the later repository failure: ASGI recorded 649 sent bytes, with no lock-timeout stack. Its 613
+sync durations peaked at 1.436458 seconds, with none over five seconds; tracing can change timing
+and does not identify a cause. Exact cleanup Passed for 108 recorded PIDs, two ports and two runtime
+directories. Receipt `48f9f90a3dec73dc5b677eb75b5eb1b859f138d8fbffff2ae0299efe81c59382` in
+`/var/tmp/r12r/f6-webfetch-repository-diagnostic-beb164c-20261023`; no unchanged repeat followed.
+
+Source inspection then found durable activity updates on internal session checks. A corrected
+11-case regression baseline Failed six cases and Passed five: three internal checks wrote three
+activity updates, and one completed-stream replay wrote five instead of one. The initial baseline's
+eight failures/three passes included two invalid expiry fixtures and an overly strict completion
+payload assertion; these setup errors remain retained separately. The narrow repair makes internal
+session lookup read-only and uses that fresh, owner/session/token/CSRF-bound authority for each SSE
+check. HTTP request activity tracking remains in the existing middleware. The first affected-suite
+attempt is Unavailable as an aggregate: outer tool session 36595 ended 143, leaving 35 passing
+JUnit cases without a supervisor terminal receipt. Its cause is unproven; 311 non-documentation
+pins stayed unchanged, and PID/PGID 69213 were absent. The fresh complete-module attempt under
+maintained systemd ownership and the same 600-second guard **Passed**: 107 tests, two deprecation
+warnings, normal exit 0 and 395.35 seconds, with 311 non-documentation pins unchanged. Parent
+terminal/JUnit and exact PID/PGID 72395, original cgroup, unit and test-temp cleanup review Passed
+(receipt `da1e87ef9d828e0e62246976108e0efcf4e5805eac83fe27877407c7fa858d90`). The narrow
+independent security source re-review Passed (receipt
+`698ef1409075fe768dd23dc0af6fe4149e60ec7ef0ec4befc4e6c902545b0b9a`); it did not run tests.
+No repaired browser/native result follows.
+Exact pre-edit bytes and runs are in `/var/tmp/r12r/f6-session-recheck-readonly-beb164c-20261023`.
+
+The two changed application inputs require a newly bound image and native verification; the earlier
+`fed684a` native/kill results retain their original scope. Current canonical, full browser/security,
+authenticated UI answers, actual combined 1 GB, PR-bound recovery/rollback, guide and release gates
+remain open. The free-Zen fix still precedes the seven unreleased features. Production, backups and
+the US$15 monthly total cap are unchanged; no merge, deployment, rollout, resize or email occurred.

@@ -18,6 +18,14 @@ gets a fresh server result, failures release the request, account mutations sepa
 before/during/after their request, and an earlier completion cannot clear a newer pending check.
 This does not cache settled identities or replace server-side revocation checks.
 
+Internal assistant session checks must re-read current session, factor, account, expiry and
+ownership state without recording browser activity. The HTTP request records activity once;
+output checks and event replay must not commit another activity update for every event.
+`tests/test_assistant_runtime_event_http_flows.py` counts actual session-activity SQL updates
+without retaining statements or credential values, and checks expired/revoked sessions, changed
+CSRF and MFA state, disabled accounts and mismatched ownership. These checks establish the local
+authorization/write contract; browser latency and native/provider acceptance remain separate.
+
 The real-HTTP assistant browser fixture must implement the runtime policy-authority contract:
 accept only its exact immutable model/policy version and a positive integer owner ID. Exercise
 that contract through the real service write scope; do not weaken the production policy guard

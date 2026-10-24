@@ -9,6 +9,7 @@ import secrets
 import threading
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta, tzinfo
 from typing import cast
@@ -477,6 +478,151 @@ def _meta(context: AssistantTurnContext) -> dict[str, object]:
             "context_version": context.context_version,
         },
     }
+
+
+def _count_session_activity_writes(monkeypatch, repository) -> Callable[[], int]:
+    """Count activity updates without retaining SQL or synthetic credential values."""
+
+    count = 0
+    counter_lock = threading.Lock()
+    original_connect = repository.connect
+
+    def record_statement(statement: str) -> None:
+        nonlocal count
+        if statement.lstrip().upper().startswith("UPDATE SESSIONS SET LAST_SEEN_AT"):
+            with counter_lock:
+                count += 1
+
+    @contextmanager
+    def observed_connection():
+        with original_connect() as connection:
+            connection.set_trace_callback(record_statement)
+            try:
+                yield connection
+            finally:
+                connection.set_trace_callback(None)
+
+    monkeypatch.setattr(repository, "connect", observed_connection)
+
+    def read_count() -> int:
+        with counter_lock:
+            return count
+
+    return read_count
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        "live",
+        "revoked",
+        "idle_expired",
+        "absolute_expired",
+        "different_session",
+        "different_owner",
+        "csrf_rotated",
+        "factor_unbound",
+        "mfa_future",
+        "disabled_user",
+    ],
+)
+def test_internal_session_recheck_reads_fresh_authority_without_activity_writes(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, state: str
+) -> None:
+    """Internal output checks neither extend activity nor accept changed session authority."""
+
+    app = _make_app(settings, _ScriptedRuntime())
+    with TestClient(app, client=("127.0.0.1", 51120)):
+        identity = _add_signed_in_user(app, 80120)
+        repository = app.state.repository
+        with repository.connect() as connection:
+            if state == "revoked":
+                connection.execute(
+                    "UPDATE sessions SET revoked_at = ? WHERE token_hash = ?",
+                    (_NOW.isoformat(), identity["token_hash"]),
+                )
+            elif state == "idle_expired":
+                connection.execute(
+                    "UPDATE sessions SET issued_at = ?, last_seen_at = ?, idle_expires_at = ? "
+                    "WHERE token_hash = ?",
+                    (
+                        (_NOW - timedelta(seconds=1)).isoformat(),
+                        (_NOW - timedelta(seconds=1)).isoformat(),
+                        _NOW.isoformat(),
+                        identity["token_hash"],
+                    ),
+                )
+            elif state == "absolute_expired":
+                connection.execute(
+                    "UPDATE sessions SET issued_at = ?, last_seen_at = ?, idle_expires_at = ?, "
+                    "absolute_expires_at = ? WHERE token_hash = ?",
+                    (
+                        (_NOW - timedelta(seconds=1)).isoformat(),
+                        (_NOW - timedelta(seconds=1)).isoformat(),
+                        _NOW.isoformat(),
+                        _NOW.isoformat(),
+                        identity["token_hash"],
+                    ),
+                )
+            elif state == "csrf_rotated":
+                connection.execute(
+                    "UPDATE sessions SET csrf_token_hash = ? WHERE token_hash = ?",
+                    (_sha256("different synthetic CSRF"), identity["token_hash"]),
+                )
+            elif state == "factor_unbound":
+                connection.execute(
+                    "UPDATE sessions SET mfa_factor_id = NULL WHERE token_hash = ?",
+                    (identity["token_hash"],),
+                )
+            elif state == "mfa_future":
+                connection.execute(
+                    "UPDATE sessions SET mfa_verified_at = ? WHERE token_hash = ?",
+                    ((_NOW + timedelta(seconds=1)).isoformat(), identity["token_hash"]),
+                )
+            elif state == "disabled_user":
+                connection.execute(
+                    "UPDATE users SET status = 'disabled' WHERE id = ?", (identity["user_id"],)
+                )
+            connection.commit()
+
+        activity_writes = _count_session_activity_writes(monkeypatch, repository)
+        for _ in range(3):
+            current = app.state.assistant._live_auth_context(
+                user_id=int(identity["user_id"]) + (state == "different_owner"),
+                session_id="other-session"
+                if state == "different_session"
+                else str(identity["session_id"]),
+                token_hash=str(identity["token_hash"]),
+                expected_csrf_hash=_sha256(str(identity["csrf"])),
+            )
+            assert (current is not None) is (state == "live")
+        assert activity_writes() == 0
+
+
+def test_public_stream_replay_touches_session_only_for_the_browser_request(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Replaying durable events keeps fresh per-event checks without extra activity commits."""
+
+    runtime = _ScriptedRuntime(
+        event_factory=lambda context, _: [
+            _meta(context),
+            {"type": "token", "data": {"text": "Synthetic completed answer."}},
+        ]
+    )
+    app = _make_app(settings, runtime)
+    with TestClient(app, client=("127.0.0.1", 51121)) as browser:
+        identity = _add_signed_in_user(app, 80121)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        first = _read_events(browser, str(conversation["id"]), str(turn["id"]))
+        assert first[-1]["type"] == "complete"
+        assert first[-1]["data"]["status"] == "completed"
+        activity_writes = _count_session_activity_writes(monkeypatch, app.state.repository)
+        replay = _read_events(browser, str(conversation["id"]), str(turn["id"]))
+        assert replay == first
+        assert activity_writes() == 1
 
 
 def test_public_turn_stream_binds_meta_and_projects_safe_runtime_events(settings: Settings) -> None:
