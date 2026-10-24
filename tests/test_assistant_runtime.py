@@ -1916,13 +1916,16 @@ def test_runtime_latches_supervisor_disabled_without_starting_native_api() -> No
     asyncio.run(exercise())
 
 
-def test_unverified_native_api_info_timeout_does_not_enable_transport() -> None:
+@pytest.mark.parametrize("failure", (httpx.ReadTimeout, httpx.ReadError))
+def test_unverified_native_api_info_timeout_does_not_enable_transport(
+    failure: type[httpx.HTTPError],
+) -> None:
     """A first health timeout cannot promote a client before its API identity is verified."""
 
     supervisor = _MutableHealthSupervisor()
 
     async def native_api(_request: httpx.Request) -> httpx.Response:
-        raise httpx.ReadTimeout("synthetic initial API info timeout")
+        raise failure("synthetic initial API info failure")
 
     runtime = OpenCodeV2Runtime(
         SimpleNamespace(assistant_enabled=True),
@@ -1945,7 +1948,7 @@ def test_unverified_native_api_info_timeout_does_not_enable_transport() -> None:
     asyncio.run(exercise())
 
 
-@pytest.mark.parametrize("replacement_probe", ("timeout", "gateway_error"))
+@pytest.mark.parametrize("replacement_probe", ("timeout", "network_error", "gateway_error"))
 def test_password_replacement_api_info_failure_cannot_retain_old_transport(
     replacement_probe: str,
 ) -> None:
@@ -1959,6 +1962,8 @@ def test_password_replacement_api_info_failure_cannot_retain_old_transport(
         if fail_api_info:
             if replacement_probe == "timeout":
                 raise httpx.ReadTimeout("synthetic replacement API info timeout")
+            if replacement_probe == "network_error":
+                raise httpx.ReadError("synthetic replacement API connection reset")
             return httpx.Response(
                 503,
                 headers={"content-type": "application/json"},
@@ -2314,6 +2319,131 @@ def test_run_turn_closes_admission_on_same_generation_readiness_uncertainty(
         assert response.status_code == 200
         assert native_paths == ["/api/info", "/api/info"]
         await runtime.close()
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize(
+    ("failure", "preserve_active"),
+    (
+        ("connect", True),
+        ("read", True),
+        ("write", True),
+        ("close", True),
+        ("timeout", True),
+        ("protocol", False),
+        ("unauthorized", False),
+        ("forbidden", False),
+        ("invalid_json", False),
+    ),
+)
+def test_native_health_failure_separates_active_stream_from_new_admission(
+    failure: str, preserve_active: bool
+) -> None:
+    """A network observation failure must not revoke an admitted provider response."""
+
+    from stock_probs.assistant.api import _provider_proxy_chunks
+
+    fail_next_probe = False
+    supervisor = _MutableHealthSupervisor()
+    failures = {
+        "connect": httpx.ConnectError,
+        "read": httpx.ReadError,
+        "write": httpx.WriteError,
+        "close": httpx.CloseError,
+        "timeout": httpx.ReadTimeout,
+        "protocol": httpx.RemoteProtocolError,
+    }
+
+    async def native_api(_request: httpx.Request) -> httpx.Response:
+        nonlocal fail_next_probe
+        if fail_next_probe:
+            fail_next_probe = False
+            if failure in failures:
+                raise failures[failure]("synthetic native health failure")
+            status = {"unauthorized": 401, "forbidden": 403, "invalid_json": 200}[failure]
+            return httpx.Response(
+                status,
+                headers={"content-type": "application/json"},
+                stream=_NativeBody(b"not json"),
+            )
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/json"},
+            stream=_NativeBody(b'{"version":"v2"}'),
+        )
+
+    runtime = OpenCodeV2Runtime(
+        SimpleNamespace(assistant_enabled=True),
+        providers=_TestProviders(),
+        catalog=_Catalog(),
+        supervisor=supervisor,
+        http_client_factory=lambda **kwargs: httpx.AsyncClient(
+            transport=httpx.MockTransport(native_api), **kwargs
+        ),
+    )
+
+    async def stop_monitor() -> None:
+        task, runtime._monitor_task = runtime._monitor_task, None
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    async def exercise() -> None:
+        nonlocal fail_next_probe
+        release = asyncio.Event()
+        waiting = asyncio.Event()
+        pending: asyncio.Task[bytes] | None = None
+
+        async def upstream():
+            yield b"first admitted chunk"
+            waiting.set()
+            await release.wait()
+            yield b"second admitted chunk"
+
+        try:
+            assert (await runtime.start()).status == "ready"
+            await stop_monitor()
+            original_client = runtime._client
+            context = _context()
+            runtime._active[context.execution_id] = "ses_0123456789abABCDEFGHIJKLMN"
+            runtime._native_project_ids[context.execution_id] = "global"
+            approved = runtime.native_provider_metadata(context.execution_id)
+            assert approved is not None
+            proxy = _provider_proxy_chunks(
+                upstream(),
+                lambda: runtime.native_provider_metadata(context.execution_id) == approved,
+            )
+            assert await proxy.__anext__() == b"first admitted chunk"
+            pending = asyncio.create_task(proxy.__anext__())
+            await asyncio.wait_for(waiting.wait(), timeout=1.0)
+
+            fail_next_probe = True
+            assert (await runtime.start(preserve_ready=True)).status == "unavailable"
+            await stop_monitor()
+            with pytest.raises(RuntimeError, match="worker_unavailable"):
+                runtime._require_ready_worker()
+            release.set()
+            if preserve_active:
+                assert await asyncio.wait_for(pending, timeout=1.0) == b"second admitted chunk"
+                assert runtime._client is original_client
+                assert runtime.native_provider_metadata(context.execution_id) == approved
+                with pytest.raises(StopAsyncIteration):
+                    await proxy.__anext__()
+            else:
+                with pytest.raises(AssistantUnavailable):
+                    await asyncio.wait_for(pending, timeout=1.0)
+                assert runtime.native_provider_metadata(context.execution_id) is None
+            assert (await runtime.start(preserve_ready=True)).status == "ready"
+        finally:
+            release.set()
+            if pending is not None:
+                if not pending.done():
+                    pending.cancel()
+                with contextlib.suppress(Exception, asyncio.CancelledError):
+                    await pending
+            await runtime.close()
 
     asyncio.run(exercise())
 

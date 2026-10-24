@@ -1974,7 +1974,9 @@ class OpenCodeV2Runtime:
                     response = await self._request(
                         "GET", "/api/info", timeout=3.0, allow_startup_probe=True
                     )
-                except (TimeoutError, httpx.TimeoutException) as exc:
+                except (TimeoutError, httpx.TimeoutException, httpx.NetworkError) as exc:
+                    # An uncertain health read closes admission without revoking work on
+                    # the same previously verified worker. Protocol/auth failures stay fatal.
                     return self._mark_startup_unavailable(
                         exc,
                         startup_stage=startup_stage,

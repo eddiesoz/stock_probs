@@ -12660,3 +12660,58 @@ recovery/rollback, guide/canary and release gates remain open. No application so
 production, merge, rollout, resize or email changed in this checkpoint. Preserve existing data,
 the 1 GB host/backups and US$15 monthly cap. Free-Zen restoration remains first; all seven approved
 visible features remain in the four-release goal.
+
+### R-ASTRA-121 F6 verified worker health network repair (2026-10-24)
+
+On `6020ad0ea37ac7df372334953c5d77f46576b79c`, a full read of the prior failed classifier
+packet found an earlier `native_api_info` / `native_http_error` warning before the two timeout
+warnings, plus a location-cleanup timeout. The original HTTP exception subtype is **Unavailable**;
+these observations do not establish the historical failure's cause. Source review identified a
+separate reproducible gap: native health timeouts preserved a previously verified active client,
+but a connection/read/write/close error cleared its authorization and cut off an admitted stream.
+
+A new held-provider-stream regression ran before the runtime edit and **Failed** four of nine
+cases: connect, read, write and close errors. The timeout and four fatal-response cases Passed.
+The narrow runtime repair adds `httpx.NetworkError` to the existing native `/api/info` uncertainty
+handling. New admission still closes. Existing work retains its client/correlation only when
+the supervisor confirms the same previously verified password/generation; no unverified or
+replacement client is promoted. Protocol errors, 401/403 and malformed JSON still invalidate
+transport. No request, turn, startup, permission, provider, resource or confirmation budget changed.
+
+One affected selection then **Passed** 31 tests, zero JUnit failures/errors/skips, including the
+nine-case stream matrix, initial unverified read-error rejection, replacement-worker read-error
+rejection, generation changes, startup uncertainty and concurrent-owner readiness. Scoped Ruff,
+configured security Ruff and formatting also Passed. The initial manual `--select S` invocation
+overrode the repository's intentional assertion exemption and reported 811 S101 findings; the
+corrected command used the existing `local-gate.sh` `--ignore S101` rule. No lint configuration or
+unrelated assertions changed. The original lint invocation remains a tooling Fail.
+
+The controlled local native/browser check **Passed** with actual exit 0 from
+`2026-10-24T02:49:34.695203Z` to `02:50:07.364748Z` (32.670 seconds). It held the first synthetic
+upstream chunk until exactly one `ReadError` was injected into a health read for an already-verified
+worker with one active execution. The real authenticated desktop Send completed through pinned
+OpenCode V2.0.7 and app MCP: one workspace-summary receipt, a saved 44-byte answer, one exact event
+GET/HTTP 200 and its exact finite-stream aborted outcome. Desktop and emulated-mobile reload/reopen
+passed. Parent visual review passed the send and reloaded views. DELETE returned 200, native cache
+marker purge cleared, runtime/server closed, and actual PID/group/cgroup/ports/browser-profile/temp
+absence cleanup Passed. All 420 source pins and 52 served/export pairs held with complete output.
+The catalog/upstream were synthetic; no genuine Zen call occurred. Frontend inputs/assets were
+unchanged, so the existing approved build/stage evidence was reused.
+
+Five separate offline cases also Passed for the authored diagnostic observer: preserve a failed
+browser verdict and delegate detail/deletion using the actual submitted turn identity, and reject
+missing submission, wrong conversation, wrong status and invalid turn IDs. These used the exact
+observer function with disposable HTTP request stubs; they are not native failed-turn integration.
+The first setup used system Python without `httpx` and ran no case; the approved virtual environment
+passed the five cases. The earlier unexercised-branch limitation remains historical, with this new
+offline scope recorded separately.
+
+Private packet: `/var/tmp/r12r/f6-native-health-transport-6020ad0-20261024`, containing preserved
+baseline bytes/digests, `pre-repair`, `post-repair`, `controlled-browser` and
+`observer-failure-branch` records. This is parent verification, not independent QA or a canonical
+gate. It repairs the reproduced network-error condition; the original generic HTTP warning and
+native failure remain **Unproven**. Genuine native/authenticated UI answers remain open under the
+recorded server retry hint, as do current security/browser/canonical, actual combined 1 GB,
+exact-PR recovery/rollback, guide/canary and release gates. No image build, merge, deployment,
+rollout, resize or email occurred. Preserve existing data, the 1 GB host/backups and US$15 monthly
+total cap. Free-Zen restoration remains first; all seven approved visible features remain in scope.

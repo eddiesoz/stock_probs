@@ -68,6 +68,16 @@ actual submitted turn identity so a failed observation can still collect native 
 typed cleanup; an unexercised diagnostic branch remains unverified. See the
 [local native/browser checkpoint](../../MVP-PLAN.md#r-astra-121-f6-local-browser-native-validation-2026-10-24).
 
+Native health rechecks must close new admission on a connection failure while retaining an
+already-admitted response only for the same previously verified worker/client/password. Exercise
+the held provider-stream guard through connect/read/write/close errors as well as timeouts.
+Initial unverified connections and replacement worker generations must remain closed; protocol
+errors, HTTP 401/403 and invalid JSON must invalidate the transport. A controlled local native
+browser check can hold one synthetic provider chunk until a single health-read fault is injected,
+then verify completion, saved-answer reopen and typed cleanup. This does not establish the subtype
+or cause of an earlier generic HTTP warning, genuine Zen acceptance, or the full security gate.
+See the [health transport repair](../../MVP-PLAN.md#r-astra-121-f6-verified-worker-health-network-repair-2026-10-24).
+
 The real-HTTP assistant browser fixture must implement the runtime policy-authority contract:
 accept only its exact immutable model/policy version and a positive integer owner ID. Exercise
 that contract through the real service write scope; do not weaken the production policy guard
