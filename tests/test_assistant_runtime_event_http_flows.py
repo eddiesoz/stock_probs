@@ -625,6 +625,22 @@ def test_public_stream_replay_touches_session_only_for_the_browser_request(
         assert activity_writes() == 1
 
 
+@pytest.mark.parametrize("endpoint", ["status", "models"])
+def test_assistant_discovery_rechecks_touch_session_only_for_the_browser_request(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, endpoint: str
+) -> None:
+    """Post-await authority checks must not repeat the request's activity write."""
+
+    app = _make_app(settings, _ScriptedRuntime())
+    with TestClient(app, client=("127.0.0.1", 51122)) as browser:
+        identity = _add_signed_in_user(app, 80122)
+        _set_browser_session(browser, identity)
+        activity_writes = _count_session_activity_writes(monkeypatch, app.state.repository)
+        response = browser.get(f"/api/v1/assistant/{endpoint}")
+        assert response.status_code == 200, response.text
+        assert activity_writes() == 1
+
+
 def test_public_turn_stream_binds_meta_and_projects_safe_runtime_events(settings: Settings) -> None:
     """Public turn and history routes preserve selected context and safe event projections."""
 

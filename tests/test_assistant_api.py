@@ -3909,7 +3909,7 @@ def test_create_turn_rechecks_live_session_and_csrf_after_readiness_or_inventory
                 ):
                     assert minimum_validity_seconds == 120.0
                     assert owner_id == owner["user_id"]
-                    assert authorization_check()
+                    assert await authorization_check()
                     await_started.set()
                     if not await asyncio.to_thread(release_await.wait, timeout=5):
                         raise RuntimeError("test inventory wait expired")

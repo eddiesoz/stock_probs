@@ -21,6 +21,10 @@ This does not cache settled identities or replace server-side revocation checks.
 Internal assistant session checks must re-read current session, factor, account, expiry and
 ownership state without recording browser activity. A protected workspace request records activity once;
 output checks and event replay must not commit another activity update for every event.
+The same contract applies to status/model inventory and post-await OAuth authority checks:
+their internal authentication reads must opt out of activity refresh, while retaining fresh
+identity, role, step-up and CSRF checks. Count actual activity writes for public status/model
+requests as well as durable stream replay; each protected request records only its initial activity.
 `tests/test_assistant_runtime_event_http_flows.py` counts actual session-activity SQL updates
 without retaining statements or credential values, and checks expired/revoked sessions, changed
 CSRF and MFA state, disabled accounts and mismatched ownership. These checks establish the local

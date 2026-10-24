@@ -1934,11 +1934,11 @@ def create_assistant_router(
         step_up: bool = False,
         check_csrf: bool = False,
     ) -> AuthContext | None:
-        """Re-read the same user/session before owner-scoped model work or persistence."""
+        """Re-read the same user/session without adding activity during internal checks."""
 
         try:
             current = auth_manager.authenticate(
-                request.cookies.get(SESSION_COOKIE_NAME), datetime.now(UTC)
+                request.cookies.get(SESSION_COOKIE_NAME), datetime.now(UTC), touch=False
             )
             if check_csrf:
                 auth_manager.require_csrf(current, request.headers.get("x-csrf-token"))
@@ -1983,11 +1983,11 @@ def create_assistant_router(
         step_up: bool,
         check_csrf: bool = True,
     ) -> AuthContext | None:
-        """Re-read durable session and authorization state after a long OAuth operation."""
+        """Re-read durable OAuth authority without refreshing activity during the operation."""
 
         try:
             current = auth_manager.authenticate(
-                request.cookies.get(SESSION_COOKIE_NAME), datetime.now(UTC)
+                request.cookies.get(SESSION_COOKIE_NAME), datetime.now(UTC), touch=False
             )
             if check_csrf:
                 auth_manager.require_csrf(current, request.headers.get("x-csrf-token"))

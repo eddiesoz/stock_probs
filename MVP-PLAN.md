@@ -12309,3 +12309,31 @@ local scope; this is not independent security QA. Browser follow-up remains pend
 The prior native/kill image has changed inputs and retains historical scope. Current native/UI,
 canonical, security, actual combined 1 GB, recovery/rollback and release gates remain open; the
 free-Zen fix precedes all seven features. Production, backups and the US$15 monthly cap are unchanged.
+
+
+The subsequent exact `319f889c7bfe8123da1579be44bb3f0875e9a7ac` two-case browser retest
+**Failed** with one desktop Pass and one mobile Fail, no skips/retries, from
+`2026-10-24T00:24:20.826Z` over 67.911338 seconds. All 420 source pins and 52 served/export pairs
+held; terminal/output and exact stopped fixture/PID/group/cgroup/port/runtime cleanup Passed.
+Packet: `/var/tmp/r12r/f6-webfetch-status-poll-319f889-20261024`. Mobile failed the Stop-response
+click after assistant-status HTTP 403. Its failure-only stack shows an internal live-assistant
+authentication recheck waiting for a factor read while another thread closes the public middleware's
+activity-write connection under the repository lock. This is not proof of the I/O root cause.
+
+A complete call-site audit found two remaining internal authentication callers in the assistant
+router: model/status/persistence rechecks and post-await OAuth rechecks. Their real SQLite/HTTP
+status and model-discovery baseline Failed two cases: two and three activity writes respectively,
+versus one initial protected-request write. Both callers now use read-only authentication without
+changing live identity, role, step-up, CSRF or revocation checks. Exact pre-edit bytes and runs are in
+`/var/tmp/r12r/f6-assistant-rechecks-319f889-20261024`. The first selected verification invocation
+exited 4 before tests because its wrapper put the filter expression in a file-selector position;
+the corrected invocation preserves all six source/test pins and Passed 14 selected cases, with
+106 deselected, 13 warnings and 38.35 seconds. That run exposed two existing RuntimeWarnings in a
+create-turn fixture that asserted an authorization coroutine without awaiting it; preserve those
+warnings and the weakened pre-await assertion's limitation. After exact additional test-file
+backup, the fixture was corrected to await authorization. Its four affected cases separately Passed
+with RuntimeWarning promoted to error, six deprecation warnings and 10.29 seconds. These scopes
+include the two new discovery write-count checks, completed-stream replay, and consent/admin/OAuth/
+create-turn authorization-change races. They do not rerun the complete module or establish a browser,
+provider, native or release gate. Parent source/static review Passed; independent security review
+and fresh browser follow-up remain pending. No image/native rerun or release acceptance follows.
