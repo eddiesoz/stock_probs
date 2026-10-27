@@ -12762,3 +12762,57 @@ release acceptance. The historical generic HTTP failure remains Unproven, and cu
 execution remains under the server backoff. No image build, production change, merge, rollout,
 resize or email occurred. Preserve data, the 1 GB host/backups and US$15 monthly total cap.
 Free-Zen restoration remains first; all seven approved visible features remain in the goal.
+
+### R-ASTRA-121 F6 SD restoration and post-window genuine result (2026-10-26)
+
+The user authorized stopping the two identified shared Codex-owned processes and restoring the
+existing SD mounts. Fresh PID/start-time/parent/owner checks matched; both processes exited after
+graceful SIGTERM. Normal unmount of the stale shutdown UV cache succeeded. Local OS authentication
+then restored the configured primary mount and four bind mounts. All five reported UUID
+`54243c97-49f4-4cf6-a8cb-f6c0f3d48f4e`, writable without the shutdown flag. A private write/fsync/readback
+check and the retained native binary, build-receipt and supervisor hashes Passed. Docker/containerd
+remained stopped/failed; no formatting, forced/lazy unmount, filesystem-repair command or Docker start
+was performed. Receipt:
+`/var/tmp/r12r/sd-mount-restoration-20261027T011539Z-86dbcce8/restoration-receipt-v1.json`.
+This restores the local testing environment; it is not physical absent-medium startup acceptance.
+
+One fresh genuine native/browser test ran against clean pushed
+`a6d27d8f663cc1b3493e3fd2b9506e8b62d80517` after the previously observed retry window had elapsed.
+The unchanged genuine launcher received a fresh admission binding for 420 maintained source paths,
+six helper files and all 52 served/export pairs. It used the pinned OpenCode V2.0.7 executable and
+the actual catalog/provider route `opencode-zen/deepseek-v4.1-flash-free`, with no credential,
+catalog/transport replacement, model cycling or paid fallback. One authenticated isolated desktop
+browser Send returned HTTP 202 and submitted the sole native model request.
+
+The test **Failed**, native child exit 1 and wrapper exit 2, from
+`2026-10-27T01:17:14.923590Z` to `01:19:58.670788Z` (163.748 seconds; October 26 locally).
+The retained closed timing diagnostic reports `upstream_stream`, HTTP 429,
+`provider_upstream_unavailable`, `free_usage_limit_error`, and zero sanitized chunks/bytes.
+Native execution terminated failed; the saved turn reported `provider_unavailable`, with zero
+answer bytes and zero workspace-summary receipts. All native provider/session/project identity
+predicates matched. The browser observer timed out waiting for completion; parent screenshot review
+confirmed the visible provider-could-not-answer message and no answer. Saved desktop/mobile answer
+reopen was Skipped because no completed answer existed. This is a fresh upstream free-limit failure,
+not proof of successful restoration or the cause of the earlier generic native HTTP failures.
+This run did not retain response headers, so a new `Retry-After` or reset time is Unavailable.
+The expired October 25 hint is historical and does not establish present availability.
+
+Exact cleanup **Passed**: conversation DELETE returned HTTP 200 on its first attempt, native purge
+reported cleared, existing prompt markers were absent with no oversized scan files, runtime/server
+closed, and the actual runner/child/browser process groups, cgroup, owned ports and native/browser
+temporary directories were absent. The complete success-marker predicate remains false because
+it requires a tool-result marker and no tool result or answer existed. Do not relabel that field
+as a success. All 420 source bindings, six helper bindings and 52 served/export pairs held;
+bounded output was complete. Private packet:
+`/var/tmp/r12r/f6-genuine-native-ui-a6d27d8-20261027T011707Z-b263f053`, including
+`genuine-admission-v1.json`, `supervisor-terminal-v1.json`, `terminal-v1.json` and
+`parent-result-cleanup-review-v1.json`. Parent verification is not independent QA.
+
+No second provider trial, image build, production mutation, merge, rollout, resize or email occurred.
+Local genuine completion remains unresolved; image admission stays held under the local-first
+workflow. The current full browser/security/canonical, actual combined 1 GB, exact-PR
+recovery/rollback, guide/canary and release gates remain open. The earlier complete canonical Fail
+is retained; its six-repair independent selected Pass is already recorded in the bound parent
+review and does not establish a new aggregate. Preserve existing data, the 1 GB host/backups and
+US$15 monthly total cap. Genuine free-Zen restoration remains the first dependency; all seven
+approved visible features and their four releases remain in the overall goal.

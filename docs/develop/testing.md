@@ -88,6 +88,13 @@ helper and complete served/export binding. An early held launch or offline admis
 preparation, not provider availability or a successful genuine answer. See the
 [structured-answer preflight record](../../MVP-PLAN.md#r-astra-121-f6-structured-answer-and-genuine-window-preflight-2026-10-24).
 
+An elapsed provider retry hint does not establish renewed free-model availability. Retain a fresh
+HTTP 429 `free_usage_limit_error` as an upstream limit failure, with zero answer bytes kept explicit;
+do not infer a new reset time when that run did not capture `Retry-After`. Preserve the failed native
+and UI verdicts while verifying deletion, existing marker removal and actual process/port cleanup.
+Do not cycle models, repeat the unchanged request or build an image to bypass this missing local
+proof. See the [post-window genuine result](../../MVP-PLAN.md#r-astra-121-f6-sd-restoration-and-post-window-genuine-result-2026-10-26).
+
 The real-HTTP assistant browser fixture must implement the runtime policy-authority contract:
 accept only its exact immutable model/policy version and a positive integer owner ID. Exercise
 that contract through the real service write scope; do not weaken the production policy guard
