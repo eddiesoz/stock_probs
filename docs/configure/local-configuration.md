@@ -5,6 +5,19 @@ description: "Supported Stock Probability environment variables for local runtim
 
 # Local configuration
 
+## ChatGPT account testing model
+
+The reviewed ChatGPT account catalog includes `openai-chatgpt/gpt-6-luna`. For that exact account
+model, the application fixes Responses reasoning effort to `low`. Connect through the existing
+native ChatGPT sign-in controls, approve the exact model policy and provide the user's consent.
+Account access and plan capacity require a successful live turn to verify; catalog presence alone
+does not establish either. This connection uses the existing protected OAuth vault and does not
+fall back to an API-key provider. Other account models keep their existing request settings.
+See the [testing workflow](../develop/testing.md#temporary-chatgpt-subscription-testing) and the
+[official Luna model reference](https://developers.openai.com/api/docs/models/gpt-6-luna).
+
+## Environment settings
+
 The application reads a small environment-only configuration. Keep machine-local values out
 of tracked files and shell history when they could expose private locations.
 

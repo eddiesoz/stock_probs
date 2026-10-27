@@ -12816,3 +12816,52 @@ is retained; its six-repair independent selected Pass is already recorded in the
 review and does not establish a new aggregate. Preserve existing data, the 1 GB host/backups and
 US$15 monthly total cap. Genuine free-Zen restoration remains the first dependency; all seven
 approved visible features and their four releases remain in the overall goal.
+
+### R-ASTRA-121 F6 temporary ChatGPT Luna testing preparation (2026-10-26)
+
+The user authorized their ChatGPT subscription as a temporary local testing route, with Luna at
+low effort, then a return to approved free Zen models. This is a testing exception; ChatGPT results
+do not establish Zen acceptance or change the four-release feature plan, release gates, existing
+data, 1 GB host/backups or US$15 monthly total cap. Supported quota options, local replay and focused
+live checks remain the approach to reducing Zen testing usage; no limit bypass is established.
+
+The parent added `openai-chatgpt/gpt-6-luna` to the existing reviewed account catalog and pins
+its outgoing Responses body to `reasoning: {effort: "low"}` after native body validation. Incoming
+reasoning overrides remain rejected, other models keep their existing settings, and the existing
+owner-bound native OAuth/protected-vault path remains in use. Agent model routing did not change.
+The [official Luna reference](https://developers.openai.com/api/docs/models/gpt-6-luna) documents
+low effort and Responses tool support; account entitlement still requires an actual completed turn.
+
+The new selection first **Failed** for the absent Luna catalog entry while the existing-model
+control Passed. After the repair, the affected provider/release/OAuth transport suite **Passed**
+269 tests, zero failures/errors/skips, in 9.960 seconds. It checks the actual final OAuth request's
+model, effort, unchanged input/instructions, output budget, `store: false`, and rejected caller
+overrides. Ruff, configured security Ruff and formatting Passed. These transport tests use synthetic
+credentials and upstream responses, not the user's ChatGPT account.
+
+Live account setup remains **Unavailable**. The initial isolated local app/worker reached readiness,
+but provider settings failed when native OAuth discovery returned HTTP 503 `oauth_unavailable`.
+The scoped in-process diagnostic isolated a timeout in native `GET /api/integration`; provider/model,
+connection-list and attempt-list reads returned HTTP 200. No OAuth attempt or model request began.
+A separate minimal native discovery diagnostic **Passed** execution: it returned 235 integration
+rows and four normalized reviewed integrations, including both ChatGPT OAuth methods. Its first
+unqualified read took 6.718 seconds; the later explicit-directory read took 0.073 seconds. This
+comparison also changed the directory parameter and does not isolate caching as the timing cause.
+The diagnostic worker was stopped afterward.
+
+The next local metadata-warmup fixture failed before that read at the existing 15-second worker
+readiness boundary. A separate native-before-app-import setup also failed that boundary; retained
+native logs show HTTP 503 readiness responses. No production request/turn/startup limit was extended.
+All owned testing units are terminal, and the stale task-owned browser tab was closed. At the
+resource observation, the host had approximately 577 MiB available RAM and full 4 GiB swap. Two
+OpenCode processes consumed roughly 1 GiB combined; their parent/cgroup/CWD identify a separate
+user terminal, so they were left running. Resource pressure is observed, not a proven failure cause.
+The explicit request to stop that shared terminal session is pending; no unrelated process was killed.
+
+Private packet: `/var/tmp/r12r/f6-chatgpt-luna-testing-a633c44-20261027T022731Z`, including exact
+seven-file baseline bytes/digests, pre-repair and affected JUnit/output, native discovery observations
+and the separate local setup attempts. This is parent implementation/verification, not independent
+QA, successful subscription sign-in, a completed native/UI answer, image or release acceptance.
+The source change is prepared; the requested connection is incomplete. Genuine Zen's last actual
+upstream result remains HTTP 429 `free_usage_limit_error`. No new inference request, Docker image
+build, merge, production mutation, rollout, resize or email occurred in this preparation.

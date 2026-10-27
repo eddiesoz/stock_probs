@@ -5,6 +5,20 @@ description: "Local developer checks for Python, APIs, persistence, browser beha
 
 # Testing
 
+## Temporary ChatGPT subscription testing
+
+The user-authorized local testing route is `openai-chatgpt/gpt-6-luna`. Its Responses requests use
+the application-owned `reasoning: {effort: "low"}` setting after native body validation. Native
+callers cannot supply reasoning overrides; other account models retain their existing behavior.
+`tests/test_assistant_provider_release_gaps.py` checks the actual final OAuth request body, selected
+model, preserved input/instructions, output budget and `store: false`, plus override rejection.
+Authentication still requires the normal owner-bound native sign-in and protected vault flow.
+Model catalog presence does not prove subscription entitlement or a completed live response.
+
+Use isolated development data for these tests and keep their evidence separate from genuine free
+Zen acceptance. Return to the approved Zen route when it is available; use supported quota options,
+local replay and focused live calls to reduce test usage. All release gates remain required.
+
 ## Local browser authentication fixtures
 
 Use development fixture accounts and isolated browser contexts for local QA. Preserve the user's

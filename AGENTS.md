@@ -46,6 +46,12 @@ remain unresolved. Once local behavior works and its affected checks pass, build
 test that image through the required release gates. Local results do not replace image acceptance.
 This personal skill does not add an OpenCode project-catalog entry or prove runtime discovery.
 
+User-directed testing exception (2026-10-26): use the user's ChatGPT subscription temporarily for
+local application testing with GPT-6 Luna at low effort. Keep credentials in the existing protected
+OAuth flow. Return to approved free Zen models when available; ChatGPT results remain separate from
+required Zen acceptance. Investigate provider-supported quota options and minimize live requests
+with local replay and focused checks. The overall feature plan, release gates and budget remain.
+
 ### Current model routing
 
 Maintain model, effort, and role assignments only in `model-routing.json`. The model fields in

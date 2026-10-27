@@ -205,6 +205,7 @@
       "data_collection_allowed": true,
       "data_collection_default": false,
       "reviewed_models": {
+        "gpt-6-luna": "GPT-6 Luna (ChatGPT account)",
         "gpt-5.5": "GPT-5.5 (ChatGPT account)",
         "gpt-5.3-codex-spark": "GPT-5.3 Codex Spark (ChatGPT account)"
       }

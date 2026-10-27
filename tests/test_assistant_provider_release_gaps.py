@@ -51,6 +51,69 @@ _COMPLETED_FRAME = b'event: response.completed\ndata: {"type":"response.complete
 _AuthorizationCheck = Callable[[], bool | Awaitable[bool]]
 
 
+@pytest.mark.parametrize(
+    ("native_model_id", "expected_reasoning"),
+    (("gpt-6-luna", {"effort": "low"}), ("gpt-5.5", None)),
+)
+def test_chatgpt_luna_uses_low_effort_without_changing_other_models(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    native_model_id: str,
+    expected_reasoning: dict[str, str] | None,
+) -> None:
+    """Exercise the actual OAuth manager's final model and Responses request body."""
+
+    _freeze_provider_clock(monkeypatch)
+    manager, catalog = _manager(tmp_path)
+    model_id = f"openai-chatgpt/{native_model_id}"
+    assert catalog.get_model(model_id) is not None
+    _seed_chatgpt_credential(
+        manager,
+        _TARGET_OWNER,
+        access="synthetic-luna-access",
+        refresh="synthetic-luna-refresh",
+        expires=_NOW * 1000 + 3_600_000,
+        account_id="synthetic-luna-account",
+    )
+    _enable_chatgpt_model(manager, model_id, _TARGET_OWNER)
+    requests: list[dict[str, object]] = []
+
+    async def fake_stream(url: str, *, body: bytes, **kwargs: object) -> AsyncIterator[bytes]:
+        assert url == "https://chatgpt.com/backend-api/codex/responses"
+        requests.append(json.loads(body))
+        yield _COMPLETED_FRAME
+
+    monkeypatch.setattr(providers, "stream_public_https", fake_stream)
+    result = asyncio.run(
+        _collect_chatgpt_stream(
+            manager, model_id, owner_id=_TARGET_OWNER, authorization_check=lambda: True
+        )
+    )
+    assert result == [_COMPLETED_FRAME]
+    assert len(requests) == 1
+    request = requests[0]
+    assert request["model"] == native_model_id
+    assert request.get("reasoning") == expected_reasoning
+    assert request["input"] == _CHATGPT_BODY["input"]
+    assert request["instructions"] == _CHATGPT_BODY["instructions"]
+    assert request["store"] is False and request["stream"] is True
+    assert request["max_output_tokens"] == providers.native_output_token_budget()
+
+    with pytest.raises(ProviderUnavailable, match="provider_request_invalid"):
+        manager.proxy_native_stream(
+            "openai-chatgpt",
+            model_id,
+            {**_CHATGPT_BODY, "reasoning": {"effort": "high"}},
+            path_model_id=None,
+            query=(),
+            app_tools=_APP_TOOLS,
+            owner_id=_TARGET_OWNER,
+            app_session_id="synthetic-luna-session",
+            native_session_id="ses-luna-test",
+            authorization_check=lambda: True,
+        )
+
+
 class _HTTPResponse:
     """Represent only the bounded status and bytes returned by the fake transport."""
 

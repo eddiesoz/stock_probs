@@ -3563,6 +3563,8 @@ class AssistantProviderManager:
             app_tools=app_tools,
         )
         upstream_model_id = _upstream_model_id(model_id, provider_id)
+        if provider_id == "openai-chatgpt" and upstream_model_id == "gpt-6-luna":
+            upstream_body["reasoning"] = {"effort": "low"}
         encoded = json.dumps(
             upstream_body, ensure_ascii=False, allow_nan=False, separators=(",", ":")
         ).encode("utf-8")
