@@ -12865,3 +12865,55 @@ QA, successful subscription sign-in, a completed native/UI answer, image or rele
 The source change is prepared; the requested connection is incomplete. Genuine Zen's last actual
 upstream result remains HTTP 429 `free_usage_limit_error`. No new inference request, Docker image
 build, merge, production mutation, rollout, resize or email occurred in this preparation.
+
+### R-ASTRA-121 F6 local ChatGPT authorization handoff (2026-10-28)
+
+After the user's approval, both previously named shared OpenCode processes were already absent;
+no process was killed. Fresh observation showed about 2.4 GiB available RAM and relieved swap
+pressure. The required SD UUID was verified before private test writes. These changed conditions
+allowed a fresh source-bound local app and native worker to start; resource causation for earlier
+failures remains unproven. The unchanged 269-test provider/OAuth result was reused against its
+three exact source/test digests.
+
+The parent corrected private fixture setup without changing application guards or deadlines.
+The native OAuth broker requires app loopback port 8000, so the exact existing local development
+container was paused through `scripts/local-compose.sh`. Each test unit has an exact-container,
+image, mounts and configuration guard plus an `ExecStopPost` restoration hook. Original-container
+restoration passed between fixture versions; the current test unit remains active for sign-in and
+has a one-hour expiry. This is local development setup, not a production operation or image build.
+
+The admin UI requires its own fresh authenticator verification. The earlier general API helper
+deliberately seeded undecryptable test factor material; it cannot perform that UI check. An initial
+fixture repair failed startup with exit 3 and was automatically cleaned up/restored; static review
+found a nonexistent-column predicate and an attempted update of immutable factor identity. The
+corrected disposable fixture initializes a valid encrypted factor at insertion and passes the real
+admin UI step-up. It does not use the owner's authenticator or bypass production authentication.
+
+The next native OAuth starts failed with application HTTP 503. A narrow transport observer then
+identified native OAuth HTTP 400 before the subsequent cleanup restart's `ConnectError`; source
+review found the local fixture omitted `OPENCODE_ASSISTANT_OAUTH_HANDOFF=1`, which the production
+supervisor already supplies. Matching that setting allows the fixed application broker to be
+reached. Headless sign-in still **Failed** before presenting authorization: the broker returned
+HTTP 502, native returned HTTP 400, and application start returned HTTP 503. Its exact upstream
+cause is Unavailable. The separate reviewed browser method **Passed for authorization-launch
+scope only**: native returned HTTP 200, the app displayed pending sign-in, and the official OpenAI
+login page rendered. Human account login and access approval remain pending; no credential or
+callback link belongs in chat or repository evidence.
+
+At that handoff, all 420 source bindings and 52 served/export pairs matched clean source revision
+`dc7fdc9902d43675f52098d7433dc176c9a26afd`. Private receipt and empty-login-page capture:
+`/var/tmp/r12r/f6-chatgpt-managed-oauth-dc7fdc9-20261028T143430Z/parent-oauth-handoff-review-v1.json`
+and `openai-sign-in-handoff.jpg`. Earlier fixture packets retain their failed outcomes. This is
+parent verification, not independent QA, successful account connection, inference or native/UI
+answer acceptance. The Luna low-effort source preparation remains unchanged; no model request,
+Docker image build, production mutation, merge, rollout, resize or email occurred.
+
+Genuine free-Zen restoration and all required release gates remain open. Current official
+[OpenCode model documentation](https://dev.opencode.ai/v2/docs/console/models/) requires OpenCode
+for free-tier chat use; the project continues to use genuine native OpenCode. The maintainer's
+[free-limit guidance](https://github.com/anomalyco/opencode/issues/56523) directs account/reset
+questions to usage/account support rather than documenting a testing exemption. No supported
+quota exemption or new reset time is established. Reuse local replay/synthetic checks for their
+declared scope and reserve focused genuine calls for required acceptance; ChatGPT results do not
+become Zen evidence. Preserve the seven-feature/four-release goal, data, existing 1 GB host/backups
+and US$15 monthly total cap.
