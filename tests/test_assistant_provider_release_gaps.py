@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import socket
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from pathlib import Path
 from types import SimpleNamespace
@@ -720,6 +721,97 @@ def test_chatgpt_oauth_stream_fails_closed_when_provider_echoes_access_token(
     assert rejected.value.code == "provider_response_secret_rejected"
     assert released == []
     assert refresh_requests == []
+
+
+@pytest.mark.parametrize("revoke", (False, True))
+def test_chatgpt_headerless_stream_revocation_blocks_later_event(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, revoke: bool
+) -> None:
+    """Exercise manager and real HTTP framing with authorization revoked during a read."""
+    _freeze_provider_clock(monkeypatch)
+    manager, catalog = _manager(tmp_path)
+    model_id = _chatgpt_model_id(catalog)
+    _seed_chatgpt_credential(
+        manager,
+        _TARGET_OWNER,
+        access="synthetic-current-access-token",
+        refresh="synthetic-current-refresh-token",
+        expires=_NOW * 1000 + 300_000,
+        account_id="synthetic-target-account",
+    )
+    _enable_chatgpt_model(manager, model_id, _TARGET_OWNER)
+    first = b'event: response.created\ndata: {"type":"response.created"}\n\n'
+    second = b'event: response.completed\ndata: {"type":"response.completed"}\n\n'
+    authorized = True
+    released: list[bytes] = []
+    closed: list[str] = []
+
+    class Reader(asyncio.StreamReader):
+        async def read(self, n: int = -1) -> bytes:
+            nonlocal authorized
+            data = await super().read(n)
+            if revoke and data == second:
+                authorized = False
+            return data
+
+    class Writer:
+        def write(self, _data: bytes) -> None:
+            pass
+
+        async def drain(self) -> None:
+            pass
+
+        def close(self) -> None:
+            closed.append("close")
+
+        async def wait_closed(self) -> None:
+            closed.append("wait_closed")
+
+    async def resolve(_loop, _host: str, port: int, **_kwargs: object):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port))]
+
+    async def open_connection(_host: str, *_args: object, **_kwargs: object):
+        reader = Reader()
+        reader.feed_data(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+            + f"{len(first):X}\r\n".encode()
+            + first
+            + b"\r\n"
+            + f"{len(second):X}\r\n".encode()
+            + second
+            + b"\r\n0\r\n\r\n"
+        )
+        reader.feed_eof()
+        return reader, Writer()
+
+    monkeypatch.setattr(net.asyncio.BaseEventLoop, "getaddrinfo", resolve)
+    monkeypatch.setattr(net.asyncio, "open_connection", open_connection)
+
+    async def consume() -> None:
+        stream = manager.proxy_native_stream(
+            "openai-chatgpt",
+            model_id,
+            _CHATGPT_BODY,
+            path_model_id=None,
+            query=(),
+            app_tools=_APP_TOOLS,
+            owner_id=_TARGET_OWNER,
+            app_session_id="test-session",
+            native_session_id="ses-provider-release-gap",
+            authorization_check=lambda: authorized,
+        )
+        async for chunk in stream:
+            released.append(chunk)
+
+    if revoke:
+        with pytest.raises(CredentialRejected, match="oauth_authorization_required"):
+            asyncio.run(consume())
+        assert second not in b"".join(released)
+        assert authorized is False
+    else:
+        asyncio.run(consume())
+        assert b"".join(released) == first + second
+    assert closed == ["close", "wait_closed"]
 
 
 def test_opencode_inventory_refresh_rotates_only_owner_before_fixed_config_fetch(
