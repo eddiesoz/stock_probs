@@ -232,6 +232,10 @@ service.
 | Authenticator theft, replay, or brute force | TOTP secrets are encrypted at rest, enrollment is short-lived and origin-bound, accepted time steps are monotonic, attempts are reserved under the SQLite write lock before verification, and failed attempts are throttled. Recovery codes are high-entropy, hashed, single-use, and reveal no replacement session beyond factor replacement. |
 | Pending setup overwrite or exposed enrollment QR | Pending setup material is encrypted at rest, expires after the bounded enrollment window, and is bound to the current factor generation and originating session. Default starts reuse the same-origin pending row and expiry; explicit replacement rotates it, while a different origin fails closed. The UI shows expiry and removes expired QR/code actions. A QR or setup key visible in a photo must be treated as exposed and replaced after deployment. |
 | Session theft, fixation, or replay | Sessions are opaque server-side records addressed by hashed tokens, with idle and absolute expiry, revocation, host-only `Secure`/`HttpOnly` cookies, CSRF tokens for mutations, and no browser storage for credentials. TOTP verification is bound to the active factor generation and fresh step-up markers are short-lived. |
+| Event-loop starvation during session validation | Both accepted-origin and no-Origin middleware branches await synchronous authentication in Starlette's worker pool before dispatching a protected handler. This keeps one authentication I/O wait off the application event loop while preserving session/MFA rejection and response headers. It does not guarantee availability under worker-pool saturation or database contention, and the native readiness timeout's cause remains unproven. |
+| Uncertain worker health or stale worker identity | A native health network error closes new admission while preserving an admitted response only on the same previously verified client/password and worker generation. Initial unverified clients, changed generations, protocol errors, denied responses and malformed JSON cannot gain that preservation. Session, owner, lease, consent and provider-policy checks continue independently. The [selected health repair checks](../../MVP-PLAN.md#r-astra-121-f6-verified-worker-health-network-repair-2026-10-24) include held streams and one controlled native/browser fault; they do not prove a historical warning's subtype or complete live-provider/security acceptance. |
+| Event-loop starvation during provider authorization | Initial internal-provider lease/session/policy reads run together in the worker pool. Both native and compatible-chat proxy callbacks await fresh execution checks, including transport authorization, before upstream work and returned bytes. Stream guards await synchronous or async callbacks before reads, yields and headers; a denied result never becomes a truthy coroutine. Synthetic I/O-wait regressions prove the scoped concurrency repair, not the native timeout's cause or availability under pool/database saturation. |
+| Runtime persistence after external model-policy changes | The real provider/catalog authority scope starts before SQLite, validates the exact usable policy and remains held through commit. Durable lease/session/consent/canary/context checks stay in SQL; pure cache deadlines are rechecked after database waits. Metadata/cache publication and stale-fetch source binding share that authority. Async callers use bounded nonblocking admission and retain admitted operation outcomes through cancellation; consumed OAuth handoffs retire on abandoned publication. The selected parent and independent synthetic checks are recorded in the [F6 repair ledger](../../MVP-PLAN.md#r-astra-121-f6-provider-policy-authority-repair-2026-10-22). The earlier reproduced race and failed reviews remain historical, and current-source native/security/release acceptance remains open. Caller authorization for a bounded metadata request is distinct from runtime output's commit-bound durable checks. |
 | Cross-user IDOR or legacy-data disclosure | Forecasts, events, results, outcomes, reconstructions, exports, holdings, watchlists, and account operations derive the owner from the session. Legacy rows attach to one reserved owner claim; a new user cannot claim or query them by changing an ID. |
 | Privileged backup or restore abuse | Backup status requires an administrator. Backup creation and every HTTP restore request, including verify-only, require an administrator and TOTP proof no older than 300 seconds. Restore promotion also requires a verified pre-restore backup, matching account-security state, maintenance-mode serialization, and revocation of all sessions. |
 | Redirect consent changing the approved destination | The user-facing contract requires fresh approval for the exact redirect URL. E199 found a selected native source path that followed a changed public redirect without renewed exact-destination approval. E203 independently **Failed** its ordering scope; parent review corrected the mock's omission of the shared atomic eight-tool counter but did not close the hop/repeat race. E209 later **Passed** selected runtime/helper/MockTransport and guard checks for serialized message snapshots and exact-URL approval; the retained circular mock timeout is diagnostic-only and native integration remains unavailable. Parent source-pin review passed. No live external request, native integration, or private-network SSRF bypass is established. |
@@ -271,6 +275,45 @@ The source boundary uses same-origin authenticated
 application routes, session-owned tool calls, typed tools, bounded request/storage limits, private
 loopback callbacks, and a worker UID separate from the FastAPI process. These are source/design
 observations, not independent security acceptance.
+
+The 2026-10-21 Zen terms review retains the existing free/no-training LongCat policy and adds
+`nemotron-3.5-super-vl-free` to the known NVIDIA trial exclusions. These restrictions follow
+the upstream model identity on the exact Zen routes, including Console and compatible custom
+profiles. Administrator review or user consent cannot override the personal/confidential-data
+prohibition. No new model permission or data-collection consent is introduced by the acceptance
+selector update. See the [current provider terms](https://opencode.ai/v2/docs/console/models/)
+and the dated F6 checkpoint in the [MVP plan](../../MVP-PLAN.md).
+
+The same dated review adds MiniMax M3.1 Flash Free to the curated free/no-training choices using
+the existing OpenAI-compatible adapter. OpenCode documents zero retention and no training for
+this model; the app cannot verify per-request provider handling. Existing explicit privacy and
+billing acknowledgements remain required, and no data-collection permission or automatic
+fallback is introduced. A failed LongCat trial is retained separately from this model review.
+
+The compatible-chat bridge preserves only bounded assistant `reasoning_content` needed for
+native tool continuations, using the same history and stream budgets as ordinary text. It is
+private native-session state, excluded from app token events and timeout logs. The secret-stream
+guard tracks its independent choice/channel before releasing bytes; unrelated provider metadata
+remains excluded. This preserves the [vendor continuation contract](https://platform.minimax.io/docs/api-reference/text-openai-api)
+without changing provider destinations, ownership, consent or tool permissions. Each app execution
+creates a fresh model-bound native session; later app turns reconstruct only stored visible role/text
+history, so private native reasoning is not carried across model selections. Source and synthetic
+checks do not establish live-provider completion or native timeout causation. The exact reviewed
+free Zen MiniMax M3.1 Flash and GLM-5.3-Flash routes use fixed low reasoning effort for interactive
+turns. Exact reviewed DeepSeek V4.1 Flash Free instead requests the vendor's documented non-thinking
+tool mode, without an effort field. Existing token/deadline bounds, native tool declarations,
+authorization, cancellation and consent remain in force; other model/provider identities are
+unchanged. These are fixed app-owned controls, not caller-controlled request fields, provider
+destinations or data-sharing permissions. Synthetic request checks do not prove Zen's effective
+settings or native completion; see the dated F6 result in the [MVP plan](../../MVP-PLAN.md).
+
+Selected-model authorization adapts only exact matching raw catalog rows, preserving their order
+and rejecting missing or unavailable selections. Unique-ID selections retain two selected state
+reads; duplicates retain their per-row reads and final live crosscheck. The live generation,
+privacy and billing acknowledgements are still compared. Every existing session,
+consent, revocation and stream-boundary check remains live; no authorization result is cached.
+Avoiding unrelated models' state reads changes lookup work, not permission scope. Synthetic
+profiling does not establish native latency causation or completed provider answers.
 
 The following E167–E777 records preserve earlier scoped findings and failures. They are historical;
 the E847/E849/E850 scopes above supersede only the bindings and checks they explicitly cover.
@@ -537,3 +580,68 @@ E721 independently passed 928 tests and Ruff lint/security checks for a selected
 E765 passed the maintained full browser aggregate: 191 passed, 3 expected skips and no failures. Four maintained assistant-panel snapshots reported raw axe 0 violations and 0 incomplete items. This is panel scope only; full-app accessibility remains open. E725's earlier full-browser failure remains preserved. E768's kill-profile source finding was repaired for source/test review in E769–E772; those results do not establish a live current-image kill. E775's builder source-preparation report passed 417 tests with two explicitly deselected after adding optional exact PR-revision binding. E777 independently passed the selected source/test scope (417 passed, 2 deselected, 2 warnings, four stable pins); review retained a trusted local caller precondition that verifies the maintained build-receipt SHA and exact immutable image/context/PR revision, then rechecks the reviewed pair manifest before runtime acceptance. The revision is not exposed as an MCP input, and no relabel or permissive-label fallback was accepted. These are source/test results only; no fresh image build, Docker probe, or runtime acceptance occurred. E774 identified that this page's prior status had stopped at E699; its audit adds no runtime evidence.
 
 E847's canonical security scope passed 590 checks, and its input-bound browser/axe reuse remains Pass: browser 193/196 with three expected skips and whole-route axe 68 cases/72 scans with zero violations/incompletes. Earlier input-bound current-product native wire/kill scopes passed. E848 passed the exact-5ad actual-host pair/resource/recovery, actual combined 1 GB and PR-bound rollback scopes. E850 passed the declared owner canary and invited rollout; the authorized notice was sent. The final receipt review verified production identity and four attachment byte counts, while binary-digest/disposition review and worker-specific health are **Unavailable**; delivery, inbox placement and read are **Unavailable**. Physical mobile, actual screen reader, true zoom and PDF/UA remain **Unavailable**; these scopes do not establish full WCAG AA. The existing 1 GB host/backups and US$15 monthly total cap are unchanged. See the [ledger](../../MVP-PLAN.md#r-astra-120-signal-ledger-assistant-design-first-follow-on) for exact receipts and preserved failures.
+
+
+The public assistant SSE route performs blocking authentication, repository reads and browser-event
+projection in the existing Starlette worker pool. It rechecks the current session, rollout access,
+turn and active execution after projection and before emitting each event, closing the stream on
+authorization failure. Browser projection still removes confirmation material outside its issuing
+session. Moving I/O off the event loop does not cache session or consent decisions, relax cursors,
+increase limits, or establish native health acceptance. Worker-pool saturation and forced-shutdown
+cancellation remain separate limits; no absolute request-gate retention through forced shutdown is
+claimed. The original failed health and projection-race regressions remain in the F6 evidence ledger.
+
+
+For a normal lease closure racing with terminal turn persistence, the SSE authorizer allows at most
+one fresh state read with full session/access validation. Only the exact owner/conversation/turn
+closure qualifies; revocation, unknown leases and an unsettled result fail closed. This recovers
+owner-visible terminal history without reopening the execution's tool capability or reusing an
+old authorization decision. Completion, concurrent revocation and unsettled closure are separate
+regression cases; this source evidence does not establish native reliability or the earlier health
+transport failures' cause.
+
+## Provider rejection type boundary
+
+The assistant proxy projects bounded provider JSON error types into a closed class set on HTTP
+403 and 429. It retains no raw body or arbitrary error text, and header diagnostics remain limited
+to 403. The existing JSON framing, byte/read-time bounds, active authorization checks and stream
+cancellation apply to the diagnostic read. Only an initial 429 positively classified as
+`free_usage_limit_error` carries the app-owned nested type `FreeUsageLimitError` in the sanitized
+no-store error response. This preserves the pinned native client's quota classification without
+changing retry limits or turn deadlines. Unknown 429s stay generic. Neither HTTP status alone nor
+a synthetic classification test establishes the cause of a live provider rejection or a completed
+assistant answer; see the [MVP evidence ledger](../../MVP-PLAN.md).
+
+
+## Frontend build dependency advisories
+
+The frontend uses Next's static export; FastAPI serves the generated assets rather than a
+Next.js server. This limits the applicability of server-only Image Optimization, Server Action
+and Cache Component advisories, but does not substitute for current dependency review. The
+Next.js 16.4.2 candidate replaces the affected 16.3.8 dependency and its companion packages;
+React remains pinned at 19.3.0. Preserve the original advisory findings and verify the locked
+update, approved build/stage and browser behavior before promotion. See the
+[upstream security release](https://github.com/vercel/next.js/releases/tag/v16.4.1) and the
+[scoped evidence ledger](../../MVP-PLAN.md#r-astra-121-f6-canonical-bootstrap-and-next-security-repair-2026-10-23).
+
+## Native ChatGPT request correlation
+
+The pinned OpenAI SDK supplies `x-opencode-session` and `x-opencode-project` on its private
+Responses request. After authenticating the execution capability and its current app session,
+the app requires exactly one of each field, matching the runtime's active session/project for
+that execution. It derives the upstream `session-id` from that bound runtime metadata. An optional
+incoming `session-id` must match it too. Missing, duplicate, stale or mismatched correlation fails
+closed. These fields correlate an already authorized request; they do not grant authority or
+replace owner, policy, consent, body, loopback or ongoing stream authorization checks.
+
+## ChatGPT SSE without a media header
+
+The authenticated ChatGPT Responses endpoint has been observed returning chunked SSE data with
+no `Content-Type` header. Only the fixed `https://chatgpt.com/backend-api/codex/responses` route
+can use the internal compatibility option, and a live authorization check is mandatory. An
+explicit empty or non-SSE media type remains rejected. Other routes retain strict media checks.
+The account provider validates each complete, bounded, UTF-8 Responses event before the existing
+secret guard releases it: JSON must be duplicate-free and finite, event/data types must agree,
+and HTML, ordinary JSON, malformed events and incomplete frames fail closed. Comments are
+ignored. DNS pinning, TLS, redirects, compression, byte/deadline limits and authorization checks
+remain enforced. This is a tested transport compatibility path, not a release-gate waiver.

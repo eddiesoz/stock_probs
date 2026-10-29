@@ -2,6 +2,13 @@
 
 ## Codex project workflow
 
+For the R121 local build repair, preserve uncertain historical failure facts. Release a failed
+local reservation only through the reviewed typed operation with fresh setup-bound stopped
+generation/cgroup and protected-inventory evidence. Do not restart that builder before collecting
+the stopped-generation proof. A separately approved temporary production baseline remains a
+distinct operation kind; its source checks do not authorize an unbuilt image or establish that
+the running MCP server loaded the change. The existing 512/128 MiB floors remain fixed.
+
 Codex uses this root `AGENTS.md` for repository policy. Its project configuration is
 `.codex/config.toml`, its three scoped subagents are `.codex/agents/luna-build.toml`,
 `luna-qa.toml`, and `luna-docs.toml`, and its repository skills are in `.agents/skills/`.
@@ -23,6 +30,27 @@ OpenCode-specific loader, restart, and provider limitations below continue to de
 OpenCode evidence only. For local browser QA, use development fixture accounts and isolated
 browser contexts. Preserve signed-in tabs and authentication state; never clear user cookies,
 browser storage, or profiles to reset tests. Do not claim production local login or an MFA bypass.
+
+User correction (2026-10-23): use subagents only when delegation is necessary and the assigned
+work can genuinely proceed asynchronously and independently of the parent's next step. The parent
+handles implementation, checks, documentation, and review directly when delegation would make the
+parent wait for a sequential dependency. Do not delegate merely to occupy worker slots or repeat
+the parent's work. Give any necessary asynchronous subtask a clear ownership boundary and continue
+useful independent work. Preserve historical reviewer attribution and independent-evidence
+requirements; parent checks are not independent QA. Configured roles alone do not justify delegation.
+
+For Signal Ledger application work (user correction, 2026-10-23), use the user-level
+`$signal-ledger-local-first-testing` workflow: repair and test current source locally before building
+another candidate image. Do not build images while known application or affected browser failures
+remain unresolved. Once local behavior works and its affected checks pass, build one candidate and
+test that image through the required release gates. Local results do not replace image acceptance.
+This personal skill does not add an OpenCode project-catalog entry or prove runtime discovery.
+
+User-directed testing exception (2026-10-26): use the user's ChatGPT subscription temporarily for
+local application testing with GPT-6 Luna at low effort. Keep credentials in the existing protected
+OAuth flow. Return to approved free Zen models when available; ChatGPT results remain separate from
+required Zen acceptance. Investigate provider-supported quota options and minimize live requests
+with local replay and focused checks. The overall feature plan, release gates and budget remain.
 
 ### Current model routing
 
@@ -46,20 +74,58 @@ integrated diff and evidence before claiming completion.
 
 For R-ASTRA-120, reuse unchanged application, UI and complete local-gate evidence when only deployment-checker code changes. Verify the narrow checker repair and obtain fresh actual-host evidence; do not restart unchanged frontend/full-suite checks or relax native, resource, recovery, canary or release gates.
 
-For the remainder of `R-ASTRA-120`, the user requests maximum useful parallel delegation.
-Keep all available worker slots occupied with disjoint build, QA, or documentation work when
-independent work is ready, and hand queued work to freed slots promptly. Preserve source freezes
-for live checks, independent QA, the manifest model routing, and parent integrated review. This
-preference does not relax release gates or authorize spending above the existing budget.
-When reusing a completed worker, dispatch a new task turn; message delivery alone does not
-establish that the worker resumed. Check live worker status before reporting active parallel work.
+For exact-source helper changes, update every consumer digest and complete both positive and
+negative protocol fixtures before aggregate or release preparation. A guard repair is incomplete
+while its controller rejects the source bundle or a positive fixture omits the new inspection.
 
-For the current task only, the user explicitly authorized an Astra security audit and a Sol
-documentation audit. These reviewer assignments are task-scoped exceptions and do not change
-the default roles or authorize Astra subagents on other tasks. Start a fresh Codex task after
-Codex project-configuration changes and restart the OpenCode parent after OpenCode configuration
-or profile changes before checking discovery. File presence, synchronization, or parsing does not
-prove runtime loading; no runtime-discovery pass is inferred.
+For OpenCode goal mode, prefer a compatible existing plugin. Do not build custom goal or
+cross-harness synchronization code unless the user explicitly requests it.
+
+For Codex chat archival (user correction, 2026-10-23), do not require another approval or a
+blanket app shutdown for an authorized archive-path repair. Keep active SQLite history in place;
+serialize archive/unarchive mutations, verify an archive-only copy and stable inventories, and
+switch the path atomically with the original retained. Native rename-based archival needs the
+writable archive on the active sessions' filesystem; a readable cross-filesystem symlink is not
+proof that archival works. Verify the requested chat state through the app after repair.
+
+### Feature-by-feature continuation (user correction, 2026-10-20)
+
+For the free Zen assistant repair and the seven-feature plan, the parent performs implementation,
+review, checks, and documentation directly by default. The 2026-10-23 user correction above permits
+delegation only when necessary and genuinely asynchronous; it supersedes requests to keep worker
+slots occupied and prior task-scoped Astra/Sol exceptions. Historical receipts retain their original
+attribution; parent checks do not become independent evidence. Retain the single-source
+model-routing projections.
+
+After each feature reaches its tested implementation checkpoint, use the user-level
+`$signal-ledger-feature-handoff` skill to create the next local project thread with GPT-6.1 Sol
+at `medium`. Transfer the complete goal and a per-feature implementation/release checklist;
+the successor must establish its own active goal before continuing. Carry exact worktree/PR
+identities, unchanged-evidence bindings, failures, blockers, approved mockups, and next bounded
+action. Do not call incomplete work complete, mark the overall goal achieved because of a
+handoff, restart passing checks without changed inputs, or work concurrently in both threads.
+The free Zen live fix precedes the seven features, and existing release gates and budget remain.
+The user-level skill does not add an OpenCode project-catalog entry or prove runtime discovery.
+
+Use existing valid local sudo authorization when privileged work is necessary; request a password
+only through a local terminal or OS authentication prompt. Never collect, store, log, or change
+system policy to retain a password. Recheck the actual need first: ordinary task-owned file cleanup
+does not require sudo, and a filesystem-reserve change is unnecessary when usable space already
+meets the build threshold. Do not promise authorization survives sudo expiry or reboot.
+
+Start a fresh Codex task after project configuration changes before checking discovery, and restart
+the OpenCode parent after OpenCode configuration or profile changes. File presence or parsing does
+not prove runtime loading. These handoffs do not relax independent verification or release gates.
+
+For this R-ASTRA-121 repair, the user explicitly requires genuine OpenCode with Zen free models.
+Investigate and repair the native integration before suggesting provider-account substitution.
+Free-only is the selected constraint; do not treat the earlier unanswered provider-choice prompt as
+a blocker or require a paid provider. A native binary running through a custom provider proxy is
+not proof of equivalence to the built-in Zen connection. Verify an actual completed answer.
+
+For R-ASTRA-121, repair the reported assistant non-response and verify a completed native model
+answer before claiming restoration, then continue the approved seven visible features. The incident
+does not cancel the feature plan. Error-message or diagnostic improvements alone are not restoration.
 
 ## Current operational baseline: native OpenCode V2
 
@@ -148,7 +214,12 @@ assignments, runtime acceptance paths, or release gates.
   reviewed typed recovery operation. Recovery receipt publication must fail closed on write errors:
   a partial exclusive-create file is not a valid receipt and must not be manually removed or
   treated as a released reservation. Retry only after reviewed recovery reconciles the receipt and
-  ledger safely.
+  ledger safely. For local-build failures, retain a bounded failure receipt and the exact in-flight
+  row; cancelling the Docker CLI alone does not prove its BuildKit worker stopped. Stop only the
+  setup-bound builder container at the captured start generation, then verify it stopped. Reconcile
+  a local reservation only through `--reconcile-local-inflight-reservation`, using its genuine
+  local failure receipt or separately typed terminal/cancellation/readback observations. Missing
+  historical BuildKit results remain Unavailable; never fabricate a managed failure receipt.
 - Before formatting or relocating removable storage, make a backup on an independent filesystem
   and verify its checksum, byte count, complete file/member inventory, and metadata before
   formatting. Mount the replacement filesystem by UUID. Require both Docker and containerd to
@@ -2286,3 +2357,92 @@ only; finalization and guide acceptance remain pending. E390 confirms unchanged 
 through read-only MCP status. The **US$15 total monthly cap includes backups and taxes**;
 the existing 1 GB Linode and backups remain unchanged. Required native/provider, strict
 accessibility, actual capacity, PR-bound rollback, and release gates remain open.
+
+
+For R-ASTRA-121 restoration, the fixed candidate/recovery rehearsal targets PR #9. Keep the
+controller, bootstrap, installed helper and local verifier at that identity, with no arbitrary PR
+argument exposed through MCP. Preserve all exact repository, open/main-base/head, helper asset,
+private review-pin and image/archive/context/pair checks. PR #2 receipts remain historical.
+
+For the free-Zen assistant repair, a local-current pointer transition must use the bounded builder's
+expected-current and retained-replacement full image IDs. It validates both complete ledger rows,
+bound build receipts, and Docker identities under the ledger lock before atomic pointer selection.
+Selection neither removes an image nor authorizes cleanup: independently verify exact candidate
+ownership, release protection, tags, container references and bounded RootFS ancestry before any
+exact-ID removal and absence-verified retirement acknowledgement. Preserve the three-image bound.
+
+For the PR #9 free-Zen repair, production rehearsal monitoring binds the observed deployed 5ad
+image at schema 13 separately from the historical da2764e schema-12 migration/recovery origin.
+Require matching live revision/image/schema in the host receipt and controller; preserve the
+existing memory reserves and actual 1 GB/resource/recovery gates. A correct source pin is not a
+host rehearsal, native reliability or deployment Pass.
+
+
+For PR #9 reserve diagnosis, keep the existing 512 MiB startup and 128 MiB running guards.
+Project only the closed preflight/startup/monitor/final phase and strict numeric available/required
+KiB values. An earlier unclassified reserve failure or a later read-only RSS measurement is not
+proof of its phase or cause. Before another trial, bind the repaired checker and exact candidate;
+retain failed aggregates and restore verified production rollout after temporary maintenance.
+The current read-only startup observation is bounded at 30 seconds within the unchanged 1,080-second
+operation budget; do not relax either memory floor or promote a later above-floor sample to a pass
+for an earlier preflight failure. E22's five-second wait is historical; E29 records the reviewed
+source repair and its local scope, not a host retry or release acceptance.
+
+
+For R-ASTRA-121 rehearsal preparation, keep the running production identity separate from the
+schema-12 PR-pair fixture seed. A registered schema-13 recovery baseline must match its exact
+recovery role, image, archive, pair, overlay, migration, Compose and disabled-readiness bindings
+at both host and MCP boundaries; it is not the new PR's recovery asset. Retain the 512/128 MiB
+reserve floors and actual-host monitoring. Before a production image transition, verify a fresh
+signed schema-13 backup and the local compatibility/data-continuity scope, then prepare the
+exact typed restoration path. Backup verification must not rewrite the running rollout configuration,
+promote a restore, rotate trust state or remove existing artifacts. Source/profile evidence alone
+does not accept a production transition, memory saving, native fix, owner canary or release.
+
+For the R-ASTRA-121 startup repair, load Yahoo's optional clients only at their market/news call
+sites. Keep fixture and normal application startup free of those imports; do not prewarm them to
+hide a dependency failure. Distinguish explicit `provider_busy` from sanitized
+`provider_unavailable` through the API and headline clients. Local cold-import savings do not
+establish host capacity. A changed recovery overlay requires its own newly bound image and pair;
+retain the original registered recovery image and the unchanged 512/128 MiB reserve guards.
+
+For the R-ASTRA-121 restricted native-tool diagnostic, preserve V20's persisted-shell-message
+expectation failure separately from V21's paired synthetic guard **Pass**. V21 is network-none,
+local 768 MiB evidence; it does not establish real free-Zen/model behavior, actual 1 GB resource
+acceptance, or release readiness. Keep its exact scope, receipts, and the pending current-source
+browser checks in `MVP-PLAN.md`; the approved frontend build/stage pass does not accept browser,
+axe, native-provider, resource, or release scopes.
+
+For pure build-controller failure-path unit tests, isolate the external disk-space input when
+the test is intended to reach a mocked build or stop failure. Keep separate tests of the real
+4 GiB admission and 1 GiB stop boundaries. Synthetic available space in a unit fixture never
+establishes actual build admission or resource acceptance. R-ASTRA-121's failed 54e canonical
+run and narrow test-only repair are preserved in the F6 canonical disk-seam checkpoint in
+`MVP-PLAN.md`; a fresh complete aggregate remains required.
+
+For R-ASTRA-121 Unix-socket test failures, preflight the complete encoded socket path under a
+unique short task-owned temporary root before a full run. Preserve a failed or interrupted
+canonical result; a focused short-path pass is diagnostic evidence and cannot replace it. Keep
+pytest terminal and JUnit totals separately bound, and fail closed when their counts disagree.
+Before creating task-local build context on removable media, verify the mounted filesystem UUID;
+require 4 GiB free at admission, monitor the mount during the operation, and stop below 1 GiB.
+Use mode 0700 for private audit scratch directories and mode 0600 for private audit receipts,
+with child umask 022. Preserve Git-tracked source-context modes, including executable bits; do not
+apply private receipt modes to materialized source files. Keep an approved setup receipt unchanged
+and pair it with a separate exact helper-source binding and review plus a successful build receipt
+bound to those inputs. The setup receipt alone proves setup, not helper contents or build completion.
+
+For the R121 bounded-timeout recovery tuple, require an explicit null
+`reservation_verification_error`, the exact unverified backend/error and singleton secondary
+error, and true historical tag/inventory observations. Fresh same-generation stopped PID-zero,
+empty-cgroup and current protected-inventory checks remain mandatory before typed reservation
+release; historical failure receipts are immutable. Completed build-step history or cache presence
+does not establish a completed image or native assistant acceptance.
+
+
+For ARM64 transient-image cleanup, retain every in-flight ledger reservation. An absent tag or
+terminated Docker CLI does not prove that the shared BuildKit backend has finished. Both cleanup
+planning and acknowledgement must fail closed on an in-flight row; completed-image cleanup keeps
+its exact-ID/receipt/absence checks. Release an unfinished reservation only through a separately
+reviewed typed recovery with fresh backend-completion evidence; the local-current recovery command
+is not authorization to reconcile ARM64 transient rows.

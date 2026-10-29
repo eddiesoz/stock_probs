@@ -110,6 +110,7 @@ def test_worker_environment_pins_every_writable_runtime_path_under_private_home(
     assert environment["XDG_CACHE_HOME"] == "/run/assistant-worker-home/cache"
     assert environment["TMPDIR"] == "/run/assistant-worker-home/tmp"
     assert environment["BUN_OPTIONS"] == "--smol"
+    assert environment["STOCK_PROBS_MANAGED_ASSISTANT"] == "1"
     assert set(environment) == {
         "HOME",
         "XDG_CONFIG_HOME",
@@ -124,6 +125,7 @@ def test_worker_environment_pins_every_writable_runtime_path_under_private_home(
         "OPENCODE_SERVER_PASSWORD",
         "OPENCODE_SERVER_USERNAME",
         "OPENCODE_ASSISTANT_OAUTH_HANDOFF",
+        "STOCK_PROBS_MANAGED_ASSISTANT",
     }
     assert environment["OPENCODE_ASSISTANT_OAUTH_HANDOFF"] == "1"
 
@@ -222,7 +224,7 @@ def test_fixed_v2_config_is_closed_and_matches_only_the_backend_tool_catalog() -
         "input": ["text"],
         "output": ["text"],
     }
-    assert provider["settings"]["baseURL"] == request["proxy_base_url"]
+    assert provider["settings"]["baseURL"] == str(request["proxy_base_url"]) + "/v1"
     assert provider["headers"] == {"Authorization": "Bearer " + str(request["proxy_capability"])}
     assert "apiKey" not in provider.get("settings", {})
     assert "provider" not in config
@@ -377,6 +379,10 @@ def test_native_build_receipt_pins_current_manifest_guard_and_oauth_test_bytes()
         "wrong_binary_size",
         "wrong_target_arch",
         "wrong_bun_archive",
+        "read_source_sha256",
+        "read_patched_sha256",
+        "shell_source_sha256",
+        "shell_patched_sha256",
         "duplicate_key",
     ),
 )
@@ -399,6 +405,13 @@ def test_native_build_receipt_rejects_drift_and_ambiguous_json(
         receipt["target_arch"] = "arm64" if receipt["target_arch"] == "amd64" else "amd64"
     elif mutation == "wrong_bun_archive":
         receipt["bun_archive_sha256"] = "0" * 64
+    elif mutation in {
+        "read_source_sha256",
+        "read_patched_sha256",
+        "shell_source_sha256",
+        "shell_patched_sha256",
+    }:
+        receipt[mutation] = "0" * 64
     raw = json.dumps(receipt)
     if mutation == "duplicate_key":
         raw = raw.replace('"schema_version": 1', '"schema_version": 1, "schema_version": 1', 1)
@@ -735,6 +748,11 @@ def test_fixed_v2_config_uses_only_the_selected_closed_native_adapter(
     assert config["model"] == f"{native_provider_id}/assistant-selected"
     assert list(config["providers"]) == [native_provider_id]
     assert provider["package"] == package_id
+    # The pinned OpenAI SDK appends /responses directly; the other SDKs own their prefixes.
+    expected_base = "http://127.0.0.1:8000/api/v1/assistant/internal/provider/" + "a" * 32
+    if adapter_id == "openai-responses":
+        expected_base += "/v1"
+    assert provider["settings"]["baseURL"] == expected_base
     assert provider["headers"] == {"Authorization": "Bearer " + "b" * 48}
     assert provider["models"]["assistant-selected"]["modelID"] == "assistant-selected"
     assert provider["models"]["assistant-selected"]["capabilities"]["tools"] is True

@@ -108,6 +108,74 @@ def test_worker_unavailability_does_not_fail_application_readiness(settings):
     assert "private worker diagnostic" not in response.text
 
 
+@pytest.mark.parametrize("origin", [None, "http://127.0.0.1"])
+@pytest.mark.parametrize(
+    "health_path,expected_status",
+    [("/api/v1/health", "ok"), ("/api/v1/readiness", "ready")],
+)
+def test_waiting_session_auth_does_not_block_application_health(
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    origin: str | None,
+    health_path: str,
+    expected_status: str,
+) -> None:
+    """A synchronous auth I/O wait must not stall the shared application event loop."""
+
+    import asyncio
+    import threading
+
+    import httpx
+    from fastapi import Request
+    from fastapi.responses import JSONResponse, Response
+
+    from stock_probs.api import LocalSecurityMiddleware
+
+    entered = threading.Event()
+    release = threading.Event()
+    auth_returned = threading.Event()
+    original = LocalSecurityMiddleware._authenticate_request
+
+    def delayed_auth(middleware: LocalSecurityMiddleware, request: Request) -> Response | None:
+        if request.url.path != "/api/v1/history":
+            return original(middleware, request)
+        entered.set()
+        release.wait(timeout=1.0)
+        auth_returned.set()
+        return JSONResponse(status_code=403, content={"error": {"code": "fixture_auth_denied"}})
+
+    monkeypatch.setattr(LocalSecurityMiddleware, "_authenticate_request", delayed_auth)
+    application = create_app(settings, FixtureProvider())
+    headers = {"Origin": origin} if origin is not None else {}
+
+    async def exercise() -> None:
+        async with (
+            application.router.lifespan_context(application),
+            httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=application), base_url="http://127.0.0.1"
+            ) as concurrent,
+        ):
+            protected = asyncio.create_task(concurrent.get("/api/v1/history", headers=headers))
+            try:
+                assert await asyncio.to_thread(entered.wait, 2.0)
+                health = await asyncio.wait_for(
+                    concurrent.get(health_path, headers=headers), timeout=2.0
+                )
+                assert health.status_code == 200
+                assert health.json()["status"] == expected_status
+                if health_path == "/api/v1/readiness":
+                    assert health.json()["schema_version"] == SCHEMA_VERSION
+                assert "default-src 'self'" in health.headers["content-security-policy"]
+                assert not auth_returned.is_set()
+            finally:
+                release.set()
+                denied = await asyncio.wait_for(protected, timeout=2.0)
+            assert denied.status_code == 403
+            assert denied.json() == {"error": {"code": "fixture_auth_denied"}}
+
+    asyncio.run(exercise())
+
+
 def test_readiness_is_fail_closed_until_lifespan_startup(settings):
     application = create_app(settings, FixtureProvider())
     not_started = TestClient(application)
@@ -917,6 +985,7 @@ def test_news_rejects_invalid_unknown_and_duplicate_query_fields(client, monkeyp
     [
         ("provider_unavailable", "provider_unavailable", 502),
         ("provider_news_invalid", "provider_unavailable", 502),
+        ("provider_unavailable", "provider_unavailable", 503),
         ("provider_busy", "provider_busy", 503),
     ],
 )
@@ -936,6 +1005,14 @@ def test_news_preserves_safe_provider_statuses(
 
     assert response.status_code == status
     assert response.json()["error"]["code"] == public_code
+    if public_code == "provider_busy":
+        assert response.json()["error"]["message"] == (
+            "News retrieval capacity is busy; try again shortly."
+        )
+    else:
+        assert response.json()["error"]["message"] == (
+            "The news provider is temporarily unavailable."
+        )
     assert "upstream.invalid" not in response.text
     assert "/home/user" not in response.text
 

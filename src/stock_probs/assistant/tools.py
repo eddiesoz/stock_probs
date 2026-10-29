@@ -1053,6 +1053,17 @@ class AssistantToolGateway:
             execution_id = lease.get("execution_id")
             if not all(isinstance(item, str) for item in (conversation_id, turn_id, execution_id)):
                 raise AssistantUnavailable("session_revoked", 403)
+            turn = self.assistant.storage.get_turn(user_id, str(conversation_id), str(turn_id))
+            policy = self.assistant.policy(str(turn["model_id"]), owner_id=user_id)
+            if policy.policy_version != turn["policy_version"]:
+                raise AssistantUnavailable("session_revoked", 403)
+            write_guard = self.assistant._runtime_write_guard(
+                str(execution_id),
+                str(turn["model_id"]),
+                policy,
+                str(turn["context_version"]),
+                owner_id=user_id,
+            )
             event_type, card = self.assistant._normalize_runtime_event(
                 "proposed_action",
                 {"action_type": action_type, "payload": payload},
@@ -1060,6 +1071,7 @@ class AssistantToolGateway:
                 str(conversation_id),
                 str(turn_id),
                 execution_id=str(execution_id),
+                write_guard=write_guard,
             )
             self.assistant.storage.append_event(
                 user_id,
@@ -1068,6 +1080,7 @@ class AssistantToolGateway:
                 event_type=event_type,
                 data=card,
                 now=self.assistant.now(),
+                write_guard=write_guard,
             )
             # Do not return the browser-only confirmation phrase to the model. The persisted
             # event reaches the owner-scoped UI, and only its same-session UI may approve it.

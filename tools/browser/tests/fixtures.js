@@ -6,6 +6,8 @@ const path = require("node:path");
 const fs = require("node:fs/promises");
 
 const root = path.resolve(__dirname, "../../..");
+const READINESS_TIMEOUT_MS = 30_000;
+const READINESS_REQUEST_TIMEOUT_MS = 1_000;
 
 async function freeLoopbackPort() {
   const server = net.createServer();
@@ -19,18 +21,27 @@ async function freeLoopbackPort() {
 }
 
 async function waitForReadiness(url, processState, label) {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + READINESS_TIMEOUT_MS;
   while (Date.now() < deadline) {
     if (processState.exit !== null) {
       throw new Error(`${label} exited early (${processState.exit}): ${processState.stderr}`);
     }
     try {
-      const response = await fetch(`${url}/api/v1/readiness`);
-      if (response.ok) return;
+      const requestTimeoutMs = Math.max(1, Math.min(READINESS_REQUEST_TIMEOUT_MS, deadline - Date.now()));
+      const response = await fetch(`${url}/api/v1/readiness`, {
+        signal: AbortSignal.timeout(requestTimeoutMs),
+      });
+      if (response.ok && processState.exit === null && Date.now() < deadline) return;
     } catch (_) {
       // A refused connection is expected while the local process binds its loopback port.
     }
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    if (processState.exit !== null) {
+      throw new Error(`${label} exited early (${processState.exit}): ${processState.stderr}`);
+    }
+    const remainingMs = deadline - Date.now();
+    if (remainingMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(50, remainingMs)));
+    }
   }
   throw new Error(`${label} did not become ready: ${processState.stderr}`);
 }
@@ -61,10 +72,18 @@ async function launchApplication(testInfo, runtimeName, pythonArguments, label, 
       stdio: ["ignore", "ignore", "pipe"],
     });
     const runningChild = child;
+    // Keep actual fixture ports and PIDs in the existing bounded runner log for cleanup review.
+    console.log(JSON.stringify({
+      qa_fixture_lifecycle: "started", runtime: runtimeName, port, pid: runningChild.pid ?? null,
+    }));
     runningChild.stderr.on("data", (chunk) => {
       processState.stderr = `${processState.stderr}${chunk}`.slice(-16_384);
     });
-    runningChild.once("exit", (code) => {
+    runningChild.once("exit", (code, signal) => {
+      console.log(JSON.stringify({
+        qa_fixture_lifecycle: "exited", runtime: runtimeName, port, pid: runningChild.pid ?? null,
+        code, signal: signal ?? null,
+      }));
       processState.exit = code;
       if (child === runningChild) child = null;
     });
@@ -108,7 +127,7 @@ async function launchApplication(testInfo, runtimeName, pythonArguments, label, 
 
 exports.expect = base.expect;
 exports.test = base.test.extend({
-  browserDiagnostics: [async ({ page }, use) => {
+  browserDiagnostics: [async ({ page }, use, testInfo) => {
     const consoleErrors = [];
     const pageErrors = [];
     const failedResponses = [];
@@ -205,6 +224,38 @@ exports.test = base.test.extend({
         },
       });
     } finally {
+      if (testInfo.status !== testInfo.expectedStatus) {
+        let observationTimer;
+        const observation = page.evaluate(() => new Promise((resolve) => {
+          const started = performance.now();
+          const state = { visibility: document.visibilityState, focused: document.hasFocus(), ready: document.readyState };
+          let frames = 0;
+          let frameRequest;
+          const finish = () => {
+            clearTimeout(timer);
+            cancelAnimationFrame(frameRequest);
+            resolve({ ...state, frames, elapsed_ms: performance.now() - started });
+          };
+          const timer = setTimeout(finish, 250);
+          const frame = () => {
+            frames += 1;
+            if (frames === 2) finish();
+            else frameRequest = requestAnimationFrame(frame);
+          };
+          frameRequest = requestAnimationFrame(frame);
+        })).then((state) => ({ status: "observed", ...state }), () => ({ status: "unavailable", reason: "page_evaluation_failed" }));
+        const state = await Promise.race([
+          observation,
+          new Promise((resolve) => {
+            observationTimer = setTimeout(() => resolve({ status: "unavailable", reason: "page_evaluation_deadline" }), 500);
+          }),
+        ]);
+        clearTimeout(observationTimer);
+        await testInfo.attach("browser-action-frame-state.json", {
+          body: Buffer.from(JSON.stringify({ stage: "after_test_failure", page_observation_ms: 250, host_deadline_ms: 500, ...state })),
+          contentType: "application/json",
+        });
+      }
       // Let Chromium deliver the resource console event paired with the final HTTP response.
       await new Promise((resolve) => setTimeout(resolve, 25));
       const expectedHttp = expand(expectedHttpFailures).sort((a, b) => diagnosticKey(a).localeCompare(diagnosticKey(b)));
@@ -289,7 +340,16 @@ exports.test = base.test.extend({
     try {
       await use({ url: application.url, logs: application.logs });
     } finally {
-      await application.stop();
+      try {
+        if (testInfo.status !== testInfo.expectedStatus || process.env.STOCK_PROBS_BROWSER_LOCK_DIAGNOSTIC === "1") {
+          await testInfo.attach("assistant-fixture-stderr", {
+            body: Buffer.from(application.logs(), "utf8"),
+            contentType: "text/plain",
+          });
+        }
+      } finally {
+        await application.stop();
+      }
     }
   },
   unexpectedFailureApplication: async ({}, use, testInfo) => {

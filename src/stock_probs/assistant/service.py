@@ -11,8 +11,8 @@ import math
 import re
 import secrets
 import threading
-from collections.abc import Awaitable, Callable, Mapping
-from contextlib import suppress
+from collections.abc import Awaitable, Callable, Iterator, Mapping
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
@@ -45,9 +45,11 @@ from stock_probs.assistant.storage import (
     ASSISTANT_TOOLS_PER_TURN,
     ASSISTANT_TURN_SECONDS,
     ASSISTANT_USER_HISTORY_LIMIT,
+    AssistantRuntimeWriteGuard,
     AssistantStorage,
     AssistantStorageConflict,
     AssistantStorageError,
+    AssistantStorageExecutionStale,
     AssistantStorageNotFound,
     AssistantStorageQuotaExceeded,
 )
@@ -216,6 +218,8 @@ class AssistantService:
         self.backups = backups
         self.clock = clock or (lambda: datetime.now(UTC))
         self._tasks: dict[str, asyncio.Task[None]] = {}
+        self._storage_tasks: set[asyncio.Task[Any]] = set()
+        self._lifecycle_generation = 0
         self._execution_by_turn: dict[str, str] = {}
         self._emitters: dict[str, Any] = {}
         self._search_waiters: dict[str, asyncio.Future[str | None]] = {}
@@ -303,7 +307,7 @@ class AssistantService:
             if not isinstance(model_id, str) or model_id in seen:
                 continue
             try:
-                model = get_owner_model(model_id, owner_id=owner_id)
+                model = await self._policy_projection(get_owner_model, model_id, owner_id=owner_id)
             except ProviderUnavailable:
                 model = None
             if model is None:
@@ -373,11 +377,13 @@ class AssistantService:
     async def close(self) -> None:
         """Cancel active local work and erase ephemeral runtime conversation references."""
 
+        self._lifecycle_generation += 1
         tasks = list(self._tasks.values())
         for task in tasks:
             task.cancel()
-        if tasks:
-            await asyncio.wait(tasks, timeout=2.0)
+        pending = [*tasks, *self._storage_tasks]
+        if pending:
+            await asyncio.wait(pending, timeout=2.0)
         closer = getattr(self.runtime, "close", None)
         if callable(closer):
             await self._bounded_runtime_call(closer, timeout=2.0)
@@ -725,10 +731,16 @@ class AssistantService:
         model_inventory: tuple[object, ...] | list[object] | None = None,
         owner_id: int | None = None,
     ) -> AssistantModelPolicy:
+        selected_inventory = tuple(
+            raw
+            for raw in self._raw_models(model_inventory)
+            if (mapping := self._model_mapping(raw)) is not None
+            and mapping.get("model_id", mapping.get("id")) == model_id
+        )
         policy = next(
             (
                 item
-                for item in self.model_policies(model_inventory, owner_id=owner_id)
+                for item in self.model_policies(selected_inventory, owner_id=owner_id)
                 if item.model_id == model_id
             ),
             None,
@@ -1118,11 +1130,14 @@ class AssistantService:
     ) -> dict[str, object]:
         """Stop one owner turn and close its durable slot even when the worker is unavailable."""
 
-        self.require_access(context)
-        turn = self.storage.get_turn(context.user.id, conversation_id, turn_id)
-        if turn["status"] not in {"queued", "running"}:
-            raise AssistantStorageConflict("turn_not_active")
-        lease = self.storage.execution_for_turn(context.user.id, conversation_id, turn_id)
+        def prepare_cancellation():
+            self.require_access(context)
+            turn = self.storage.get_turn(context.user.id, conversation_id, turn_id)
+            if turn["status"] not in {"queued", "running"}:
+                raise AssistantStorageConflict("turn_not_active")
+            return self.storage.execution_for_turn(context.user.id, conversation_id, turn_id)
+
+        lease = await self._storage_call(prepare_cancellation)
         if lease and lease.get("status") == "active":
             execution_id = str(lease["execution_id"])
             self._cancel_webfetch_waiters(execution_id)
@@ -1133,16 +1148,22 @@ class AssistantService:
             if task is not None and not task.done():
                 task.cancel()
                 await asyncio.wait({task}, timeout=2.0)
-            self.storage.close_execution(execution_id, now=self.now(), revoked=True)
-            self.storage.set_turn_status(
-                context.user.id,
-                conversation_id,
-                turn_id,
-                status="cancelled",
-                now=self.now(),
-                error_code="turn_cancelled",
-            )
-        updated = self.storage.get_turn(context.user.id, conversation_id, turn_id)
+
+            def retire_cancelled_execution():
+                self.storage.close_execution(execution_id, now=self.now(), revoked=True)
+                self.storage.set_turn_status(
+                    context.user.id,
+                    conversation_id,
+                    turn_id,
+                    status="cancelled",
+                    now=self.now(),
+                    error_code="turn_cancelled",
+                )
+
+            await self._storage_call(retire_cancelled_execution)
+        updated = await self._storage_call(
+            self.storage.get_turn, context.user.id, conversation_id, turn_id
+        )
         return {"turn_id": turn_id, "status": updated["status"]}
 
     async def delete_conversation(
@@ -1155,19 +1176,23 @@ class AssistantService:
     ) -> dict[str, object]:
         """Stop ephemeral work, clear its runtime cache, then purge the exact owner chat."""
 
-        self.require_access(context)
-        # Reject stale requests before cancelling a turn or asking the native worker to purge.
-        # The storage deletion transaction repeats this owner/revision/phrase check after the
-        # asynchronous cache-clear boundary to protect against concurrent changes.
-        self.storage.validate_conversation_delete(
-            context.user.id,
-            conversation_id,
-            expected_revision=expected_revision,
-            confirmation_phrase=confirmation_phrase,
-        )
-        execution_ids = self.storage.active_conversation_executions(
-            context.user.id, conversation_id
-        )
+        def prepare_deletion():
+            self.require_access(context)
+            # Reject stale requests before cancelling a turn or asking the native worker to purge.
+            # The storage deletion transaction repeats this owner/revision/phrase check after the
+            # asynchronous cache-clear boundary to protect against concurrent changes.
+            self.storage.validate_conversation_delete(
+                context.user.id,
+                conversation_id,
+                expected_revision=expected_revision,
+                confirmation_phrase=confirmation_phrase,
+            )
+            execution_ids = self.storage.active_conversation_executions(
+                context.user.id, conversation_id
+            )
+            return execution_ids
+
+        execution_ids = await self._storage_call(prepare_deletion)
         for execution_id in execution_ids:
             cancel_runtime = getattr(self.runtime, "cancel_execution", None)
             if callable(cancel_runtime):
@@ -1180,23 +1205,31 @@ class AssistantService:
             for task in active_tasks:
                 task.cancel()
             await asyncio.wait(active_tasks, timeout=2.0)
-        for execution_id in execution_ids:
-            lease = self.storage.execution_lease(execution_id)
-            if lease is None:
-                continue
-            with suppress(AssistantStorageError):
-                self.storage.close_execution(execution_id, now=self.now(), revoked=True)
-                self.storage.set_turn_status(
-                    int(lease["user_id"]),
-                    conversation_id,
-                    str(lease["turn_id"]),
-                    status="cancelled",
-                    now=self.now(),
-                    error_code="turn_cancelled",
-                )
+
+        def retire_deleted_executions():
+            for execution_id in execution_ids:
+                lease = self.storage.execution_lease(execution_id)
+                if lease is None:
+                    continue
+                with suppress(AssistantStorageError):
+                    self.storage.close_execution(execution_id, now=self.now(), revoked=True)
+                    self.storage.set_turn_status(
+                        int(lease["user_id"]),
+                        conversation_id,
+                        str(lease["turn_id"]),
+                        status="cancelled",
+                        now=self.now(),
+                        error_code="turn_cancelled",
+                    )
+
+        await self._storage_call(retire_deleted_executions)
+
         # Cancellation can await; don't start a native cache purge after authority expires.
-        current = self._require_live_action_context(context, requires_admin_step_up=False)
-        self.require_access(current)
+        def require_current_access():
+            current = self._require_live_action_context(context, requires_admin_step_up=False)
+            self.require_access(current)
+
+        await self._storage_call(require_current_access)
         clear = getattr(self.runtime, "clear_conversation_cache", None)
         if (
             not callable(clear)
@@ -1211,16 +1244,20 @@ class AssistantService:
             is not True
         ):
             raise AssistantUnavailable("assistant_cache_clear_pending", 503)
+
         # Cache clearing is an await boundary; recheck live access before deleting persistent chat.
-        current = self._require_live_action_context(context, requires_admin_step_up=False)
-        self.require_access(current)
-        return self.storage.delete_conversation(
-            context.user.id,
-            conversation_id,
-            expected_revision=expected_revision,
-            confirmation_phrase=confirmation_phrase,
-            deleted_at=self.now(),
-        )
+        def delete_current_conversation():
+            current = self._require_live_action_context(context, requires_admin_step_up=False)
+            self.require_access(current)
+            return self.storage.delete_conversation(
+                context.user.id,
+                conversation_id,
+                expected_revision=expected_revision,
+                confirmation_phrase=confirmation_phrase,
+                deleted_at=self.now(),
+            )
+
+        return await self._storage_call(delete_current_conversation)
 
     def _validate_action_target(
         self, user_id: int, action_type: str, payload: Mapping[str, object]
@@ -1697,58 +1734,76 @@ class AssistantService:
         """Pause one search until its exact query is approved in the same browser conversation."""
 
         self._validate_prompt(query)
-        try:
-            turn = self.storage.get_turn(
+
+        def prepare_preview():
+            try:
+                turn = self.storage.get_turn(
+                    runtime_context.user_id,
+                    runtime_context.conversation_id,
+                    runtime_context.turn_id,
+                )
+                if (
+                    turn.get("status") != "running"
+                    or turn.get("model_id") != runtime_context.model_id
+                    or turn.get("context_version") != runtime_context.context_version
+                ):
+                    return None
+                lease = self.storage.authorize_tool_call(
+                    runtime_context.execution_id,
+                    runtime_context.capability,
+                    now=self.now(),
+                    marks_private_read=False,
+                )
+            except AssistantStorageError:
+                return None
+            if (
+                int(lease.get("user_id", 0)) != runtime_context.user_id
+                or lease.get("conversation_id") != runtime_context.conversation_id
+                or lease.get("turn_id") != runtime_context.turn_id
+                or lease.get("context_version") != runtime_context.context_version
+                or not self.validate_execution_session(lease)
+                or not self._execution_current(
+                    runtime_context.user_id,
+                    runtime_context.execution_id,
+                    str(turn["model_id"]),
+                    str(turn["policy_version"]),
+                )
+            ):
+                raise AssistantUnavailable("session_revoked", 403)
+            # Prompt text, durable chat history, page context, and prior receipts can all carry
+            # private data before an MCP read occurs. The safe default therefore previews every
+            # builtin web request; only a future server-derived fixed public-symbol query may use
+            # a separately typed exemption.
+            policy = self.policy(runtime_context.model_id, owner_id=runtime_context.user_id)
+            if policy.policy_version != turn["policy_version"]:
+                raise AssistantUnavailable("session_revoked", 403)
+            preview = self.storage.create_search_preview(
                 runtime_context.user_id,
                 runtime_context.conversation_id,
                 runtime_context.turn_id,
-            )
-            if (
-                turn.get("status") != "running"
-                or turn.get("model_id") != runtime_context.model_id
-                or turn.get("context_version") != runtime_context.context_version
-            ):
-                return None
-            lease = self.storage.authorize_tool_call(
                 runtime_context.execution_id,
-                runtime_context.capability,
+                query_text=query,
+                context_version=runtime_context.context_version,
+                confirmation_phrase="",
+                write_guard=self._runtime_write_guard(
+                    runtime_context.execution_id,
+                    runtime_context.model_id,
+                    policy,
+                    runtime_context.context_version,
+                    owner_id=runtime_context.user_id,
+                ),
                 now=self.now(),
-                marks_private_read=False,
+                expires_at=min(
+                    self.now() + timedelta(seconds=ASSISTANT_TURN_SECONDS),
+                    datetime.fromisoformat(str(lease["expires_at"])).astimezone(UTC),
+                ),
             )
-        except AssistantStorageError:
+            return preview, lease
+
+        prepared = await self._storage_call(prepare_preview)
+        if prepared is None:
             return None
-        if (
-            int(lease.get("user_id", 0)) != runtime_context.user_id
-            or lease.get("conversation_id") != runtime_context.conversation_id
-            or lease.get("turn_id") != runtime_context.turn_id
-            or lease.get("context_version") != runtime_context.context_version
-            or not self.validate_execution_session(lease)
-            or not self._execution_current(
-                runtime_context.user_id,
-                runtime_context.execution_id,
-                str(turn["model_id"]),
-                str(turn["policy_version"]),
-            )
-        ):
-            raise AssistantUnavailable("session_revoked", 403)
-        # Prompt text, durable chat history, page context, and prior receipts can all carry
-        # private data before an MCP read occurs. The safe default therefore previews every
-        # builtin web request; only a future server-derived fixed public-symbol query may use
-        # a separately typed exemption.
-        preview = self.storage.create_search_preview(
-            runtime_context.user_id,
-            runtime_context.conversation_id,
-            runtime_context.turn_id,
-            runtime_context.execution_id,
-            query_text=query,
-            context_version=runtime_context.context_version,
-            confirmation_phrase="",
-            now=self.now(),
-            expires_at=min(
-                self.now() + timedelta(seconds=ASSISTANT_TURN_SECONDS),
-                datetime.fromisoformat(str(lease["expires_at"])).astimezone(UTC),
-            ),
-        )
+        preview, lease = prepared
         preview_id = str(preview["id"])
         phrase = str(preview["confirmation_phrase"])
         future: asyncio.Future[str | None] = asyncio.get_running_loop().create_future()
@@ -1777,9 +1832,27 @@ class AssistantService:
                         - self.now()
                     ).total_seconds(),
                 )
-                return await asyncio.wait_for(
+                deadline = asyncio.get_running_loop().time() + min(
+                    ASSISTANT_TURN_SECONDS, remaining
+                )
+                approved = await asyncio.wait_for(
                     asyncio.shield(future), timeout=min(ASSISTANT_TURN_SECONDS, remaining)
                 )
+                if approved != query or not await self._storage_call(
+                    self._execution_current,
+                    runtime_context.user_id,
+                    runtime_context.execution_id,
+                    runtime_context.model_id,
+                    runtime_context.policy_version,
+                ):
+                    return None
+                if (
+                    asyncio.get_running_loop().time() >= deadline
+                    or self.now()
+                    >= datetime.fromisoformat(str(lease["expires_at"])).astimezone(UTC)
+                ):
+                    return None
+                return approved
             except TimeoutError:
                 return None
         finally:
@@ -1803,42 +1876,49 @@ class AssistantService:
         validated_url = validate_webfetch_url(url)
         if validated_url != url:
             return None
-        try:
-            turn = self.storage.get_turn(
-                runtime_context.user_id,
-                runtime_context.conversation_id,
-                runtime_context.turn_id,
-            )
-            if (
-                turn.get("status") != "running"
-                or turn.get("model_id") != runtime_context.model_id
-                or turn.get("policy_version") != runtime_context.policy_version
-                or turn.get("context_version") != runtime_context.context_version
-            ):
+
+        def authorize_preview() -> dict[str, object] | None:
+            try:
+                turn = self.storage.get_turn(
+                    runtime_context.user_id,
+                    runtime_context.conversation_id,
+                    runtime_context.turn_id,
+                )
+                if (
+                    turn.get("status") != "running"
+                    or turn.get("model_id") != runtime_context.model_id
+                    or turn.get("policy_version") != runtime_context.policy_version
+                    or turn.get("context_version") != runtime_context.context_version
+                ):
+                    return None
+                lease = self.storage.authorize_tool_call(
+                    runtime_context.execution_id,
+                    runtime_context.capability,
+                    now=self.now(),
+                    marks_private_read=False,
+                )
+            except AssistantStorageError:
                 return None
-            lease = self.storage.authorize_tool_call(
-                runtime_context.execution_id,
-                runtime_context.capability,
-                now=self.now(),
-                marks_private_read=False,
-            )
-        except AssistantStorageError:
+            if (
+                int(lease.get("user_id", 0)) != runtime_context.user_id
+                or lease.get("conversation_id") != runtime_context.conversation_id
+                or lease.get("turn_id") != runtime_context.turn_id
+                or lease.get("session_id") is None
+                or lease.get("context_version") != runtime_context.context_version
+                or not self.validate_execution_session(lease)
+                or not self._execution_current(
+                    runtime_context.user_id,
+                    runtime_context.execution_id,
+                    runtime_context.model_id,
+                    runtime_context.policy_version,
+                )
+            ):
+                raise AssistantUnavailable("session_revoked", 403)
+            return lease
+
+        lease = await asyncio.to_thread(authorize_preview)
+        if lease is None:
             return None
-        if (
-            int(lease.get("user_id", 0)) != runtime_context.user_id
-            or lease.get("conversation_id") != runtime_context.conversation_id
-            or lease.get("turn_id") != runtime_context.turn_id
-            or lease.get("session_id") is None
-            or lease.get("context_version") != runtime_context.context_version
-            or not self.validate_execution_session(lease)
-            or not self._execution_current(
-                runtime_context.user_id,
-                runtime_context.execution_id,
-                runtime_context.model_id,
-                runtime_context.policy_version,
-            )
-        ):
-            raise AssistantUnavailable("session_revoked", 403)
         try:
             lease_expiry = datetime.fromisoformat(str(lease["expires_at"])).astimezone(UTC)
         except (KeyError, TypeError, ValueError):
@@ -1898,7 +1978,8 @@ class AssistantService:
                 await asyncio.wait({future}, timeout=min(1.0, remaining))
                 if future.done():
                     break
-                if not self._execution_current(
+                if not await asyncio.to_thread(
+                    self._execution_current,
                     runtime_context.user_id,
                     runtime_context.execution_id,
                     runtime_context.model_id,
@@ -1906,12 +1987,15 @@ class AssistantService:
                 ):
                     return None
             approved = future.result()
-            if approved != url or not self._execution_current(
+            if approved != url or not await asyncio.to_thread(
+                self._execution_current,
                 runtime_context.user_id,
                 runtime_context.execution_id,
                 runtime_context.model_id,
                 runtime_context.policy_version,
             ):
+                return None
+            if loop.time() >= deadline or self.now() >= expires_at:
                 return None
             return url
         finally:
@@ -2315,12 +2399,23 @@ class AssistantService:
             event_data["provider"] = provider
         if as_of is not None:
             event_data["as_of"] = as_of
+        turn = self.storage.get_turn(user_id, conversation_id, turn_id)
+        policy = self.policy(str(turn["model_id"]), owner_id=user_id)
+        if policy.policy_version != turn["policy_version"]:
+            raise AssistantUnavailable("session_revoked", 403)
         return self.storage.append_tool_receipt(
             user_id,
             conversation_id,
             turn_id,
             data=event_data,
             sources=source_candidates,
+            write_guard=self._runtime_write_guard(
+                str(lease["execution_id"]),
+                str(turn["model_id"]),
+                policy,
+                context_version,
+                owner_id=user_id,
+            ),
             now=self.now(),
         )
 
@@ -2357,76 +2452,219 @@ class AssistantService:
     ) -> dict[str, object]:
         """Persist an explicitly requested turn and run it only in isolated local runtime."""
 
+        generation = self._lifecycle_generation
         self.require_access(context)
         await self._ensure_runtime_ready()
         prompt = self._validate_prompt(prompt)
-        canonical_context = self.validate_context(context.user.id, page_context)
+        canonical_context = await asyncio.to_thread(
+            self.validate_context, context.user.id, page_context
+        )
         if not context_preview_accepted:
             raise AssistantUnavailable("context_preview_required", 409)
-        inventory = await self.ensure_model_inventory(
-            minimum_validity_seconds=120.0,
-            owner_id=context.user.id,
-            authorization_check=lambda: self._assistant_session_is_live(
+
+        async def session_is_live() -> bool:
+            return await asyncio.to_thread(
+                self._assistant_session_is_live,
                 context.user.id,
                 context.session_id,
                 context.token_hash,
                 expected_csrf_hash=context.csrf_token_hash,
-            ),
+            )
+
+        inventory = await self.ensure_model_inventory(
+            minimum_validity_seconds=120.0,
+            owner_id=context.user.id,
+            authorization_check=session_is_live,
         )
-        policy = self.policy(model_id, model_inventory=inventory, owner_id=context.user.id)
-        if policy.policy_version != policy_version:
-            raise AssistantStorageConflict("policy_version")
-        consent = self.storage.current_consent(context.user.id, model_id, policy_version)
-        if not consent or not consent.get("accepted_terms"):
-            raise AssistantConsentRequired()
-        if policy.training and not consent.get("data_collection_opt_in"):
-            raise AssistantConsentRequired()
-        if bool(consent.get("data_collection_opt_in")) and not policy.data_collection_allowed:
-            raise AssistantStorageConflict("policy_changed")
         capability = secrets.token_urlsafe(36)
-        now = self.now()
-        # Readiness and inventory refresh can await; bind persistence to the still-live session.
-        if not self._assistant_session_is_live(
-            context.user.id,
-            context.session_id,
-            context.token_hash,
-            expected_csrf_hash=context.csrf_token_hash,
-        ):
-            raise AssistantUnavailable("assistant_authorization_required", 403)
-        record = self.storage.create_turn(
-            context.user.id,
-            conversation_id,
-            prompt=prompt,
-            model_id=model_id,
-            policy_version=policy_version,
-            context=canonical_context,
-            context_version=str(canonical_context["context_version"]),
-            session_id=context.session_id,
-            session_token_hash=context.token_hash,
-            capability=capability,
-            now=now,
-            expires_at=now + timedelta(seconds=ASSISTANT_TURN_SECONDS),
-        )
-        turn_id = str(record["id"])
-        execution_id = str(record["execution_id"])
-        task = asyncio.create_task(
-            self._run_turn(
-                context=context,
-                conversation_id=conversation_id,
-                turn_id=turn_id,
-                execution_id=execution_id,
-                capability=capability,
-                model_id=model_id,
-                policy=policy,
+
+        def persist_turn() -> tuple[dict[str, object], AssistantModelPolicy]:
+            policy = self.policy(model_id, model_inventory=inventory, owner_id=context.user.id)
+            if policy.policy_version != policy_version:
+                raise AssistantStorageConflict("policy_version")
+            consent = self.storage.current_consent(context.user.id, model_id, policy_version)
+            if not consent or not consent.get("accepted_terms"):
+                raise AssistantConsentRequired()
+            if policy.training and not consent.get("data_collection_opt_in"):
+                raise AssistantConsentRequired()
+            if bool(consent.get("data_collection_opt_in")) and not policy.data_collection_allowed:
+                raise AssistantStorageConflict("policy_changed")
+            now = self.now()
+            # Readiness and inventory refresh can await; bind persistence to the still-live session.
+            if not self._assistant_session_is_live(
+                context.user.id,
+                context.session_id,
+                context.token_hash,
+                expected_csrf_hash=context.csrf_token_hash,
+            ):
+                raise AssistantUnavailable("assistant_authorization_required", 403)
+            record = self.storage.create_turn(
+                context.user.id,
+                conversation_id,
                 prompt=prompt,
-                canonical_context=canonical_context,
-            ),
-            name=f"assistant-turn-{execution_id}",
-        )
-        async with self._task_lock:
-            self._tasks[execution_id] = task
-        task.add_done_callback(lambda _: self._tasks.pop(execution_id, None))
+                model_id=model_id,
+                policy_version=policy_version,
+                context=canonical_context,
+                context_version=str(canonical_context["context_version"]),
+                session_id=context.session_id,
+                session_token_hash=context.token_hash,
+                capability=capability,
+                now=now,
+                expires_at=now + timedelta(seconds=ASSISTANT_TURN_SECONDS),
+            )
+            return record, policy
+
+        pending = asyncio.create_task(asyncio.to_thread(persist_turn))
+        self._track_storage_operation(pending)
+        try:
+            # Shield the write so cancellation cannot lose the returned lease identity.
+            record, policy = await asyncio.shield(pending)
+            if not await session_is_live():
+                raise AssistantUnavailable("assistant_authorization_required", 403)
+            if not await asyncio.to_thread(
+                self.policy_still_authorized, context.user.id, model_id, policy_version
+            ):
+                raise AssistantConsentRequired()
+            turn_id = str(record["id"])
+            execution_id = str(record["execution_id"])
+            async with self._task_lock:
+                if generation != self._lifecycle_generation:
+                    raise AssistantUnavailable("assistant_worker_unavailable", 503)
+                task = asyncio.create_task(
+                    self._run_turn(
+                        context=context,
+                        conversation_id=conversation_id,
+                        turn_id=turn_id,
+                        execution_id=execution_id,
+                        capability=capability,
+                        model_id=model_id,
+                        policy=policy,
+                        prompt=prompt,
+                        canonical_context=canonical_context,
+                    ),
+                    name=f"assistant-turn-{execution_id}",
+                )
+                self._tasks[execution_id] = task
+                task.add_done_callback(lambda _: self._tasks.pop(execution_id, None))
+        except BaseException:
+            pending.add_done_callback(
+                lambda completed: self._retire_created_turn(
+                    completed, context.user.id, conversation_id
+                )
+            )
+            raise
         return {"turn": {key: value for key, value in record.items() if key != "execution_id"}}
+
+    async def _policy_projection(
+        self, function: Callable[..., Any], *args: object, **kwargs: object
+    ) -> Any:
+        """Admit known provider projections before dispatching work to the executor."""
+
+        authority = getattr(self.providers, "_policy_call", None)
+        if callable(authority):
+            return await authority(
+                lambda: function(*args, **kwargs),
+                authorization_check=kwargs.get("authorization_check"),
+            )
+        return await self._storage_call(function, *args, **kwargs)
+
+    async def _storage_call(self, function: Any, *args: object, **kwargs: object) -> Any:
+        """Keep synchronous storage work off-loop and retain its result through cancellation."""
+
+        pending = asyncio.create_task(asyncio.to_thread(function, *args, **kwargs))
+        self._track_storage_operation(pending)
+        return await asyncio.shield(pending)
+
+    def _track_storage_operation(self, task: asyncio.Task[Any]) -> None:
+        """Retain in-flight database work without cancelling a write's result future."""
+
+        self._storage_tasks.add(task)
+        task.add_done_callback(self._storage_tasks.discard)
+        task.add_done_callback(lambda done: done.exception() if not done.cancelled() else None)
+
+    def _retire_created_turn(
+        self,
+        pending: asyncio.Task[tuple[dict[str, object], AssistantModelPolicy]],
+        user_id: int,
+        conversation_id: str,
+    ) -> None:
+        """Retire a late persisted lease when its request was interrupted before dispatch."""
+
+        try:
+            record, _policy = pending.result()
+        except (Exception, asyncio.CancelledError):
+            return
+        cleanup = asyncio.create_task(
+            asyncio.to_thread(self._cancel_unstarted_turn, user_id, conversation_id, record)
+        )
+        self._track_storage_operation(cleanup)
+
+    def _cancel_unstarted_turn(
+        self, user_id: int, conversation_id: str, record: Mapping[str, object]
+    ) -> None:
+        """Close the exact newly claimed slot without ever starting model generation."""
+
+        try:
+            self.storage.close_execution(str(record["execution_id"]), now=self.now(), revoked=True)
+        finally:
+            self.storage.set_turn_status(
+                user_id,
+                conversation_id,
+                str(record["id"]),
+                status="cancelled",
+                now=self.now(),
+                error_code="turn_cancelled",
+            )
+
+    @contextmanager
+    def _runtime_policy_scope(
+        self, owner_id: int, model_id: str, policy_version: str
+    ) -> Iterator[tuple[tuple[Callable[[], float], float], ...]]:
+        """Validate external policy before storage enters a transaction, never from SQL."""
+
+        scope = getattr(self.providers, "runtime_policy_scope", None)
+        if not callable(scope):
+            if callable(getattr(self.providers, "model_policy_state", None)):
+                raise AssistantStorageExecutionStale("runtime_policy_authority_unavailable")
+            # Static offline catalogs have no provider administration surface to serialize.
+            if self.policy(model_id, owner_id=owner_id).policy_version != policy_version:
+                raise AssistantStorageExecutionStale("runtime_policy_changed")
+            yield ()
+            return
+        try:
+            with scope(model_id, policy_version, owner_id=owner_id) as deadlines:
+                yield deadlines
+        except ProviderUnavailable:
+            raise AssistantStorageExecutionStale("runtime_policy_changed") from None
+
+    def _runtime_write_guard(
+        self,
+        execution_id: str,
+        model_id: str,
+        policy: AssistantModelPolicy,
+        context_version: str,
+        *,
+        owner_id: int,
+    ) -> AssistantRuntimeWriteGuard:
+        """Bind durable output checks to the turn's exact policy and configured rollout."""
+
+        canary_ids = None
+        if self.settings.assistant_rollout_mode == "owner_canary":
+            canary_ids = self.settings.assistant_canary_github_ids or (
+                (self.settings.owner_github_id,) if self.settings.owner_github_id else ()
+            )
+        return AssistantRuntimeWriteGuard(
+            execution_id=execution_id,
+            model_id=model_id,
+            policy_version=policy.policy_version,
+            context_version=context_version,
+            now=self.now,
+            require_data_collection_opt_in=policy.training,
+            canary_github_ids=canary_ids,
+            policy_scope=lambda: self._runtime_policy_scope(
+                owner_id, model_id, policy.policy_version
+            ),
+        )
 
     async def _run_turn(
         self,
@@ -2441,6 +2679,13 @@ class AssistantService:
         prompt: str,
         canonical_context: Mapping[str, object],
     ) -> None:
+        write_guard = self._runtime_write_guard(
+            execution_id,
+            model_id,
+            policy,
+            str(canonical_context["context_version"]),
+            owner_id=context.user.id,
+        )
         generated: list[str] = []
         output_tail = ""
         generated_size = 0
@@ -2448,31 +2693,59 @@ class AssistantService:
         result_status = "failed"
         error_code = "worker_unavailable"
         runtime_task: asyncio.Future[Any] | None = None
-        runtime_context = AssistantTurnContext(
-            user_id=context.user.id,
-            app_id="signal-ledger",
-            conversation_id=conversation_id,
-            turn_id=turn_id,
-            execution_id=execution_id,
-            capability=capability,
-            model_id=model_id,
-            policy_version=policy.policy_version,
-            context_version=str(canonical_context["context_version"]),
-            page_context=dict(canonical_context),
-            history=self.storage.conversation_history(
-                context.user.id, conversation_id, exclude_turn_id=turn_id
-            ),
-        )
+        output_lock = asyncio.Lock()
+
+        async def output_storage_call(function: Any, *args: object) -> Any:
+            # A cancelled waiter must not release ordering while its worker still mutates output.
+            await output_lock.acquire()
+            try:
+                pending_write = asyncio.create_task(asyncio.to_thread(function, *args))
+            except BaseException:
+                output_lock.release()
+                raise
+            self._track_storage_operation(pending_write)
+            pending_write.add_done_callback(lambda _: output_lock.release())
+            return await asyncio.shield(pending_write)
+
         try:
-            self.storage.set_turn_status(
+            history = await self._storage_call(
+                self.storage.conversation_history,
                 context.user.id,
                 conversation_id,
-                turn_id,
-                status="running",
-                now=self.now(),
+                exclude_turn_id=turn_id,
+            )
+            runtime_context = AssistantTurnContext(
+                user_id=context.user.id,
+                app_id="signal-ledger",
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                execution_id=execution_id,
+                capability=capability,
+                model_id=model_id,
+                policy_version=policy.policy_version,
+                context_version=str(canonical_context["context_version"]),
+                page_context=dict(canonical_context),
+                history=history,
             )
 
-            async def emit(event: Mapping[str, object]) -> None:
+            def prepare_runtime_storage() -> dict[str, object] | None:
+                self.storage.set_turn_status(
+                    context.user.id,
+                    conversation_id,
+                    turn_id,
+                    status="running",
+                    now=self.now(),
+                )
+                if not self._execution_current(
+                    context.user.id, execution_id, model_id, policy.policy_version
+                ):
+                    raise AssistantUnavailable("session_revoked", 403)
+
+                return self.storage.execution_lease(execution_id)
+
+            lease = await self._storage_call(prepare_runtime_storage)
+
+            def persist_runtime_event(event: Mapping[str, object]) -> None:
                 nonlocal generated_size, output_tail, useful_event_seen
                 if not self._execution_current(
                     context.user.id, execution_id, model_id, policy.policy_version
@@ -2489,6 +2762,7 @@ class AssistantService:
                     conversation_id,
                     turn_id,
                     execution_id=execution_id,
+                    write_guard=write_guard,
                 )
                 if normalized_type == "meta" and (
                     normalized_data.get("model_id") != model_id
@@ -2520,6 +2794,7 @@ class AssistantService:
                                 event_type="token",
                                 data={"text": chunk},
                                 now=self.now(),
+                                write_guard=write_guard,
                             )
                         return
                 elif normalized_type in {"proposed_action", "source"}:
@@ -2531,16 +2806,12 @@ class AssistantService:
                     event_type=normalized_type,
                     data=normalized_data,
                     now=self.now(),
+                    write_guard=write_guard,
                 )
 
-            runner = getattr(self.runtime, "run_turn", None)
-            if not callable(runner):
-                raise AssistantUnavailable("assistant_worker_unavailable", 503)
-            run_result = runner(context=runtime_context, prompt=prompt, emit=emit)
-            if not asyncio.iscoroutine(run_result) and not hasattr(run_result, "__await__"):
-                raise AssistantUnavailable("invalid_runtime_event", 502)
-            runtime_task = asyncio.ensure_future(run_result)
-            lease = self.storage.execution_lease(execution_id)
+            async def emit(event: Mapping[str, object]) -> None:
+                await output_storage_call(persist_runtime_event, event)
+
             try:
                 expires_at = datetime.fromisoformat(str((lease or {}).get("expires_at", "")))
                 if expires_at.tzinfo is None:
@@ -2548,6 +2819,15 @@ class AssistantService:
                 remaining = max(0.0, (expires_at.astimezone(UTC) - self.now()).total_seconds())
             except ValueError:
                 remaining = 0.0
+            if remaining <= 0:
+                raise TimeoutError
+            runner = getattr(self.runtime, "run_turn", None)
+            if not callable(runner):
+                raise AssistantUnavailable("assistant_worker_unavailable", 503)
+            run_result = runner(context=runtime_context, prompt=prompt, emit=emit)
+            if not asyncio.iscoroutine(run_result) and not hasattr(run_result, "__await__"):
+                raise AssistantUnavailable("invalid_runtime_event", 502)
+            runtime_task = asyncio.ensure_future(run_result)
             finished, pending = await asyncio.wait(
                 {runtime_task}, timeout=min(ASSISTANT_TURN_SECONDS, remaining)
             )
@@ -2572,50 +2852,60 @@ class AssistantService:
                 raise AssistantUnavailable("invalid_runtime_event", 502)
             result_status = raw_result.status
             error_code = raw_result.error_code or "worker_unavailable"
-            if result_status == "completed" and not self._execution_current(
-                context.user.id, execution_id, model_id, policy.policy_version
-            ):
-                result_status = "failed"
-                error_code = "session_revoked"
-            if result_status == "completed" and output_tail:
-                if self.contains_known_secret_text(output_tail):
-                    result_status = "failed"
-                    error_code = "sensitive_output_rejected"
-                elif not self._execution_current(
+
+            def persist_completed_output(result_status: str, error_code: str) -> tuple[str, str]:
+                nonlocal output_tail
+                if result_status == "completed" and not self._execution_current(
                     context.user.id, execution_id, model_id, policy.policy_version
                 ):
                     result_status = "failed"
                     error_code = "session_revoked"
-                else:
-                    generated.append(output_tail)
-                    self.storage.append_event(
+                if result_status == "completed" and output_tail:
+                    if self.contains_known_secret_text(output_tail):
+                        result_status = "failed"
+                        error_code = "sensitive_output_rejected"
+                    elif not self._execution_current(
+                        context.user.id, execution_id, model_id, policy.policy_version
+                    ):
+                        result_status = "failed"
+                        error_code = "session_revoked"
+                    else:
+                        generated.append(output_tail)
+                        self.storage.append_event(
+                            context.user.id,
+                            conversation_id,
+                            turn_id,
+                            event_type="token",
+                            data={"text": output_tail},
+                            now=self.now(),
+                            write_guard=write_guard,
+                        )
+                    output_tail = ""
+                if (
+                    result_status == "completed"
+                    and not generated
+                    and not useful_event_seen
+                    and not self.storage.has_useful_turn_output(
+                        context.user.id, conversation_id, turn_id
+                    )
+                ):
+                    result_status = "failed"
+                    error_code = "empty_response"
+                if result_status == "completed" and generated:
+                    self.storage.append_message(
                         context.user.id,
                         conversation_id,
                         turn_id,
-                        event_type="token",
-                        data={"text": output_tail},
+                        role="assistant",
+                        content="".join(generated),
                         now=self.now(),
+                        write_guard=write_guard,
                     )
-                output_tail = ""
-            if (
-                result_status == "completed"
-                and not generated
-                and not useful_event_seen
-                and not self.storage.has_useful_turn_output(
-                    context.user.id, conversation_id, turn_id
-                )
-            ):
-                result_status = "failed"
-                error_code = "empty_response"
-            if result_status == "completed" and generated:
-                self.storage.append_message(
-                    context.user.id,
-                    conversation_id,
-                    turn_id,
-                    role="assistant",
-                    content="".join(generated),
-                    now=self.now(),
-                )
+                return result_status, error_code
+
+            result_status, error_code = await output_storage_call(
+                persist_completed_output, result_status, error_code
+            )
         except asyncio.CancelledError:
             result_status = "cancelled"
             error_code = "turn_cancelled"
@@ -2635,6 +2925,9 @@ class AssistantService:
         except AssistantUnavailable as exc:
             result_status = "failed"
             error_code = exc.code if exc.code in _SAFE_ERROR_CODES else "worker_unavailable"
+        except AssistantStorageExecutionStale:
+            result_status = "failed"
+            error_code = "session_revoked"
         except AssistantStorageQuotaExceeded:
             result_status = "failed"
             error_code = "tool_failed"
@@ -2642,49 +2935,51 @@ class AssistantService:
             result_status = "failed"
             error_code = "worker_unavailable"
         finally:
+            self._cancel_webfetch_waiters(execution_id)
+
+            def finalize_storage(result_status: str, error_code: str) -> tuple[str, str]:
+                with suppress(AssistantStorageError):
+                    safe_code = (
+                        error_code if error_code in _SAFE_ERROR_CODES else "worker_unavailable"
+                    )
+                    try:
+                        self.storage.finalize_turn(
+                            context.user.id,
+                            conversation_id,
+                            turn_id,
+                            execution_id,
+                            status=result_status,
+                            now=self.now(),
+                            error_code=safe_code,
+                            error_message=self._safe_error_message(safe_code),
+                            write_guard=write_guard,
+                        )
+                    except AssistantStorageExecutionStale:
+                        self.storage.finalize_turn(
+                            context.user.id,
+                            conversation_id,
+                            turn_id,
+                            execution_id,
+                            status="failed",
+                            now=self.now(),
+                            error_code="session_revoked",
+                            error_message=self._safe_error_message("session_revoked"),
+                        )
+
+                with suppress(AssistantStorageError):
+                    durable = self.storage.get_turn(context.user.id, conversation_id, turn_id)
+                    final_status = str(durable["status"])
+                    if final_status in {"completed", "failed", "cancelled", "timed_out"}:
+                        return final_status, str(durable.get("error_code") or "worker_unavailable")
+                return "failed", "worker_unavailable"
+
+            result_status, error_code = await self._storage_call(
+                finalize_storage, result_status, error_code
+            )
             finish_timing = getattr(self.runtime, "_finish_turn_timing_diagnostic", None)
             if callable(finish_timing):
                 with suppress(Exception):
                     finish_timing(execution_id, context.user.id, result_status)
-            self._cancel_webfetch_waiters(execution_id)
-            with suppress(Exception):
-                self.storage.close_execution(
-                    execution_id, now=self.now(), revoked=result_status != "completed"
-                )
-            try:
-                changed = self.storage.set_turn_status(
-                    context.user.id,
-                    conversation_id,
-                    turn_id,
-                    status=result_status,
-                    now=self.now(),
-                    error_code=error_code if result_status != "completed" else None,
-                )
-                if changed:
-                    if result_status != "completed":
-                        self.storage.append_event(
-                            context.user.id,
-                            conversation_id,
-                            turn_id,
-                            event_type="error",
-                            data={
-                                "code": error_code
-                                if error_code in _SAFE_ERROR_CODES
-                                else "worker_unavailable",
-                                "message": self._safe_error_message(error_code),
-                            },
-                            now=self.now(),
-                        )
-                    self.storage.append_event(
-                        context.user.id,
-                        conversation_id,
-                        turn_id,
-                        event_type="complete",
-                        data={"status": result_status, "assistant_message_id": None},
-                        now=self.now(),
-                    )
-            except AssistantStorageError:
-                pass
             clear = getattr(self.runtime, "clear_conversation_cache", None)
             if result_status != "completed" and callable(clear):
                 await self._bounded_runtime_call(clear, conversation_id, timeout=2.0)
@@ -2716,6 +3011,7 @@ class AssistantService:
         turn_id: str,
         *,
         execution_id: str,
+        write_guard: AssistantRuntimeWriteGuard | None = None,
     ) -> tuple[str, dict[str, object]]:
         if not isinstance(data, Mapping):
             raise AssistantUnavailable("invalid_runtime_event", 502)
@@ -2784,6 +3080,7 @@ class AssistantService:
                 retrieved_at=retrieved,
                 as_of=as_of,
                 metadata={},
+                write_guard=write_guard,
             )
             return "source", {
                 "source_id": str(saved["id"]),
@@ -2811,6 +3108,7 @@ class AssistantService:
                 action_type,
                 payload,
                 execution_id=execution_id,
+                write_guard=write_guard,
             )
             action["context_version"] = str(
                 self.storage.get_turn(user_id, conversation_id, turn_id)["context_version"]
@@ -3006,6 +3304,7 @@ class AssistantService:
         payload: Mapping[str, object],
         *,
         execution_id: str,
+        write_guard: AssistantRuntimeWriteGuard | None = None,
     ) -> dict[str, object]:
         """Store one fixed-schema proposal and emit only its display-safe projection."""
 
@@ -3067,6 +3366,7 @@ class AssistantService:
             confirmation_phrase="storage binds this confirmation to its generated identifier",
             now=self.now(),
             expires_at=self.now() + timedelta(minutes=5),
+            write_guard=write_guard,
         )
         actual_id = str(record["id"])
         card = self._safe_action_card(action_type, safe_payload)
@@ -3762,10 +4062,10 @@ class AssistantService:
         token_hash: str,
         expected_csrf_hash: str | None = None,
     ) -> AuthContext | None:
-        """Resolve current session, factor, and account state without trusting a cached context."""
+        """Re-read session authority without turning internal checks into browser activity."""
 
         try:
-            record = self.repository.get_session(token_hash, now=self.now(), touch=True)
+            record = self.repository.get_session(token_hash, now=self.now(), touch=False)
             if (
                 not record
                 or record.get("session_id") != session_id

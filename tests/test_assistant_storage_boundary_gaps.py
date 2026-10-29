@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import sqlite3
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -9,6 +12,7 @@ import pytest
 from stock_probs.assistant.storage import (
     AssistantStorage,
     AssistantStorageConflict,
+    AssistantStorageExecutionStale,
     AssistantStorageNotFound,
     AssistantStorageQuotaExceeded,
 )
@@ -945,3 +949,144 @@ def test_public_conversation_writes_fail_closed_at_owner_global_and_database_quo
         _conversation(storage, other_id, title="Rejected at database quota")
     assert database_limit.value.scope == "database"
     assert storage.list_conversations(other_id, page=1, page_size=50)["total"] == 1
+
+
+@pytest.mark.parametrize("status", ["completed", "failed", "cancelled", "timed_out"])
+def test_finalization_publishes_lease_status_and_events_together(settings, monkeypatch, status):
+    """A separate SQLite reader sees the complete pre-transition state until commit."""
+
+    repository, storage = _repository(settings)
+    owner = _owner(repository, 88210)
+    conversation = _conversation(storage, owner)
+    turn = _turn(storage, owner, str(conversation["id"]), session_id="atomic-session-001")
+    storage.set_turn_status(
+        owner, str(conversation["id"]), str(turn["id"]), status="running", now=NOW
+    )
+    entered, release = threading.Event(), threading.Event()
+    original = storage._verify_database_limit
+
+    def hold_before_commit(connection):
+        original(connection)
+        entered.set()
+        assert release.wait(timeout=5)
+
+    monkeypatch.setattr(storage, "_verify_database_limit", hold_before_commit)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        finalizing = executor.submit(
+            storage.finalize_turn,
+            owner,
+            str(conversation["id"]),
+            str(turn["id"]),
+            str(turn["execution_id"]),
+            status=status,
+            now=NOW,
+            error_code="turn_cancelled",
+            error_message="The assistant turn was cancelled.",
+        )
+        try:
+            assert entered.wait(timeout=3)
+            with sqlite3.connect(settings.database_path) as observer:
+                assert (
+                    observer.execute(
+                        "SELECT status FROM assistant_turns WHERE id = ?", (turn["id"],)
+                    ).fetchone()[0]
+                    == "running"
+                )
+                assert (
+                    observer.execute(
+                        "SELECT status FROM assistant_execution_leases WHERE execution_id = ?",
+                        (turn["execution_id"],),
+                    ).fetchone()[0]
+                    == "active"
+                )
+                assert (
+                    observer.execute(
+                        "SELECT COUNT(*) FROM assistant_events WHERE turn_id = ?", (turn["id"],)
+                    ).fetchone()[0]
+                    == 0
+                )
+        finally:
+            release.set()
+        assert finalizing.result(timeout=3) is True
+    assert storage.get_turn(owner, str(conversation["id"]), str(turn["id"]))["status"] == status
+    events = storage.events_after(owner, str(conversation["id"]), str(turn["id"]), after=0)
+    assert [event["type"] for event in events] == (
+        ["complete"] if status == "completed" else ["error", "complete"]
+    )
+    assert (
+        storage.finalize_turn(
+            owner,
+            str(conversation["id"]),
+            str(turn["id"]),
+            str(turn["execution_id"]),
+            status="completed",
+            now=NOW,
+            error_code=None,
+            error_message=None,
+        )
+        is False
+    )
+    assert storage.events_after(owner, str(conversation["id"]), str(turn["id"]), after=0) == events
+
+
+@pytest.mark.parametrize("stage", ["reservation", "allocated_pages"])
+def test_finalization_retires_execution_when_terminal_event_quota_fails(
+    settings, monkeypatch, stage
+):
+    """Quota failure rolls back partial terminal events while preserving durable retirement."""
+
+    repository, storage = _repository(settings)
+    owner = _owner(repository, 88211)
+    conversation = _conversation(storage, owner)
+    turn = _turn(storage, owner, str(conversation["id"]), session_id="quota-session-001")
+
+    def quota_failure(*args):
+        raise AssistantStorageQuotaExceeded("database")
+
+    monkeypatch.setattr(
+        storage,
+        "_ensure_capacity" if stage == "reservation" else "_verify_database_limit",
+        quota_failure,
+    )
+    with pytest.raises(AssistantStorageQuotaExceeded):
+        storage.finalize_turn(
+            owner,
+            str(conversation["id"]),
+            str(turn["id"]),
+            str(turn["execution_id"]),
+            status="failed",
+            now=NOW,
+            error_code="tool_failed",
+            error_message="The assistant could not complete this turn.",
+        )
+    assert storage.get_turn(owner, str(conversation["id"]), str(turn["id"]))["status"] == "failed"
+    assert storage.execution_lease(str(turn["execution_id"]))["status"] == "revoked"
+    assert storage.events_after(owner, str(conversation["id"]), str(turn["id"]), after=0) == []
+
+
+@pytest.mark.parametrize("interruption", ["revoked", "expired"])
+def test_revoked_lease_cannot_win_completed_finalization(settings, interruption):
+    """A cancellation lease close must prevent a competing completed terminal transition."""
+
+    repository, storage = _repository(settings)
+    owner = _owner(repository, 88212)
+    conversation = _conversation(storage, owner)
+    turn = _turn(storage, owner, str(conversation["id"]), session_id="revoked-session-01")
+    storage.set_turn_status(
+        owner, str(conversation["id"]), str(turn["id"]), status="running", now=NOW
+    )
+    if interruption == "revoked":
+        storage.close_execution(str(turn["execution_id"]), now=NOW, revoked=True)
+    with pytest.raises(AssistantStorageExecutionStale):
+        storage.finalize_turn(
+            owner,
+            str(conversation["id"]),
+            str(turn["id"]),
+            str(turn["execution_id"]),
+            status="completed",
+            now=NOW if interruption == "revoked" else NOW + timedelta(seconds=121),
+            error_code=None,
+            error_message=None,
+        )
+    assert storage.get_turn(owner, str(conversation["id"]), str(turn["id"]))["status"] == "running"
+    assert storage.events_after(owner, str(conversation["id"]), str(turn["id"]), after=0) == []

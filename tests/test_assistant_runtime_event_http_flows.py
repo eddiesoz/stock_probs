@@ -9,6 +9,7 @@ import secrets
 import threading
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta, tzinfo
 from typing import cast
@@ -22,6 +23,12 @@ from stock_probs import api as application_api
 from stock_probs.api import create_app
 from stock_probs.assistant import api as assistant_api
 from stock_probs.assistant.schemas import AssistantTurnContext, AssistantTurnResult
+from stock_probs.assistant.service import AssistantUnavailable
+from stock_probs.assistant.storage import (
+    AssistantRuntimeWriteGuard,
+    AssistantStorageConflict,
+    AssistantStorageExecutionStale,
+)
 from stock_probs.auth import CSRF_COOKIE_NAME, SESSION_COOKIE_NAME
 from stock_probs.config import Settings
 from stock_probs.provider import FixtureProvider
@@ -471,6 +478,167 @@ def _meta(context: AssistantTurnContext) -> dict[str, object]:
             "context_version": context.context_version,
         },
     }
+
+
+def _count_session_activity_writes(monkeypatch, repository) -> Callable[[], int]:
+    """Count activity updates without retaining SQL or synthetic credential values."""
+
+    count = 0
+    counter_lock = threading.Lock()
+    original_connect = repository.connect
+
+    def record_statement(statement: str) -> None:
+        nonlocal count
+        if statement.lstrip().upper().startswith("UPDATE SESSIONS SET LAST_SEEN_AT"):
+            with counter_lock:
+                count += 1
+
+    @contextmanager
+    def observed_connection():
+        with original_connect() as connection:
+            connection.set_trace_callback(record_statement)
+            try:
+                yield connection
+            finally:
+                connection.set_trace_callback(None)
+
+    monkeypatch.setattr(repository, "connect", observed_connection)
+
+    def read_count() -> int:
+        with counter_lock:
+            return count
+
+    return read_count
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        "live",
+        "revoked",
+        "idle_expired",
+        "absolute_expired",
+        "different_session",
+        "different_owner",
+        "csrf_rotated",
+        "factor_unbound",
+        "mfa_future",
+        "disabled_user",
+    ],
+)
+def test_internal_session_recheck_reads_fresh_authority_without_activity_writes(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, state: str
+) -> None:
+    """Internal output checks neither extend activity nor accept changed session authority."""
+
+    app = _make_app(settings, _ScriptedRuntime())
+    with TestClient(app, client=("127.0.0.1", 51120)):
+        identity = _add_signed_in_user(app, 80120)
+        repository = app.state.repository
+        with repository.connect() as connection:
+            if state == "revoked":
+                connection.execute(
+                    "UPDATE sessions SET revoked_at = ? WHERE token_hash = ?",
+                    (_NOW.isoformat(), identity["token_hash"]),
+                )
+            elif state == "idle_expired":
+                connection.execute(
+                    "UPDATE sessions SET issued_at = ?, last_seen_at = ?, idle_expires_at = ? "
+                    "WHERE token_hash = ?",
+                    (
+                        (_NOW - timedelta(seconds=1)).isoformat(),
+                        (_NOW - timedelta(seconds=1)).isoformat(),
+                        _NOW.isoformat(),
+                        identity["token_hash"],
+                    ),
+                )
+            elif state == "absolute_expired":
+                connection.execute(
+                    "UPDATE sessions SET issued_at = ?, last_seen_at = ?, idle_expires_at = ?, "
+                    "absolute_expires_at = ? WHERE token_hash = ?",
+                    (
+                        (_NOW - timedelta(seconds=1)).isoformat(),
+                        (_NOW - timedelta(seconds=1)).isoformat(),
+                        _NOW.isoformat(),
+                        _NOW.isoformat(),
+                        identity["token_hash"],
+                    ),
+                )
+            elif state == "csrf_rotated":
+                connection.execute(
+                    "UPDATE sessions SET csrf_token_hash = ? WHERE token_hash = ?",
+                    (_sha256("different synthetic CSRF"), identity["token_hash"]),
+                )
+            elif state == "factor_unbound":
+                connection.execute(
+                    "UPDATE sessions SET mfa_factor_id = NULL WHERE token_hash = ?",
+                    (identity["token_hash"],),
+                )
+            elif state == "mfa_future":
+                connection.execute(
+                    "UPDATE sessions SET mfa_verified_at = ? WHERE token_hash = ?",
+                    ((_NOW + timedelta(seconds=1)).isoformat(), identity["token_hash"]),
+                )
+            elif state == "disabled_user":
+                connection.execute(
+                    "UPDATE users SET status = 'disabled' WHERE id = ?", (identity["user_id"],)
+                )
+            connection.commit()
+
+        activity_writes = _count_session_activity_writes(monkeypatch, repository)
+        for _ in range(3):
+            current = app.state.assistant._live_auth_context(
+                user_id=int(identity["user_id"]) + (state == "different_owner"),
+                session_id="other-session"
+                if state == "different_session"
+                else str(identity["session_id"]),
+                token_hash=str(identity["token_hash"]),
+                expected_csrf_hash=_sha256(str(identity["csrf"])),
+            )
+            assert (current is not None) is (state == "live")
+        assert activity_writes() == 0
+
+
+def test_public_stream_replay_touches_session_only_for_the_browser_request(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Replaying durable events keeps fresh per-event checks without extra activity commits."""
+
+    runtime = _ScriptedRuntime(
+        event_factory=lambda context, _: [
+            _meta(context),
+            {"type": "token", "data": {"text": "Synthetic completed answer."}},
+        ]
+    )
+    app = _make_app(settings, runtime)
+    with TestClient(app, client=("127.0.0.1", 51121)) as browser:
+        identity = _add_signed_in_user(app, 80121)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        first = _read_events(browser, str(conversation["id"]), str(turn["id"]))
+        assert first[-1]["type"] == "complete"
+        assert first[-1]["data"]["status"] == "completed"
+        activity_writes = _count_session_activity_writes(monkeypatch, app.state.repository)
+        replay = _read_events(browser, str(conversation["id"]), str(turn["id"]))
+        assert replay == first
+        assert activity_writes() == 1
+
+
+@pytest.mark.parametrize("endpoint", ["status", "models"])
+def test_assistant_discovery_rechecks_touch_session_only_for_the_browser_request(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, endpoint: str
+) -> None:
+    """Post-await authority checks must not repeat the request's activity write."""
+
+    app = _make_app(settings, _ScriptedRuntime())
+    with TestClient(app, client=("127.0.0.1", 51122)) as browser:
+        identity = _add_signed_in_user(app, 80122)
+        _set_browser_session(browser, identity)
+        activity_writes = _count_session_activity_writes(monkeypatch, app.state.repository)
+        response = browser.get(f"/api/v1/assistant/{endpoint}")
+        assert response.status_code == 200, response.text
+        assert activity_writes() == 1
 
 
 def test_public_turn_stream_binds_meta_and_projects_safe_runtime_events(settings: Settings) -> None:
@@ -980,6 +1148,183 @@ def test_two_users_cannot_read_each_others_assistant_events_or_history(settings:
         assert owner_stream.status_code == 404
 
 
+@pytest.mark.parametrize("health_path", ["/api/v1/health", "/api/v1/readiness"])
+def test_public_event_storage_wait_preserves_application_health(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, health_path: str
+) -> None:
+    """An SSE storage wait must not monopolize the application's event loop."""
+
+    app = _make_app(settings, _ScriptedRuntime())
+    entered = threading.Event()
+    release = threading.Event()
+    returned = threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80070)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        storage = app.state.assistant.storage
+        original = storage.events_after
+
+        def delayed_events_after(*args: object, **kwargs: object) -> list[dict[str, object]]:
+            entered.set()
+            release.wait(timeout=1.5)
+            returned.set()
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(storage, "events_after", delayed_events_after)
+        event_path = (
+            f"/api/v1/assistant/conversations/{conversation['id']}/turns/{turn['id']}/events"
+        )
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            stream = executor.submit(browser.get, event_path)
+            try:
+                assert entered.wait(timeout=3), "SSE request did not reach storage"
+                health = browser.get(health_path)
+                assert health.status_code == 200
+                assert health.json()["status"] == (
+                    "ready" if health_path.endswith("readiness") else "ok"
+                )
+                assert not returned.is_set(), "health waited for SSE storage to return"
+            finally:
+                release.set()
+                response = stream.result(timeout=5)
+            assert response.status_code == 200
+            assert "event: complete" in response.text
+
+
+def test_public_event_projection_wait_rechecks_revoked_session(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A session revoked during browser projection cannot receive the pending token."""
+
+    marker = "must-not-reach-revoked-projection:"
+    runtime = _ScriptedRuntime([{"type": "token", "data": {"text": marker + "x" * 400}}])
+    app = _make_app(settings, runtime)
+    entered = threading.Event()
+    release = threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80071)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        assistant = app.state.assistant
+        original = assistant.project_event_for_browser
+
+        def delayed_projection(current: object, event: Mapping[str, object]) -> dict[str, object]:
+            if event.get("type") == "token":
+                entered.set()
+                release.wait(timeout=3)
+            return original(current, event)
+
+        monkeypatch.setattr(assistant, "project_event_for_browser", delayed_projection)
+        event_path = (
+            f"/api/v1/assistant/conversations/{conversation['id']}/turns/{turn['id']}/events"
+        )
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            stream = executor.submit(browser.get, event_path)
+            try:
+                assert entered.wait(timeout=3), "SSE request did not reach token projection"
+                app.state.repository.auth_revoke_session(
+                    str(identity["token_hash"]), _NOW.isoformat()
+                )
+            finally:
+                release.set()
+                response = stream.result(timeout=5)
+            assert response.status_code == 200
+            assert marker not in response.text
+
+
+@pytest.mark.parametrize("completion_state", ["completed", "revoked", "closed-only"])
+def test_public_event_stream_preserves_completion_during_execution_recheck(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, completion_state: str
+) -> None:
+    """A legitimate turn finishing during an SSE recheck must retain its terminal event."""
+
+    runtime = _PausedRuntime()
+    app = _make_app(settings, runtime)
+    entered = threading.Event()
+    release = threading.Event()
+    completed = threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80072)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        assert runtime.ready_for_first_event.wait(timeout=3)
+        assert runtime.loop is not None and runtime.start_first_event is not None
+        runtime.loop.call_soon_threadsafe(runtime.start_first_event.set)
+        assert runtime.first_event_ready.wait(timeout=3)
+        assert runtime.resume is not None
+        assistant = app.state.assistant
+        original_check = assistant._execution_current
+        original_status = assistant.storage.finalize_turn
+
+        def delayed_execution_check(*args: object, **kwargs: object) -> bool:
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                if not entered.is_set():
+                    entered.set()
+                    # The parent's finally owns release; a timer would end the race early.
+                    release.wait()
+            return original_check(*args, **kwargs)
+
+        def record_terminal_status(*args: object, **kwargs: object) -> object:
+            result = original_status(*args, **kwargs)
+            if kwargs.get("status") == "completed":
+                completed.set()
+            return result
+
+        monkeypatch.setattr(assistant, "_execution_current", delayed_execution_check)
+        monkeypatch.setattr(assistant.storage, "finalize_turn", record_terminal_status)
+        event_path = (
+            f"/api/v1/assistant/conversations/{conversation['id']}/turns/{turn['id']}/events"
+        )
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            stream = None
+            primary_failure = None
+            try:
+                stream = executor.submit(browser.get, event_path)
+                assert entered.wait(timeout=3), "SSE did not reach execution authorization"
+                if completion_state == "closed-only":
+                    lease = assistant.storage.execution_for_turn(
+                        int(identity["user_id"]), str(conversation["id"]), str(turn["id"])
+                    )
+                    assert lease is not None
+                    assistant.storage.close_execution(str(lease["execution_id"]), now=_NOW)
+                else:
+                    runtime.loop.call_soon_threadsafe(runtime.resume.set)
+                    assert completed.wait(timeout=3), "turn did not commit completion"
+                if completion_state == "revoked":
+                    app.state.repository.auth_revoke_session(
+                        str(identity["token_hash"]), _NOW.isoformat()
+                    )
+            except BaseException as error:
+                primary_failure = error
+                raise
+            finally:
+                release.set()
+                try:
+                    if stream is not None:
+                        try:
+                            response = stream.result(timeout=5)
+                        except Exception as cleanup_error:
+                            if primary_failure is None:
+                                raise
+                            primary_failure.add_note(
+                                f"SSE cleanup also failed ({type(cleanup_error).__name__})."
+                            )
+                finally:
+                    runtime.loop.call_soon_threadsafe(runtime.resume.set)
+            assert response.status_code == 200
+            if completion_state == "completed":
+                assert "event: complete" in response.text
+                assert "visible-before-revocation:" in response.text
+            else:
+                assert response.text == ""
+
+
 def test_public_event_stream_stops_after_live_session_revocation(settings: Settings) -> None:
     """A live SSE response stops before yielding further events after session revocation."""
 
@@ -1027,3 +1372,1240 @@ def test_public_event_stream_stops_after_live_session_revocation(settings: Setti
         assert not any("must-not-reach-revoked-browser" in token for token in stored_tokens)
         assert detail["turns"][0]["status"] == "failed"
         assert _persisted_error_codes(detail)[-1] == "session_revoked"
+
+
+@pytest.mark.parametrize("health_path", ["/api/v1/health", "/api/v1/readiness"])
+def test_public_turn_history_wait_preserves_application_health(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, health_path: str
+) -> None:
+    """A pending read for turn history must not delay unrelated health requests."""
+
+    app = _make_app(settings, _ScriptedRuntime())
+    entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80074)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        storage = app.state.assistant.storage
+        original = storage.conversation_history
+
+        def held_history(*args: object, **kwargs: object) -> object:
+            entered.set()
+            release.wait(timeout=1.5)
+            returned.set()
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(storage, "conversation_history", held_history)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            pending = executor.submit(_start_turn, browser, identity, context, conversation, model)
+            try:
+                assert entered.wait(timeout=3), "turn did not reach history storage"
+                health = browser.get(health_path)
+                assert health.status_code == 200
+                assert not returned.is_set(), "health waited for turn-history storage to return"
+            finally:
+                release.set()
+                pending.result(timeout=5)
+
+
+@pytest.mark.parametrize("interruption", ["revoke", "cancel"])
+def test_public_turn_history_wait_cannot_start_interrupted_runtime(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, interruption: str
+) -> None:
+    """A read completing after revocation or cancellation must never start generation."""
+
+    runtime = _ScriptedRuntime()
+    app = _make_app(settings, runtime)
+    entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+    finalized = threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80075)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        storage = app.state.assistant.storage
+        original_history = storage.conversation_history
+        original_status = storage.set_turn_status
+        original_finalize = storage.finalize_turn
+
+        def held_history(*args: object, **kwargs: object) -> object:
+            entered.set()
+            release.wait(timeout=3)
+            try:
+                return original_history(*args, **kwargs)
+            finally:
+                returned.set()
+
+        def observe_terminal(*args: object, **kwargs: object) -> object:
+            result = original_status(*args, **kwargs)
+            if kwargs.get("status") in {"cancelled", "failed"}:
+                finalized.set()
+            return result
+
+        monkeypatch.setattr(storage, "conversation_history", held_history)
+
+        def observe_finalization(*args, **kwargs):
+            result = original_finalize(*args, **kwargs)
+            if kwargs.get("status") in {"cancelled", "failed"}:
+                finalized.set()
+            return result
+
+        monkeypatch.setattr(storage, "set_turn_status", observe_terminal)
+        monkeypatch.setattr(storage, "finalize_turn", observe_finalization)
+        try:
+            turn = _start_turn(browser, identity, context, conversation, model)
+            assert entered.wait(timeout=3), "turn did not reach history storage"
+            if interruption == "revoke":
+                app.state.repository.auth_revoke_session(
+                    str(identity["token_hash"]), _NOW.isoformat()
+                )
+            else:
+                response = browser.post(
+                    f"/api/v1/assistant/conversations/{conversation['id']}"
+                    f"/turns/{turn['id']}/cancel",
+                    headers={"x-csrf-token": str(identity["csrf"])},
+                )
+                assert response.status_code == 200, response.text
+                assert response.json()["status"] == "cancelled"
+            assert not returned.is_set(), "history was released before interruption"
+        finally:
+            release.set()
+        assert returned.wait(timeout=3)
+        assert finalized.wait(timeout=3)
+        assert not runtime.contexts
+        stored = storage.get_turn(int(identity["user_id"]), str(conversation["id"]), turn["id"])
+        assert stored["status"] == ("failed" if interruption == "revoke" else "cancelled")
+        assert stored["error_code"] == (
+            "session_revoked" if interruption == "revoke" else "turn_cancelled"
+        )
+
+
+@pytest.mark.parametrize("health_path", ["/api/v1/health", "/api/v1/readiness"])
+def test_public_turn_persistence_wait_preserves_application_health(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, health_path: str
+) -> None:
+    """Persisting a turn must not block unrelated HTTP health requests."""
+
+    app = _make_app(settings, _ScriptedRuntime())
+    entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80076)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        storage = app.state.assistant.storage
+        original = storage.create_turn
+
+        def held_create(*args: object, **kwargs: object) -> object:
+            entered.set()
+            release.wait(timeout=1.5)
+            returned.set()
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(storage, "create_turn", held_create)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            pending = executor.submit(_start_turn, browser, identity, context, conversation, model)
+            try:
+                assert entered.wait(timeout=3), "request did not reach turn persistence"
+                health = browser.get(health_path)
+                assert health.status_code == 200
+                assert not returned.is_set(), "health waited for turn persistence to return"
+            finally:
+                release.set()
+                pending.result(timeout=5)
+
+
+@pytest.mark.parametrize(
+    "interruption,phase",
+    [
+        ("revoke", "write"),
+        ("close", "write"),
+        ("cancel", "write"),
+        ("consent", "write"),
+        ("cancel", "authorization"),
+    ],
+)
+def test_interrupted_turn_persistence_closes_late_lease_without_generation(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, interruption: str, phase: str
+) -> None:
+    """A write returning after interruption must neither leak a slot nor dispatch a model."""
+
+    runtime = _ScriptedRuntime()
+    app = _make_app(settings, runtime)
+    entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+    finalized = threading.Event()
+    cancellation_seen = threading.Event()
+    cleanup_entered, cleanup_returned = threading.Event(), threading.Event()
+    cleanup_errors: list[str] = []
+    retirement_calls: list[dict[str, bool]] = []
+    records: list[dict[str, object]] = []
+    request_task: dict[str, object] = {}
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80077)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        assistant = app.state.assistant
+        storage = assistant.storage
+        original_create = storage.create_turn
+        original_status = storage.set_turn_status
+        original_request = assistant.create_turn
+        original_live = assistant._assistant_session_is_live
+        original_cleanup = assistant._cancel_unstarted_turn
+        original_retire = assistant._retire_created_turn
+        live_checks = 0
+
+        def held_create(*args: object, **kwargs: object) -> object:
+            if phase == "write":
+                entered.set()
+                release.wait(timeout=5)
+            try:
+                record = original_create(*args, **kwargs)
+                records.append(record)
+                return record
+            finally:
+                if phase == "write":
+                    returned.set()
+
+        def observe_live(*args: object, **kwargs: object) -> bool:
+            nonlocal live_checks
+            live_checks += 1
+            hold = phase == "authorization" and live_checks == 2
+            if hold:
+                entered.set()
+                release.wait(timeout=5)
+            try:
+                return original_live(*args, **kwargs)
+            finally:
+                if hold:
+                    returned.set()
+
+        def observe_cleanup(*args: object, **kwargs: object) -> None:
+            cleanup_entered.set()
+            try:
+                original_cleanup(*args, **kwargs)
+            except BaseException as error:
+                cleanup_errors.append(type(error).__name__)
+                raise
+            finally:
+                cleanup_returned.set()
+
+        def observe_retire(completed: asyncio.Task[object], *args: object) -> None:
+            retirement_calls.append({"done": completed.done(), "cancelled": completed.cancelled()})
+            original_retire(completed, *args)
+
+        def observe_status(*args: object, **kwargs: object) -> object:
+            result = original_status(*args, **kwargs)
+            if kwargs.get("status") == "cancelled":
+                finalized.set()
+            return result
+
+        async def observe_request(*args: object, **kwargs: object) -> object:
+            request_task["loop"] = asyncio.get_running_loop()
+            operation = asyncio.create_task(original_request(*args, **kwargs))
+            request_task["task"] = operation
+            try:
+                return await operation
+            except asyncio.CancelledError:
+                # Keep injected service cancellation observable through Starlette's response task.
+                cancellation_seen.set()
+                raise AssistantUnavailable("turn_cancelled", 409) from None
+
+        monkeypatch.setattr(storage, "create_turn", held_create)
+        monkeypatch.setattr(storage, "set_turn_status", observe_status)
+        monkeypatch.setattr(assistant, "create_turn", observe_request)
+        monkeypatch.setattr(assistant, "_assistant_session_is_live", observe_live)
+        monkeypatch.setattr(assistant, "_cancel_unstarted_turn", observe_cleanup)
+        monkeypatch.setattr(assistant, "_retire_created_turn", observe_retire)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            pending = executor.submit(
+                browser.post,
+                f"/api/v1/assistant/conversations/{conversation['id']}/turns",
+                headers={"x-csrf-token": str(identity["csrf"])},
+                json={
+                    "prompt": "Persist this synthetic turn safely.",
+                    "model_id": model["model_id"],
+                    "policy_version": model["policy_version"],
+                    "context": dict(context),
+                    "context_preview_accepted": True,
+                },
+            )
+            try:
+                assert entered.wait(timeout=3), "request did not reach turn persistence"
+                if interruption == "revoke":
+                    app.state.repository.auth_revoke_session(
+                        str(identity["token_hash"]), _NOW.isoformat()
+                    )
+                elif interruption == "consent":
+                    storage.create_consent(
+                        int(identity["user_id"]),
+                        model_id=str(model["model_id"]),
+                        policy_version=str(model["policy_version"]),
+                        accepted_terms=False,
+                        data_collection_opt_in=False,
+                        recorded_at=_NOW,
+                    )
+                elif interruption == "close":
+                    assert browser.portal is not None
+                    browser.portal.call(assistant.close)
+                else:
+                    loop = cast(asyncio.AbstractEventLoop, request_task["loop"])
+                    task = cast(asyncio.Task[object], request_task["task"])
+                    loop.call_soon_threadsafe(task.cancel)
+                    response = pending.result(timeout=2)
+                    assert response.status_code == 409
+                    assert response.json()["error"]["code"] == "turn_cancelled"
+                    assert cancellation_seen.is_set()
+                assert not returned.is_set(), "held operation returned before interruption"
+                assert not runtime.contexts
+            finally:
+                release.set()
+            if interruption != "cancel":
+                response = pending.result(timeout=5)
+                expected_status = {"revoke": 403, "close": 503, "consent": 428}[interruption]
+                assert response.status_code == expected_status
+            assert returned.wait(timeout=3)
+            assert finalized.wait(timeout=3), {
+                "message": "late persisted turn was not retired",
+                "records": len(records),
+                "retirement_calls": retirement_calls,
+                "cleanup_entered": cleanup_entered.is_set(),
+                "cleanup_returned": cleanup_returned.is_set(),
+                "cleanup_errors": cleanup_errors,
+                "storage_task_states": [
+                    {"done": task.done(), "cancelled": task.cancelled()}
+                    for task in assistant._storage_tasks
+                ],
+            }
+        assert len(records) == 1
+        record = records[0]
+        assert not runtime.contexts
+        assert not assistant._tasks
+        turn = storage.get_turn(
+            int(identity["user_id"]), str(conversation["id"]), str(record["id"])
+        )
+        assert turn["status"] == "cancelled"
+        assert turn["error_code"] == "turn_cancelled"
+        lease = storage.execution_lease(str(record["execution_id"]))
+        assert lease is not None and lease["status"] == "revoked"
+
+
+class _WebfetchAuthorizationRuntime(_ScriptedRuntime):
+    def __init__(self):
+        super().__init__()
+        self.ready = threading.Event()
+        self.finished = threading.Event()
+        self.approved_url = None
+        self.approve_immediately = False
+
+    async def run_turn(self, *, context, prompt, emit):
+        self.contexts.append(context)
+        self.loop = asyncio.get_running_loop()
+        self.go = asyncio.Event()
+        self.ready.set()
+        await self.go.wait()
+
+        async def emit_preview(event):
+            await emit(event)
+            if self.approve_immediately:
+                with self.service._webfetch_waiter_lock:
+                    waiters = [
+                        waiter
+                        for waiter in self.service._webfetch_waiters.values()
+                        if waiter.execution_id == context.execution_id
+                    ]
+                assert len(waiters) == 1
+                waiters[0].future.set_result(waiters[0].url)
+
+        try:
+            self.approved_url = await self.service.await_webfetch_approval(
+                context, "https://example.com/research?fixture=liveness", emit_preview
+            )
+        finally:
+            self.finished.set()
+        return AssistantTurnResult(status="completed")
+
+
+@pytest.mark.parametrize("phase", ["initial", "poll"])
+@pytest.mark.parametrize("health_path", ["/api/v1/health", "/api/v1/readiness"])
+def test_webfetch_authorization_wait_preserves_application_health(
+    settings, monkeypatch, phase, health_path
+):
+    runtime = _WebfetchAuthorizationRuntime()
+    app = _make_app(settings, runtime)
+    runtime.service = app.state.assistant
+    entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80081)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        _start_turn(browser, identity, context, conversation, model)
+        assert runtime.ready.wait(timeout=3)
+        original = app.state.assistant._execution_current
+        calls = 0
+
+        def held_check(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == (1 if phase == "initial" else 3):
+                entered.set()
+                release.wait(timeout=1.5)
+                returned.set()
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(app.state.assistant, "_execution_current", held_check)
+        try:
+            runtime.loop.call_soon_threadsafe(runtime.go.set)
+            assert entered.wait(timeout=5), "WebFetch did not reach the selected authorization wait"
+            response = browser.get(health_path)
+            assert response.status_code == 200
+            assert not returned.is_set(), (
+                "health waited for WebFetch authorization storage to return"
+            )
+        finally:
+            release.set()
+
+
+@pytest.mark.parametrize("phase", ["initial", "poll"])
+@pytest.mark.parametrize("interruption", ["revoke", "cancel"])
+def test_webfetch_authorization_wait_cannot_release_interrupted_request(
+    settings, monkeypatch, phase, interruption
+):
+    """A late authorization result cannot release a URL after session or turn interruption."""
+    runtime = _WebfetchAuthorizationRuntime()
+    app = _make_app(settings, runtime)
+    runtime.service = app.state.assistant
+    entered, release, finalized = threading.Event(), threading.Event(), threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80082)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        assert runtime.ready.wait(timeout=3)
+        storage = app.state.assistant.storage
+        original_status = storage.set_turn_status
+        original_finalize = storage.finalize_turn
+
+        def observe_terminal(*args, **kwargs):
+            result = original_status(*args, **kwargs)
+            if kwargs.get("status") in {"cancelled", "failed"}:
+                finalized.set()
+            return result
+
+        def observe_finalization(*args, **kwargs):
+            result = original_finalize(*args, **kwargs)
+            if kwargs.get("status") in {"cancelled", "failed"}:
+                finalized.set()
+            return result
+
+        monkeypatch.setattr(storage, "set_turn_status", observe_terminal)
+        monkeypatch.setattr(storage, "finalize_turn", observe_finalization)
+        original = app.state.assistant._execution_current
+        calls = 0
+
+        def held_check(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == (1 if phase == "initial" else 3):
+                entered.set()
+                release.wait(timeout=3)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(app.state.assistant, "_execution_current", held_check)
+        try:
+            runtime.loop.call_soon_threadsafe(runtime.go.set)
+            assert entered.wait(timeout=5)
+            if interruption == "revoke":
+                app.state.repository.auth_revoke_session(
+                    str(identity["token_hash"]), _NOW.isoformat()
+                )
+            else:
+                response = browser.post(
+                    f"/api/v1/assistant/conversations/{conversation['id']}"
+                    f"/turns/{turn['id']}/cancel",
+                    headers={"x-csrf-token": str(identity["csrf"])},
+                )
+                assert response.status_code == 200
+                assert response.json()["status"] == "cancelled"
+        finally:
+            release.set()
+        assert runtime.finished.wait(timeout=5)
+        assert runtime.approved_url is None
+        assert not app.state.assistant._webfetch_waiters
+        assert finalized.wait(timeout=5)
+        stored = storage.get_turn(int(identity["user_id"]), conversation["id"], turn["id"])
+        assert stored["status"] == ("failed" if interruption == "revoke" else "cancelled")
+        assert stored["error_code"] == (
+            "session_revoked" if interruption == "revoke" else "turn_cancelled"
+        )
+        lease = storage.execution_for_turn(int(identity["user_id"]), conversation["id"], turn["id"])
+        assert lease is not None and lease["status"] == "revoked"
+
+
+def test_webfetch_delayed_final_authorization_cannot_release_expired_url(settings, monkeypatch):
+    """An approved future cannot release its URL when the final async check outlives expiry."""
+    runtime = _WebfetchAuthorizationRuntime()
+    runtime.approve_immediately = True
+    app = _make_app(settings, runtime)
+    assistant = app.state.assistant
+    runtime.service = assistant
+    entered, release = threading.Event(), threading.Event()
+    checked = []
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80083)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        assert runtime.ready.wait(timeout=3)
+        execution = assistant.storage.execution_for_turn(
+            int(identity["user_id"]), conversation["id"], turn["id"]
+        )
+        assert execution is not None
+        lease = assistant.storage.execution_lease(str(execution["execution_id"]))
+        assert lease is not None
+        expiry = datetime.fromisoformat(str(lease["expires_at"]))
+        original = assistant._execution_current
+        calls = 0
+
+        def held_check(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            final_check = calls == 3
+            if final_check:
+                entered.set()
+                release.wait(timeout=3)
+            result = original(*args, **kwargs)
+            if final_check:
+                checked.append(result)
+            return result
+
+        monkeypatch.setattr(assistant, "_execution_current", held_check)
+        try:
+            runtime.loop.call_soon_threadsafe(runtime.go.set)
+            assert entered.wait(timeout=5)
+            assistant.clock = lambda: expiry + timedelta(seconds=1)
+        finally:
+            release.set()
+        assert runtime.finished.wait(timeout=5)
+        assert checked == [True]
+        assert runtime.approved_url is None
+        assert not assistant._webfetch_waiters
+
+
+@pytest.mark.parametrize("health_path", ["/api/v1/health", "/api/v1/readiness"])
+@pytest.mark.parametrize("operation", ["normalize", "event", "message", "finalize"])
+def test_runtime_storage_wait_preserves_application_health(
+    settings, monkeypatch, health_path, operation
+):
+    """A held synchronous runtime operation must leave unrelated health requests responsive."""
+
+    runtime = _PausedRuntime()
+    app = _make_app(settings, runtime)
+    entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80080)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        _start_turn(browser, identity, context, conversation, model)
+        assert runtime.ready_for_first_event.wait(timeout=3)
+        assistant = app.state.assistant
+        target, name = {
+            "normalize": (assistant, "_normalize_runtime_event"),
+            "event": (assistant.storage, "append_event"),
+            "message": (assistant.storage, "append_message"),
+            "finalize": (assistant.storage, "finalize_turn"),
+        }[operation]
+        original = getattr(target, name)
+
+        def held_operation(*args, **kwargs):
+            entered.set()
+            release.wait(timeout=3)
+            returned.set()
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(target, name, held_operation)
+        try:
+            runtime.loop.call_soon_threadsafe(runtime.start_first_event.set)
+            runtime.loop.call_soon_threadsafe(runtime.resume.set)
+            assert entered.wait(timeout=5), "runtime did not reach the held operation"
+            assert browser.get(health_path).status_code == 200
+            assert not returned.is_set(), "health waited for runtime storage to return"
+        finally:
+            release.set()
+            runtime.loop.call_soon_threadsafe(runtime.resume.set)
+
+
+@pytest.mark.parametrize("interruption", ["live", "revoke", "closed_lease"])
+def test_delayed_runtime_event_cannot_write_after_interruption(settings, monkeypatch, interruption):
+    runtime = _PausedRuntime()
+    app = _make_app(settings, runtime)
+    entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80084)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        assert runtime.ready_for_first_event.wait(timeout=3)
+        storage = app.state.assistant.storage
+        original = storage.append_event
+
+        def held_append(*args, **kwargs):
+            if kwargs.get("event_type") == "token":
+                entered.set()
+                release.wait(timeout=3)
+                try:
+                    return original(*args, **kwargs)
+                finally:
+                    returned.set()
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(storage, "append_event", held_append)
+        try:
+            runtime.loop.call_soon_threadsafe(runtime.start_first_event.set)
+            assert entered.wait(timeout=5)
+            if interruption == "revoke":
+                app.state.repository.auth_revoke_session(
+                    str(identity["token_hash"]), _NOW.isoformat()
+                )
+            elif interruption == "closed_lease":
+                lease = storage.execution_for_turn(
+                    int(identity["user_id"]), conversation["id"], turn["id"]
+                )
+                assert lease is not None
+                storage.close_execution(str(lease["execution_id"]), now=_NOW, revoked=True)
+                storage.set_turn_status(
+                    int(identity["user_id"]),
+                    conversation["id"],
+                    turn["id"],
+                    status="cancelled",
+                    error_code="turn_cancelled",
+                    now=_NOW,
+                )
+            release.set()
+            assert returned.wait(timeout=5)
+            events = storage.events_after(
+                int(identity["user_id"]), conversation["id"], turn["id"], after=0
+            )
+            tokens = [event["data"].get("text", "") for event in events if event["type"] == "token"]
+            visible = any("visible-before-revocation:" in value for value in tokens)
+            assert visible is (interruption == "live"), (
+                "runtime write must persist only while session and execution remain live"
+            )
+        finally:
+            release.set()
+            runtime.loop.call_soon_threadsafe(runtime.resume.set)
+
+
+@pytest.mark.parametrize(
+    "authority",
+    [
+        "live",
+        "revoked",
+        "expired",
+        "model",
+        "context",
+        "consent",
+        "training",
+        "canary_live",
+        "canary_demoted",
+        "canary_identity",
+    ],
+)
+def test_runtime_write_guard_rechecks_all_output_tables(settings, authority):
+    """Every runtime output table rejects stale authority without leaving a partial row."""
+
+    runtime = _PausedRuntime()
+    app = _make_app(settings, runtime)
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80085, role="admin")
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        assert runtime.ready_for_first_event.wait(timeout=3)
+        storage = app.state.assistant.storage
+        owner = int(identity["user_id"])
+        conversation_id, turn_id = conversation["id"], turn["id"]
+        lease = storage.execution_for_turn(owner, conversation_id, turn_id)
+        assert lease is not None
+        lease = storage.execution_lease(str(lease["execution_id"]))
+        assert lease is not None
+        guard = AssistantRuntimeWriteGuard(
+            execution_id=str(lease["execution_id"]),
+            model_id=_MODEL_ID,
+            policy_version=_POLICY_VERSION,
+            context_version=str(lease["context_version"]),
+            now=lambda: _NOW,
+        )
+        if authority == "revoked":
+            app.state.repository.auth_revoke_session(str(identity["token_hash"]), _NOW.isoformat())
+        elif authority == "expired":
+            guard = replace(guard, now=lambda: _NOW + timedelta(seconds=121))
+        elif authority == "model":
+            guard = replace(guard, model_id="synthetic-provider/different")
+        elif authority == "context":
+            guard = replace(guard, context_version="0" * 64)
+        elif authority == "consent":
+            storage.create_consent(
+                owner,
+                model_id=_MODEL_ID,
+                policy_version=_POLICY_VERSION,
+                accepted_terms=False,
+                data_collection_opt_in=False,
+                recorded_at=_NOW,
+            )
+        elif authority == "training":
+            guard = replace(guard, require_data_collection_opt_in=True)
+
+        if authority.startswith("canary_"):
+            guard = replace(guard, canary_github_ids=(80085,))
+            if authority == "canary_demoted":
+                with app.state.repository.connect() as connection:
+                    connection.execute("UPDATE users SET role = 'member' WHERE id = ?", (owner,))
+                    connection.commit()
+            elif authority == "canary_identity":
+                guard = replace(guard, canary_github_ids=(80086,))
+
+        def counts():
+            with app.state.repository.connect() as connection:
+                return tuple(
+                    connection.execute(statement).fetchone()[0]
+                    for statement in (
+                        "SELECT COUNT(*) FROM assistant_events",
+                        "SELECT COUNT(*) FROM assistant_messages",
+                        "SELECT COUNT(*) FROM assistant_sources",
+                        "SELECT COUNT(*) FROM assistant_proposed_actions",
+                        "SELECT COUNT(*) FROM assistant_search_previews",
+                    )
+                )
+
+        writes = (
+            lambda: storage.append_event(
+                owner,
+                conversation_id,
+                turn_id,
+                event_type="token",
+                data={"text": "guarded fixture"},
+                now=_NOW,
+                write_guard=guard,
+            ),
+            lambda: storage.append_message(
+                owner,
+                conversation_id,
+                turn_id,
+                role="assistant",
+                content="guarded fixture",
+                now=_NOW,
+                write_guard=guard,
+            ),
+            lambda: storage.create_source(
+                owner,
+                conversation_id,
+                turn_id,
+                source_type="public",
+                title="Fixture",
+                url="https://example.com/",
+                source_ref=None,
+                retrieved_at=_NOW,
+                as_of=None,
+                metadata={},
+                write_guard=guard,
+            ),
+            lambda: storage.create_action(
+                owner,
+                conversation_id,
+                turn_id,
+                action_type="theme.set",
+                payload={"theme": "dark"},
+                action_version=1,
+                session_id=str(lease["session_id"]),
+                context_version=str(lease["context_version"]),
+                execution_id=str(lease["execution_id"]),
+                confirmation_phrase="",
+                now=_NOW,
+                expires_at=_NOW + timedelta(seconds=60),
+                write_guard=guard,
+            ),
+            lambda: storage.append_tool_receipt(
+                owner,
+                conversation_id,
+                turn_id,
+                data={"name": "workspace.summary"},
+                sources=[{"title": "Fixture", "url": "https://example.com/"}],
+                now=_NOW,
+                write_guard=guard,
+            ),
+            lambda: storage.create_search_preview(
+                owner,
+                conversation_id,
+                turn_id,
+                str(lease["execution_id"]),
+                query_text="fixture public query",
+                context_version=str(lease["context_version"]),
+                confirmation_phrase="",
+                now=_NOW,
+                expires_at=_NOW + timedelta(seconds=60),
+                write_guard=guard,
+            ),
+        )
+        try:
+            for write in writes:
+                before = counts()
+                if authority in {"live", "canary_live"}:
+                    write()
+                    assert sum(counts()) > sum(before)
+                else:
+                    with pytest.raises(AssistantStorageExecutionStale):
+                        write()
+                    assert counts() == before
+        finally:
+            # This direct storage test never releases the paused synthetic model.
+            runtime.loop.call_soon_threadsafe(
+                app.state.assistant._tasks[str(lease["execution_id"])].cancel
+            )
+
+
+def test_cancelled_emitter_keeps_output_order_until_worker_finishes(settings, monkeypatch):
+    """Cancelling a waiter must not release the lock protecting a still-running write."""
+
+    entered, release, emitter_cancelled = threading.Event(), threading.Event(), threading.Event()
+    normalized = []
+
+    class ConcurrentRuntime(_ScriptedRuntime):
+        async def run_turn(self, *, context, prompt, emit):
+            first = asyncio.create_task(emit({"type": "token", "data": {"text": "a" * 320}}))
+            assert await asyncio.to_thread(entered.wait, 3)
+            first.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await first
+            emitter_cancelled.set()
+            await emit({"type": "token", "data": {"text": "b" * 320}})
+            return AssistantTurnResult(status="completed")
+
+    app = _make_app(settings, ConcurrentRuntime())
+    assistant = app.state.assistant
+    original = assistant._normalize_runtime_event
+
+    def held_normalize(*args, **kwargs):
+        normalized.append(args[0])
+        if len(normalized) == 1:
+            entered.set()
+            assert release.wait(timeout=5)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(assistant, "_normalize_runtime_event", held_normalize)
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80086)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        try:
+            assert emitter_cancelled.wait(timeout=3)
+            assert browser.get("/api/v1/health").status_code == 200
+            assert normalized == ["token"], "second emit overtook the cancelled waiter's worker"
+        finally:
+            release.set()
+        stream = _read_events(browser, str(conversation["id"]), str(turn["id"]))
+        assert normalized == ["token", "token"]
+        tokens = [event["data"]["text"] for event in stream if event["type"] == "token"]
+        assert "".join(tokens) == "a" * 320 + "b" * 320
+
+
+@pytest.mark.parametrize("interruption", ["revoked", "closed_lease"])
+def test_completion_rechecks_authority_inside_terminal_transaction(
+    settings, monkeypatch, interruption
+):
+    """An authority change after message persistence must prevent a completed transition."""
+
+    runtime = _PausedRuntime()
+    cache_cleared = threading.Event()
+    timing_statuses = []
+
+    async def clear_cache(conversation_id):
+        cache_cleared.set()
+        return True
+
+    monkeypatch.setattr(runtime, "clear_conversation_cache", clear_cache)
+    monkeypatch.setattr(
+        runtime,
+        "_finish_turn_timing_diagnostic",
+        lambda execution_id, user_id, status: timing_statuses.append(status),
+        raising=False,
+    )
+    app = _make_app(settings, runtime)
+    entered, release, finalized = threading.Event(), threading.Event(), threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80088)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        assert runtime.ready_for_first_event.wait(timeout=3)
+        storage = app.state.assistant.storage
+        original = storage.finalize_turn
+
+        def held_finalization(*args, **kwargs):
+            if kwargs["status"] == "completed":
+                entered.set()
+                assert release.wait(timeout=5)
+            result = original(*args, **kwargs)
+            finalized.set()
+            return result
+
+        monkeypatch.setattr(storage, "finalize_turn", held_finalization)
+        try:
+            runtime.loop.call_soon_threadsafe(runtime.start_first_event.set)
+            runtime.loop.call_soon_threadsafe(runtime.resume.set)
+            assert entered.wait(timeout=5)
+            assert browser.get("/api/v1/health").status_code == 200
+            if interruption == "revoked":
+                app.state.repository.auth_revoke_session(
+                    str(identity["token_hash"]), _NOW.isoformat()
+                )
+            else:
+                lease = storage.execution_for_turn(
+                    int(identity["user_id"]), conversation["id"], turn["id"]
+                )
+                assert lease is not None
+                storage.close_execution(str(lease["execution_id"]), now=_NOW, revoked=True)
+        finally:
+            release.set()
+        assert finalized.wait(timeout=5)
+        durable = storage.get_turn(int(identity["user_id"]), conversation["id"], turn["id"])
+        assert durable["status"] == "failed"
+        assert durable["error_code"] == "session_revoked"
+        events = storage.events_after(
+            int(identity["user_id"]), conversation["id"], turn["id"], after=0
+        )
+        assert [event["data"]["status"] for event in events if event["type"] == "complete"] == [
+            "failed"
+        ]
+        assert cache_cleared.wait(timeout=5), "stale completed fallback skipped runtime cache purge"
+        assert timing_statuses == ["failed"]
+
+
+@pytest.mark.parametrize("operation", ["proposal", "receipt"])
+@pytest.mark.parametrize("interruption", ["live", "revoked", "cancelled"])
+def test_mcp_persistence_rechecks_authority_after_wait(
+    settings, monkeypatch, operation, interruption
+):
+    """The separate MCP proposal and receipt entry points share fresh durable write checks."""
+
+    runtime = _PausedRuntime()
+    app = _make_app(settings, runtime)
+    entered, release = threading.Event(), threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80089)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        assert runtime.ready_for_first_event.wait(timeout=3)
+        assistant = app.state.assistant
+        storage = assistant.storage
+        owner = int(identity["user_id"])
+        lease_ref = storage.execution_for_turn(owner, conversation["id"], turn["id"])
+        assert lease_ref is not None
+        lease = storage.execution_lease(str(lease_ref["execution_id"]))
+        assert lease is not None
+        target = "create_action" if operation == "proposal" else "append_tool_receipt"
+        original = getattr(storage, target)
+
+        def held_write(*args, **kwargs):
+            entered.set()
+            assert release.wait(timeout=5)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(storage, target, held_write)
+
+        def write():
+            if operation == "proposal":
+                return assistant.tool_gateway.call(
+                    lease=lease,
+                    name="assistant.propose_action",
+                    arguments={"action_type": "theme.set", "payload": {"theme": "dark"}},
+                )
+            return assistant.persist_tool_receipt(lease, "workspace.summary", {"fixture": True})
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            pending = executor.submit(write)
+            try:
+                assert entered.wait(timeout=3)
+                if interruption == "revoked":
+                    app.state.repository.auth_revoke_session(
+                        str(identity["token_hash"]), _NOW.isoformat()
+                    )
+                elif interruption == "cancelled":
+                    storage.close_execution(str(lease["execution_id"]), now=_NOW, revoked=True)
+                    storage.set_turn_status(
+                        owner,
+                        conversation["id"],
+                        turn["id"],
+                        status="cancelled",
+                        error_code="turn_cancelled",
+                        now=_NOW,
+                    )
+            finally:
+                release.set()
+            if interruption == "live":
+                assert pending.result(timeout=3) is not None
+            else:
+                with pytest.raises(AssistantStorageConflict):
+                    pending.result(timeout=3)
+                with app.state.repository.connect() as connection:
+                    assert (
+                        connection.execute(
+                            "SELECT COUNT(*) FROM assistant_proposed_actions WHERE turn_id = ?",
+                            (turn["id"],),
+                        ).fetchone()[0]
+                        == 0
+                    )
+                    assert (
+                        connection.execute(
+                            "SELECT COUNT(*) FROM assistant_events WHERE turn_id = ?", (turn["id"],)
+                        ).fetchone()[0]
+                        == 0
+                    )
+        runtime.loop.call_soon_threadsafe(assistant._tasks[str(lease["execution_id"])].cancel)
+
+
+class _SearchAuthorizationRuntime(_ScriptedRuntime):
+    """Exercise exact-query approval with synthetic generation and real durable ownership."""
+
+    def __init__(self):
+        super().__init__()
+        self.ready = threading.Event()
+        self.finished = threading.Event()
+        self.preview_emitted = threading.Event()
+        self.approval_sent = threading.Event()
+        self.approved_query = None
+        self.approve_immediately = False
+
+    async def run_turn(self, *, context, prompt, emit):
+        self.loop = asyncio.get_running_loop()
+        self.go = asyncio.Event()
+        self.ready.set()
+        await self.go.wait()
+
+        async def emit_preview(event):
+            await emit(event)
+            self.preview_emitted.set()
+            if self.approve_immediately:
+                preview_id = event["data"]["preview_id"]
+                with self.service._search_waiter_lock:
+                    future = self.service._search_waiters[preview_id]
+                future.set_result(event["data"]["query"])
+                self.approval_sent.set()
+
+        try:
+            self.approved_query = await self.service.await_search_approval(
+                context, "synthetic public query", emit_preview
+            )
+        finally:
+            self.finished.set()
+        return AssistantTurnResult(status="completed")
+
+
+@pytest.mark.parametrize("phase", ["initial", "preview", "final"])
+@pytest.mark.parametrize("health_path", ["/api/v1/health", "/api/v1/readiness"])
+def test_search_authorization_wait_preserves_application_health(
+    settings, monkeypatch, phase, health_path
+):
+    """Initial checks, preview persistence and final approval checks must stay off-loop."""
+
+    runtime = _SearchAuthorizationRuntime()
+    runtime.approve_immediately = phase == "final"
+    app = _make_app(settings, runtime)
+    runtime.service = app.state.assistant
+    entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80090)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        assert runtime.ready.wait(timeout=3)
+        target = app.state.assistant.storage if phase == "preview" else app.state.assistant
+        name = "create_search_preview" if phase == "preview" else "_execution_current"
+        original = getattr(target, name)
+        calls = 0
+
+        def held_check(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if (
+                phase == "preview"
+                or (phase == "initial" and calls == 1)
+                or (phase == "final" and runtime.approval_sent.is_set() and not entered.is_set())
+            ):
+                entered.set()
+                release.wait(timeout=3)
+                returned.set()
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(target, name, held_check)
+        try:
+            runtime.loop.call_soon_threadsafe(runtime.go.set)
+            assert entered.wait(timeout=5)
+            if phase == "final":
+                assert runtime.preview_emitted.is_set() and runtime.approval_sent.is_set()
+            assert browser.get(health_path).status_code == 200
+            assert not returned.is_set(), "health waited for search authorization storage"
+        finally:
+            release.set()
+            lease = app.state.assistant.storage.execution_for_turn(
+                int(identity["user_id"]), conversation["id"], turn["id"]
+            )
+            task = app.state.assistant._tasks.get(str(lease["execution_id"])) if lease else None
+            if task is not None:
+                runtime.loop.call_soon_threadsafe(task.cancel)
+
+
+@pytest.mark.parametrize("interruption", ["revoke", "cancel"])
+def test_search_preview_wait_cannot_release_interrupted_query(settings, monkeypatch, interruption):
+    """Revocation/cancellation during preview persistence must release no approved query."""
+
+    runtime = _SearchAuthorizationRuntime()
+    app = _make_app(settings, runtime)
+    runtime.service = app.state.assistant
+    entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80091)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        assert runtime.ready.wait(timeout=3)
+        storage = app.state.assistant.storage
+        original = storage.create_search_preview
+
+        def held_preview(*args, **kwargs):
+            entered.set()
+            assert release.wait(timeout=5)
+            try:
+                return original(*args, **kwargs)
+            finally:
+                returned.set()
+
+        monkeypatch.setattr(storage, "create_search_preview", held_preview)
+        try:
+            runtime.loop.call_soon_threadsafe(runtime.go.set)
+            assert entered.wait(timeout=3)
+            if interruption == "revoke":
+                app.state.repository.auth_revoke_session(
+                    str(identity["token_hash"]), _NOW.isoformat()
+                )
+            else:
+                response = browser.post(
+                    f"/api/v1/assistant/conversations/{conversation['id']}/turns/{turn['id']}/cancel",
+                    headers={"x-csrf-token": str(identity["csrf"])},
+                )
+                assert response.status_code == 200
+                assert response.json()["status"] == "cancelled"
+        finally:
+            release.set()
+        assert returned.wait(timeout=5), "held preview write did not finish after interruption"
+        assert runtime.finished.wait(timeout=5)
+        assert runtime.approved_query is None
+        with app.state.repository.connect() as connection:
+            assert (
+                connection.execute(
+                    "SELECT COUNT(*) FROM assistant_search_previews WHERE turn_id = ?",
+                    (turn["id"],),
+                ).fetchone()[0]
+                == 0
+            )
+
+
+def test_search_delayed_final_authorization_cannot_release_expired_query(settings, monkeypatch):
+    """An already-approved synthetic future still cannot outlive the original lease."""
+
+    runtime = _SearchAuthorizationRuntime()
+    runtime.approve_immediately = True
+    app = _make_app(settings, runtime)
+    assistant = app.state.assistant
+    runtime.service = assistant
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80092)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        _start_turn(browser, identity, context, conversation, model)
+        assert runtime.ready.wait(timeout=3)
+        original = assistant._execution_current
+        delayed_check_seen = threading.Event()
+
+        def delayed_final_check(*args, **kwargs):
+            if runtime.approval_sent.is_set() and not delayed_check_seen.is_set():
+                delayed_check_seen.set()
+                assistant.clock = lambda: _NOW + timedelta(seconds=121)
+                return True
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(assistant, "_execution_current", delayed_final_check)
+        runtime.loop.call_soon_threadsafe(runtime.go.set)
+        assert runtime.finished.wait(timeout=5)
+        assert runtime.preview_emitted.is_set() and runtime.approval_sent.is_set()
+        assert delayed_check_seen.is_set()
+        assert runtime.approved_query is None
+
+
+@pytest.mark.parametrize("operation", ["cancel", "delete"])
+@pytest.mark.parametrize("health_path", ["/api/v1/health", "/api/v1/readiness"])
+def test_public_interruption_storage_wait_preserves_application_health(
+    settings, monkeypatch, operation, health_path
+):
+    runtime = _PausedRuntime()
+    app = _make_app(settings, runtime)
+    entered, release, returned = threading.Event(), threading.Event(), threading.Event()
+    with TestClient(app, client=("127.0.0.1", 51068)) as browser:
+        identity = _add_signed_in_user(app, 80101)
+        _set_browser_session(browser, identity)
+        context, conversation, model = _prepare_conversation(browser, identity)
+        turn = _start_turn(browser, identity, context, conversation, model)
+        assert runtime.ready_for_first_event.wait(timeout=3)
+        detail = browser.get(f"/api/v1/assistant/conversations/{conversation['id']}")
+        assert detail.status_code == 200
+        conversation = detail.json()["conversation"]
+        monkeypatch.setattr(runtime, "clear_conversation_cache", lambda *_: True, raising=False)
+        storage = app.state.assistant.storage
+        method = "get_turn" if operation == "cancel" else "validate_conversation_delete"
+        original = getattr(storage, method)
+
+        def held(*args, **kwargs):
+            entered.set()
+            release.wait(timeout=1.5)
+            returned.set()
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(storage, method, held)
+        headers = {"x-csrf-token": str(identity["csrf"])}
+
+        def request():
+            if operation == "cancel":
+                return browser.post(
+                    f"/api/v1/assistant/conversations/{conversation['id']}/turns/{turn['id']}/cancel",
+                    headers=headers,
+                )
+            return browser.request(
+                "DELETE",
+                f"/api/v1/assistant/conversations/{conversation['id']}",
+                headers=headers,
+                json={
+                    "expected_revision": conversation["revision"],
+                    "confirmation_phrase": conversation["delete_confirmation_phrase"],
+                },
+            )
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pending = pool.submit(request)
+            try:
+                assert entered.wait(timeout=3), "request did not reach selected storage seam"
+                response = browser.get(health_path)
+                assert response.status_code == 200
+                assert not returned.is_set(), "health waited for interruption storage"
+            finally:
+                release.set()
+                result = pending.result(timeout=8)
+            assert result.status_code == 200, result.text
+            if operation == "cancel":
+                assert result.json()["status"] == "cancelled"
+                stored = storage.get_turn(int(identity["user_id"]), conversation["id"], turn["id"])
+                assert stored["status"] == "cancelled"
+                assert stored["error_code"] == "turn_cancelled"
+            else:
+                assert (
+                    browser.get(f"/api/v1/assistant/conversations/{conversation['id']}").status_code
+                    == 404
+                )

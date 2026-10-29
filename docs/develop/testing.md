@@ -5,12 +5,231 @@ description: "Local developer checks for Python, APIs, persistence, browser beha
 
 # Testing
 
+## Temporary ChatGPT subscription testing
+
+The user-authorized local testing route is `openai-chatgpt/gpt-6-luna`. Its Responses requests use
+the application-owned `reasoning: {effort: "low"}` setting after native body validation. Native
+callers cannot supply reasoning overrides; other account models retain their existing behavior.
+`tests/test_assistant_provider_release_gaps.py` checks the actual final OAuth request body, selected
+model, preserved input/instructions, output budget and `store: false`, plus override rejection.
+Authentication still requires the normal owner-bound native sign-in and protected vault flow.
+Model catalog presence does not prove subscription entitlement or a completed live response.
+
+OAuth callback regressions cover dotted opaque codes, the optional exact requested scope echo,
+unchanged code/state forwarding, and rejection of ambiguous, unrequested or malformed values.
+The native callback parser and PKCE exchange remain authoritative after app validation. Local
+browser fixtures must match the managed worker's OAuth handoff setting and app broker port 8000,
+use a factor that can complete the actual admin UI step-up, and keep a valid local return page
+available when browser tooling cannot retain an unreachable callback address. A return page must
+not log, echo, store or exchange callback query data; codes go only through the private admin form.
+
+Exercise the OAuth sender through the real `request_public_https` header guard with only DNS and
+the TLS socket replaced by synthetic fixtures. JSON and form bodies must use its typed
+`content_type` option; passing `Content-Type` through custom headers is rejected. Assert the final
+wire content type, preserved authorization checks and exact code/form fields. A request stub that
+accepts arbitrary header dictionaries cannot establish this transport compatibility.
+
+Use isolated development data for these tests and keep their evidence separate from genuine free
+Zen acceptance. Return to the approved Zen route when it is available; use supported quota options,
+local replay and focused live calls to reduce test usage. All release gates remain required.
+
 ## Local browser authentication fixtures
 
 Use development fixture accounts and isolated browser contexts for local QA. Preserve the user's
 signed-in tabs and authentication state. Never clear user cookies, browser storage, or profiles to
 reset a test. Do not use production local-login flows or claim an MFA bypass; exercise authentication
 through development fixtures and isolated contexts.
+
+`frontend/tests/auth-session.test.mjs` exercises the real authentication client with deferred
+fetch responses. Check that simultaneous consumers issue one session request, a later consumer
+gets a fresh server result, failures release the request, account mutations separate checks
+before/during/after their request, and an earlier completion cannot clear a newer pending check.
+This does not cache settled identities or replace server-side revocation checks.
+
+Internal assistant session checks must re-read current session, factor, account, expiry and
+ownership state without recording browser activity. A protected workspace request records activity once;
+output checks and event replay must not commit another activity update for every event.
+The same contract applies to status/model inventory and post-await OAuth authority checks:
+their internal authentication reads must opt out of activity refresh, while retaining fresh
+identity, role, step-up and CSRF checks. Count actual activity writes for public status/model
+requests as well as durable stream replay; each protected request records only its initial activity.
+`tests/test_assistant_runtime_event_http_flows.py` counts actual session-activity SQL updates
+without retaining statements or credential values, and checks expired/revoked sessions, changed
+CSRF and MFA state, disabled accounts and mismatched ownership. These checks establish the local
+authorization/write contract; browser latency and native/provider acceptance remain separate.
+
+`GET /api/v1/auth/session` is a background authority read, not workspace activity. Repeated status
+polls must leave `last_seen_at` and idle expiry unchanged while checking current session revocation,
+expiry and account state. A protected workspace request still records activity and extends idle
+expiry within the absolute limit. `tests/test_auth.py` exercises those HTTP behaviors against real
+SQLite, including idle-expiry, revocation and disabled-account rejection after successful polls.
+Rejecting an invalid session may still persist revocation; read-only polling means no activity
+refresh, not suppression of security mutations.
+
+For a local native probe, check the executable against the project's reviewed runtime pin first;
+the operator's installed CLI can be newer. Bind an existing patched executable to its exact digest,
+reviewed build receipt and current patch manifest before passing `native_guards_verified=True` to
+`run_native_live_zen_probe`. Its local supervisor always sets the managed-worker environment and
+keeps guarded native registration disabled by default. With verified artifacts, forward the selected
+provider and guarded-tool capability to the same config builder used in production. This is local
+functional fixture parity, not production file-ownership, UID, resource or image acceptance.
+Retain rate/access-limit failures without switching to a paid provider or claiming an answer.
+The local application integration probe replaces only upstream transport. Its validation observer
+must accept and forward the production validator's `include_restricted` keyword unchanged; an
+observer signature mismatch can produce an HTTP 500 before the synthetic transport is reached.
+Do not diagnose that fixture error as provider unavailability or extend the native turn deadline.
+Failure finalization may still be purging worker HOME after the turn becomes terminal. The local
+live probe reuses `_attached_delete_with_pending_retry` within 24 seconds, refreshes the exact
+owner/revision/confirmation before each attempt, and retries only HTTP 503
+`assistant_cache_clear_pending`. Record attempt and pending counts; keep a failed answer verdict
+failed even when cleanup succeeds. Do not retry unrelated failures or make extra model requests.
+
+Keep browser proof scopes explicit when observing a local native probe. Opening a saved API answer
+does not exercise the browser Send path. For a submitted turn, bind the actual POST 202 identity,
+completed visible answer and persisted response to one exact assistant-event GET, one HTTP 200
+`text/event-stream` response and one terminal browser outcome. Use the maintained finite-stream
+classification in `tools/browser/tests/fixtures.js`: a finished request or the exact
+`net::ERR_ABORTED` outcome may follow a completed finite stream; reject unrelated request failures.
+Do not rely on an unbounded Playwright `response.finished()` promise as the only lifecycle signal.
+Retain failed observer results and distinguish them from application/native failures. Preserve the
+actual submitted turn identity so a failed observation can still collect native detail and perform
+typed cleanup; an unexercised diagnostic branch remains unverified. See the
+[local native/browser checkpoint](../../MVP-PLAN.md#r-astra-121-f6-local-browser-native-validation-2026-10-24).
+
+Native health rechecks must close new admission on a connection failure while retaining an
+already-admitted response only for the same previously verified worker/client/password. Exercise
+the held provider-stream guard through connect/read/write/close errors as well as timeouts.
+Initial unverified connections and replacement worker generations must remain closed; protocol
+errors, HTTP 401/403 and invalid JSON must invalidate the transport. A controlled local native
+browser check can hold one synthetic provider chunk until a single health-read fault is injected,
+then verify completion, saved-answer reopen and typed cleanup. This does not establish the subtype
+or cause of an earlier generic HTTP warning, genuine Zen acceptance, or the full security gate.
+See the [health transport repair](../../MVP-PLAN.md#r-astra-121-f6-verified-worker-health-network-repair-2026-10-24).
+
+For formatted native answers, compare supported rendered blocks with the maintained
+`parseAssistantAnswer` contract rather than requiring raw Markdown to appear as one literal text
+node. Bind the persisted answer bytes/digest separately; test the observer against a literal
+structured fixture, and reject empty or overflowed observations. Record per-block scrolling and
+the screenshot's final scroll position instead of claiming every block is visible simultaneously.
+Keep genuine provider attempts behind the exact recorded retry hint and a fresh clean-source,
+helper and complete served/export binding. An early held launch or offline admission test is
+preparation, not provider availability or a successful genuine answer. See the
+[structured-answer preflight record](../../MVP-PLAN.md#r-astra-121-f6-structured-answer-and-genuine-window-preflight-2026-10-24).
+
+An elapsed provider retry hint does not establish renewed free-model availability. Retain a fresh
+HTTP 429 `free_usage_limit_error` as an upstream limit failure, with zero answer bytes kept explicit;
+do not infer a new reset time when that run did not capture `Retry-After`. Preserve the failed native
+and UI verdicts while verifying deletion, existing marker removal and actual process/port cleanup.
+Do not cycle models, repeat the unchanged request or build an image to bypass this missing local
+proof. See the [post-window genuine result](../../MVP-PLAN.md#r-astra-121-f6-sd-restoration-and-post-window-genuine-result-2026-10-26).
+
+The real-HTTP assistant browser fixture must implement the runtime policy-authority contract:
+accept only its exact immutable model/policy version and a positive integer owner ID. Exercise
+that contract through the real service write scope; do not weaken the production policy guard
+to accommodate a stale fixture. Separately hold the status storage projection and verify that
+health/readiness remain responsive and that revocation during the wait returns no quota data.
+Retain the existing case, action, database and native-turn bounds when diagnosing slow paths.
+Seed its synthetic account and history inside the real application lifespan, after canonical
+migration and before the server accepts requests. Do not migrate once for seeding and again at
+startup. The fixture's existing `fixture_started` record includes wall-clock anchors and
+monotonic durations for application construction, lifespan startup, session seeding and search
+seeding. `main_to_ready_ms` starts after module imports; it is not total process startup. Use these
+contemporaneous rows to separate setup delays from a timed-out browser action. Do not reconstruct
+missing timing baselines or promote a later fast run to an explanation of an earlier slow run. Cover successful authenticated readiness and seed-failure cleanup through that same
+lifespan in `tests/test_browser_assistant_fixture.py`.
+The fixture's existing stream audit keeps completed streams separate from at most ten active
+streams. Active diagnostics expose byte totals, whether an ASGI send is pending, and closed event
+names only; they retain no response text or URL payload. A returned ASGI send does not prove that
+the browser received or rendered the bytes. Preserve the original failing result when a later
+diagnostic passes without establishing its cause.
+The news-state journey also records bounded failure-only readiness/history metadata when its
+forecast response wait rejects. Its parallel reads each retain a one-second request limit and
+report only HTTP statuses and fixture event IDs/status. An unexercised diagnostic branch remains
+Unavailable; a later axe timeout does not pass the case or its accessibility scan.
+
+## Assistant access-failure checks
+
+MCP discovery retries only transient read timeouts within its existing eight-second stage window
+and the earlier turn deadline. Each request keeps its two-second cap and the existing polling
+backoff. Verify recovery, persistent timeout classification, denied/malformed/failed/duplicate
+responses and cancellation; these failures must not start search or session work. A synthetic
+recovery Pass does not establish the cause or recovery of a failed native trial.
+
+Native verification must retain the original turn deadline through diagnostic wrappers. Exact
+`FreeTierError` responses map to the closed `free_tier_access_error` diagnostic class across the
+proxy, runtime, API, and probe; never retain raw provider bodies. A classified rejection is not a
+successful model answer. Test safe failure copy through terminal stream completion and saved-chat
+reopening, with the saved context matching the submitted context and no automatic retry.
+
+Initial recognized upstream 401, 403 and 429 failures must reach the native client as sanitized
+no-store JSON with the original HTTP status before SSE headers. Recheck the active session after
+prefetch, close the iterator, and never forward raw provider bodies or invent a retry reset time.
+Keep unknown initial failures and failures after the first chunk interrupted; do not emit a clean
+completion. A correctly reported 429 is failure handling, not proof that the provider can answer.
+
+For HTTP 403 and 429, classify only the existing bounded, identity-encoded JSON error body into
+closed error-type classes. Header diagnostics remain specific to 403. On an initial 429, only a
+positively recognized `free_usage_limit_error` may add the app-owned `error.type` value
+`FreeUsageLimitError` to the sanitized response. The pinned native client classifies that type as
+quota rather than a retryable rate limit. Other or unknown types keep the generic response; never
+infer a reset time or forward upstream text. Cover the complete transport/API/timing/probe flow,
+including unsupported framing, malformed bodies, cancellation and authorization revocation.
+
+Verify that Zen display, validation, policy identity and outbound requests all use the fixed
+reviewed chat route even when stored metadata contains a legacy or unrelated base URL. Both the
+legacy `/zen/v1` route and `/inference/openai/v1` must preserve known-model exclusions; ambiguous
+paths on the same host fail closed, while similarly named unrelated hosts are not globally banned.
+Keep session revalidation and stream cancellation covered without a live provider request.
+
+The exact reviewed GLM-5.3-Flash Free and MiniMax M3.1 Flash Free Zen routes send the app-owned
+`reasoning_effort: low` setting for interactive turns. Exact DeepSeek V4.1 Flash Free instead sends
+`thinking: {type: disabled}` without an effort field, using the direct vendor's documented
+non-thinking tool mode. Other models and paid routes keep their existing request parameters.
+Verify exact outbound model identity, untouched messages, all thirteen native-compatible tool
+declarations and continuations, output-token budget, 120-second transport deadline, response-byte
+bound and `store: false`. These fixed settings are not browser-controlled options. The direct
+DeepSeek API documents both thinking controls and non-thinking tool calls; its documentation
+does not establish Zen's effective settings. The low-effort and subsequent non-thinking native
+attempts Failed their two-owner scope; the latter reached search/fetch but no final tool-flow answer.
+The selected-model lookup repair still needs a newly bound native trial. Synthetic egress
+checks do not establish that Zen honors a field or that native turns finish in time. See the
+[DeepSeek thinking contract](https://api-docs.deepseek.com/guides/thinking_mode/) and
+[non-thinking tool contract](https://api-docs.deepseek.com/guides/tool_calls/).
+
+Selected-model authorization filters the current raw inventory by exact model ID before policy
+adaptation. Verify that unrelated models receive no policy-state reads, missing IDs fail closed,
+and duplicate rows retain their original order and validation. Unique-ID selections retain two
+live state reads; duplicate rows retain their per-row reads and final live crosscheck. Generation
+comparison, consent, session revocation and stream-boundary authorization remain in place.
+Synthetic profiling found catalog-wide state reads in this path; it did not measure the
+native catalog size or establish a timeout cause. Recheck the actual native flow on a newly bound
+image before treating the lookup repair as restored service.
+
+Compatible-chat streams must preserve bounded `reasoning_content` inside the native session so
+the adapter can replay it in assistant tool continuations. It shares the existing history byte
+budget and per-delta limit; malformed values and non-assistant history fields fail closed. Cover
+fragmented credential rejection on its independent choice/channel, and verify that reasoning
+never enters app token events or timeout logs. The pinned V2 adapter supports this field; see
+the [MiniMax continuation contract](https://platform.minimax.io/docs/api-reference/text-openai-api).
+Preserve the fresh model-bound native session per execution and visible-only app history projection;
+private native reasoning must not be replayed into a later app turn after model selection changes.
+For each exact reviewed free Zen route above, assert its fixed interactive reasoning control,
+unchanged token/deadline limits, and no new thinking or effort field on unrelated model/provider
+identities. The public request schema stays closed; these are not browser-supplied options.
+A protocol regression pass does not establish the cause of a live timeout or a completed answer.
+
+For an isolated worktree, set `PYTHONPATH` to its absolute `src` directory and set
+`STOCK_PROBS_BROWSER_RUNTIME` to a task-owned disposable directory. A shared editable environment
+can otherwise import another checkout. Bind actual served asset bytes as well as local staged
+files; a matching local export alone does not identify the running package.
+
+At the native active-search checkpoint, finish the owner-bound private-file and process permission
+checks before sending `continue`. These checks repeatedly require the active owner lease and its
+exact worker config; resuming the child can complete the turn and revoke that lease. A failed
+permission check must stop the child without resuming it. Keep the original turn and observation deadlines,
+then require the final answer, deletion and cache-purge assertions. The
+[coordination repair record](../../MVP-PLAN.md#r-astra-121-f6-active-lease-probe-coordination-repair-2026-10-21)
+does not establish the cause of an earlier native failure or successful runtime restoration.
 
 ## Reviewing incomplete contrast results
 
@@ -50,6 +269,19 @@ target. The helper removes only its task-generated tags after ownership checks, 
 uses exact fixed image IDs only after provenance and reference checks, as described in the root
 [agent policy](../../AGENTS.md). Selected helper tests do not establish that a pair rehearsal ran;
 see the [R-ASTRA-120 ledger](../../MVP-PLAN.md) for the current scope.
+
+### Selecting a retained local image
+
+Before replacing a local candidate at the three-image retention limit, use
+`--expected-local-current-image-id sha256:<full-id> --select-local-current-image-id sha256:<full-id>`
+with the bounded builder. The operation locks the ledger, compares the existing pointer against the
+expected image, verifies both completed current-role rows and their build receipts, and verifies
+Docker image IDs, revision labels, platform, and exact tags before atomically selecting the retained
+replacement. It does not delete images, change ledger roles, increase the retention limit, or make
+an old candidate automatically eligible for deletion. A stale pointer or failed validation leaves
+the pointer unchanged. Record the command and result in a new private receipt. Subsequent exact-ID
+cleanup still requires independent provenance, protection, tag, container-reference and bounded
+RootFS review, followed by absence verification and the existing retirement acknowledgement.
 
 ### Schema-13 rehearsal image cleanup
 
@@ -93,6 +325,32 @@ bounded-policy helper's 145-test result is a distinct scope. See the [E825 ledge
 for exact bindings and status.
 
 ## Bounded local Docker builds and worker verification
+
+A failed local build retains its exact in-flight ledger row and publishes bounded failure facts.
+CLI process-group cancellation does not establish that a remote BuildKit `RUN` stopped. The
+failure handler checks the setup-bound full container ID, start generation, configuration and
+ownership before stopping only that builder; an uncertain stop or receipt write keeps recovery
+held. Preserve the primary build error separately from cleanup errors.
+
+The shared bounded-build deadline begins before `Popen`; pre-launch validation and dispatch time
+consume that deadline for every caller. A source or selected-test pass does not establish image,
+Docker-runtime, provider, or physical-mount acceptance. The R-ASTRA-121 F6SD-02 narrowed
+timeout-finalization result and its earlier full-suite source-review failure are recorded separately
+in the [MVP plan](../../MVP-PLAN.md#r-astra-121-f6sd-02-timeout-observer-finalization-follow-up-2026-10-18).
+
+Use the typed `--reconcile-local-inflight-reservation` operation in
+`scripts/bounded_docker_build.py` with the exact local tag, revision, context digest and current
+role. Supply either the genuine local-failure receipt digest or all four separately hashed
+terminal, worker-preflight, cancellation and settled observations. External observations must
+remain private on the verified SD mount. External-observation mode rechecks current history.
+Genuine-local-failure mode instead requires fresh proof of the same stopped builder generation,
+PID zero and an absent or empty bounded descendant cgroup, so history inspection cannot restart
+the builder before that proof. Both modes require fresh tag/full-ID absence, protected inventory
+and ledger consistency. A complete private receipt is staged before ledger commit/verification
+and exclusive publication; a publication error restores the ledger. Missing historical BuildKit
+terminal evidence stays Unavailable, and observed historical negative facts are rejected.
+Never use the PR-failure mode, edit the
+ledger manually, or reconstruct a missing failure receipt. See [E33](../../MVP-PLAN.md#r-astra-121-e33-local-build-failure-and-reservation-recovery).
 
 Use `./scripts/local-compose.sh build` or `./scripts/local-compose.sh up --build -d` for local
 root-Compose builds. The launcher performs the bounded build; `compose.yaml` intentionally has no
@@ -262,6 +520,12 @@ separately from product assertions, and rerun only after correcting that fixture
 For live supervisor cases, verify the serving thread exits and its control socket is unlinked;
 remove only that run's owned temporary directory after all children have exited.
 
+Before a full suite, preflight the paths that the actual runner will create; a short manually
+selected diagnostic path does not establish that the full runner's temporary root is safe. If a
+canonical run fails or is interrupted on socket setup, retain that aggregate and any inconsistent
+terminal/JUnit counts as a failure requiring reconciliation. A focused short-path pass can confirm
+the fixture boundary for its selection, but it cannot replace a fresh complete canonical run.
+
 ## Current OpenCode V2 QA contract
 
 Use native OpenCode V2 `build`/`plan` entry points and the Luna profiles: `luna-build` may
@@ -392,6 +656,15 @@ synchronous spawn failure and readiness failure with mocked child-process, netwo
 interfaces; it does not verify real child-process readiness, asynchronous child error events, or OS
 process reaping. The full browser aggregate must still pass separately.
 
+The later F6 fixture-readiness watchdog sets the fixture startup budget to 30 seconds to match the unchanged Playwright `webServer` timeout. Each readiness fetch uses an abort timeout of `max(1, min(1000, remaining_ms))` milliseconds; retry sleep is capped by remaining time. The 9/9 lifecycle suite uses a fake clock, child process, and fetch; it does not verify real app/browser startup. See the [F6 checkpoint](../../MVP-PLAN.md#r-astra-121-f6-deployment-access-and-startup-diagnostic-checkpoint-2026-10-18).
+
+The shared application fixture also emits `qa_fixture_lifecycle` JSON records to the existing
+bounded runner log when each child starts and exits. Records contain only the fixture runtime name,
+allocated loopback port, actual child PID, and exit code/signal. Retain every generation, including
+restarts and early exits, so final cleanup can check all additional fixture ports and processes.
+An exit record alone does not prove listener, runtime-directory, or process-group absence. Never add
+session values, environment contents, request payloads, or raw application errors to these records.
+
 The supervised native probe retains only normalized diagnostics. Model-discovery warnings use
 closed outcome names and bounded numeric counters for catalog reads and the activation barrier;
 raw log text, request URLs and owner identifiers are excluded. The existing limits remain four
@@ -439,7 +712,7 @@ R-ASTRA-120 remains **In progress**. E725's earlier full-browser failure remains
 ### PR-head candidate image build helper
 
 The existing schema-13 rehearsal CLI now has a fixed-source mode for building a private local
-image from the exact clean, reviewed head of open PR #2. Use only these mode flags:
+image from the exact clean, reviewed head of open PR #9. Use only these mode flags:
 
 ```bash
 python3 scripts/rehearse_schema13.py \
@@ -450,7 +723,7 @@ python3 scripts/rehearse_schema13.py \
 
 Set `REVIEWED_PR_HEAD` to the exact lowercase 40-character PR head SHA and `PRIVATE_RECEIPT` to a
 private output path. The helper checks that local `HEAD` is that SHA and the worktree is clean,
-validates the fixed PR-2/head/base relationship, rechecks the head around the build, and writes a
+validates the fixed PR-9/head/base relationship, rechecks the head around the build, and writes a
 mode-0600 JSON receipt. The build is local `linux/amd64`, is not published, and requires at least
 4 GiB free on every checked build filesystem; it aborts if free space drops below 1 GiB. E678's original independent process-ownership review **Failed** and remains historical. E683
 recorded builder checks, and E684 independently passed source/test QA (59/59, exit 0; 149 inputs
@@ -477,7 +750,7 @@ The fixed local review-pin command accepts only an explicit write request:
 python3 scripts/pin_pr_rehearsal_review.py --write
 ```
 
-Before writing, the helper reads the current commit, requires the exact clean PR-2 source, checks
+Before writing, the helper reads the current commit, requires the exact clean PR-9 source, checks
 its fixed candidate/recovery pair manifest and image/source digests, verifies the PR identity, and
 binds the pair to that same commit. It accepts no target, path, or credential arguments. The
 operator-local record is `$XDG_CONFIG_HOME/signal-ledger/rehearsal-review.json`; when
@@ -568,3 +841,590 @@ for the full reconciliation and limitations.
 ARM64 checks must identify whether execution is native or QEMU/OCI-emulated. Emulation can
 exercise package, runtime, functional, build, and tool behavior; it cannot prove native
 resource performance. See the [MVP plan](../../MVP-PLAN.md) for current gate requirements.
+
+
+## Genuine free Zen restoration checks
+
+Compare the same official OpenCode binary, free model and prompt with its ordinary native tools
+and the application restrictions before attributing rejection to provider availability. R-ASTRA-121
+observed an ordinary built-in free answer, rejection with read/shell registrations removed, and
+success when genuine read/shell registrations were retained. This isolates the registration
+boundary for the tested model; it does not promise all free models or continuous availability.
+
+Verify the managed read/shell guards against actual compiled native tool calls with permission
+already allowed. Force calls only after the provider request declares the target tool; title requests
+can contain no tools and are not execution evidence. Check file-content leakage, shell side effects,
+and comment-only commands. Synthetic provider responses prove guard behavior, not Zen acceptance.
+Then test a real free answer through the application provider route and owner-scoped MCP.
+Record whether the fixture overrides readiness, and preserve exact pre-run bindings. A scratch
+binary owned by the developer fails the production receipt validator by design. Verify the normal
+installed root-owned artifact path in the current image before release. Keep native isolation,
+search/fetch, kill/restart, canonical, security, actual-host 1 GB and PR-bound recovery/rollback
+checks separate and mandatory. Reuse unchanged UI evidence only at its existing bindings.
+
+
+For the R-ASTRA-121 rebuilt native executable, refresh the scanner's exact file digest only after
+comparing every existing public match span against checksum-verified official Bun 1.4.2 bytes.
+Keep the path, size, offsets and all other bytes subject to their existing checks. A file-only scan
+or provenance comparison does not replace scans of the final candidate and recovery archives.
+
+
+### Local build phase observations
+
+The local image build now requests Buildx raw JSON progress only for its opt-in observer. A
+bounded background reader discards raw logs and records coarse allowlisted build phases,
+completion/cache/error flags and elapsed durations in a genuine failure receipt. Unknown vertex
+names are counted without saving their text; later recognized phases remain available as a
+partial observation. Frame, byte, vertex and artifact limits stop parsing while the reader keeps
+draining. Reader failure, closure or publication does not replace the primary build result.
+The original 900-second deadline, disk/mount checks, cancellation and separate ARM Compose path
+remain unchanged.
+Unit tests do not establish the next actual build's phase or cause.
+
+### Candidate and recovery production baselines
+
+The candidate rehearsal checker distinguishes the running 5ad schema-13 app from the da2764/d3
+schema-12 migration fixture. Its recovery alternative requires the exact registered recovery role,
+image/archive, pair/overlay/migration, Compose snapshot, schema and disabled-ready projection at
+both host and MCP boundaries, with the running container and loopback binding checked again
+during monitoring. Negative fixtures must reject partial, mismatched, enabled and stale identities;
+the 512 MiB startup and 128 MiB running reserve remain mandatory. A synthetic checker test does
+not accept an image transition. Test the exact recovery image on disposable data and a user-defined
+bridge, retain post-migration records, and verify a fresh signed backup before an actual-host step.
+The current resource failure and backup scope are recorded in [E19](../../MVP-PLAN.md#r-astra-121-e19-installed-rollout-repair-and-signed-schema-13-backup).
+
+For the current R-ASTRA-121 helper, the startup operation budget begins before its bounded settle.
+On Linux/glibc, it collects completed Python allocations and calls process-local `malloc_trim(0)`,
+then samples host availability at 250 ms intervals for up to 30 seconds before the existing
+production/readiness guard records the final startup value. Unsupported allocator environments fail
+closed. This is fixed checker behavior, not an environment setting. The 512/128 MiB reserve floors
+and 1,080-second absolute budget do not change. E22's five-second observation is historical; the
+current bounded wait repair is E29. Independent source/unit/static QA passed 278 tests with one
+opt-in local-Docker test deselected, plus Ruff, Ruff security, format and diff checks at pinned
+source hashes; builder-selected 24 tests also passed with 255 deselected. Parent source review
+passed with no findings. The original preflight **Fail** at 517,480 KiB against the 524,288 KiB
+startup floor remains unchanged. T9 separately failed at 519,432 KiB; its twelve later above-floor
+observations do not change that result. Those E29 checks did not establish a post-repair host retry,
+native answer, fresh image or actual 1 GB acceptance. See [E22](../../MVP-PLAN.md#r-astra-121-e22-startup-reserve-preflight-repair-checkpoint)
+and [E29](../../MVP-PLAN.md#r-astra-121-e29-bounded-startup-wait-checker-checkpoint).
+
+The later T13 trial still failed its startup reserve before the SDK or model ran. The subsequent
+lazy-provider repair has independent focused checks for fresh-process startup without Yahoo,
+pandas, NumPy or curl imports, guarded fixture requests, on-demand synthetic provider calls,
+dependency failures, safe API errors and the actual headline client's busy/unavailable branches.
+The approved frontend build and stage passed in a source-bound checkout. These checks do not
+replace current-image native, actual-host resource, recovery, canonical or release acceptance.
+See [E32](../../MVP-PLAN.md#r-astra-121-e32-lazy-provider-startup-and-host-reserve-checkpoint).
+
+`tests/test_api_factory_import.py` separately checks API construction in a fresh interpreter with
+network calls forbidden. Importing the factory must create no unused app; an explicit factory
+call creates one, and eight concurrent loads of the compatible `stock_probs.api:app` target share
+one additional default app. The check uses the public OpenAPI health/readiness paths and retains
+the ten-second child bound. Constructor counts and an offline cold-setup profile are scoped
+diagnostics, not browser timing, current-image runtime or resource acceptance.
+
+The third production-baseline source shape is specifically `temporary_recovery`, not a release or
+the retained A9 recovery role. It requires the separately approved fixed 6359 manifest, matching
+operation/current records, exact Docker image/tag/platform/revision and loopback identity, ready
+assistant-disabled state, and the completed 512 MiB startup-floor phase. Monitoring compares the
+whole accepted identity again. The independent 332-test and 52-case selected passes cover mocked
+consumer/source behavior only; the image, dynamic approval and host transition remain unbound.
+The later local cancellation/reconciliation repair passed 238 tests under explicit child umask
+022; its actual typed reservation recovery is recorded at
+[E34](../../MVP-PLAN.md#r-astra-121-e34-6359-build-failure-and-stopped-generation-recovery).
+
+The later local build on pushed PR #9 head `63b9da6dd27cbbed1cb973cb5d5442753e285b4f`
+**Failed** with Docker `OOMKilled=true`; all 149 application inputs stayed bound and no image was
+accepted. The bounded resource sampler ended before the container exit, and no PID-to-strict-cgroup
+binding was available, so worker limits and the specific OOM cause remain **Unavailable** and
+**Unproven**. Typed reservation reconciliation separately **Passed**, retaining two ledger rows.
+This is recovery evidence, not a build or actual 1 GB resource pass. See the [63b9 build and
+recovery checkpoint](../../MVP-PLAN.md#r-astra-121-local-63b9-oom-build-and-recovery-checkpoint-2026-10-15)
+for exact receipts and limitations.
+
+A subsequent local Dockerfile diagnostic reduced the package-install parallelism argument from 2
+to 1. Builder and independent selected scopes each passed 23 tests; the independent review also
+matched 49 pins and passed Ruff, security, format and diff checks. This tests a memory-reduction
+hypothesis only: the prior OOM's install-versus-compile phase remains unproven, and no image build
+or native run has started. The initial temporary-path quota/policy setup failure and the initial
+independent umask omission remain preserved separately. See the [serial-install checkpoint](../../MVP-PLAN.md#r-astra-121-63b9-serial-install-diagnostic-checkpoint-2026-10-15).
+
+The resulting 12ed build subsequently failed with a cgroup OOM transition during native
+compilation. A continuous 78-row sampler and independently bound live worker establish the local
+1280 MiB RAM/768 MiB swap/one CPU/128 PID limits; the high-RSS argument category does not prove
+the executable or killed PID. Typed reservation reconciliation passed separately. Keep this failed
+build separate from native functional and actual production 1 GB acceptance, and obtain new
+discriminating evidence before another build. See the [12ed compilation checkpoint](../../MVP-PLAN.md#r-astra-121-12ed-native-compilation-oom-checkpoint-2026-10-15).
+
+The next native-build candidate fixes Bun's `--smol` mode only for the final build-script command
+and its child processes. Check that a host-supplied `BUN_OPTIONS` cannot alter that command's
+environment and that package installation/source tests retain their prior environment. The pinned
+Bun documentation describes a garbage-collection tradeoff rather than a hard memory cap. The
+final compiler retains the pinned source, targets and deadlines; a source test pass does not
+establish lower memory use or a successful image.
+
+Signal Ledger uses the upstream `--skip-web-ui` build flag to omit OpenCode's embedded web
+interface. Signal Ledger serves its own frontend and uses the native assistant API, MCP tools,
+search and provider paths. The pinned upstream build script supports this flag; native patch
+tests still run before compilation. This avoids the embedded Vite app build that exited with
+signal 137 and BuildKit `cannot allocate memory` in the failed `a0bbfec` local build. It does not
+raise the builder limits or establish a successful replacement image or runtime result.
+
+Build-controller unit cases that isolate command or backend-stop failures supply a synthetic
+`check_space` result alongside their mocked build operations. This avoids depending on the
+operator filesystem before reaching the intended assertion. Separate boundary tests exercise
+real admission/stop logic with controlled disk inputs; the actual builder still enforces its
+4 GiB admission and 1 GiB stop thresholds. See the [F6 canonical disk-seam checkpoint](../../MVP-PLAN.md#r-astra-121-f6-canonical-disk-seam-checkpoint-2026-10-17)
+for the preserved aggregate failure and narrow fixture repair.
+
+### F6 9a91 image-build retry checkpoint (2026-10-18)
+
+The first PR #9 build failed during base-image metadata; embedded resolver SERVFAIL was observed,
+but the cause remains **Unproven**. A scoped refresh of the exact owned builder resolver and two
+public registry lookups passed, permitting one retry. That retry then **Failed** with the bounded
+900-second build timeout; its phase observer reached `native_builder_run` but ended **Unavailable**
+at the line-byte limit. No image was accepted. The original backend-stop observation remains
+**Unverified**; a later exact-generation stop check passed with the worker cgroup absent. The
+reservation remains retained pending reviewed typed recovery. Preserve both build failures and
+do not infer a native build/runtime cause from the partial phase record. See the
+[F6 9a91 build checkpoint](../../MVP-PLAN.md#r-astra-121-f6-9a91-dns-retry-and-bounded-build-timeout-checkpoint-2026-10-18)
+for receipts and exact status.
+
+The F6 timeout-reconciliation follow-up independently passed 13 focused cases on repaired source,
+including explicit-null versus omitted receipt fields, exact tuple rejection, fresh-stop failure,
+and the legacy control. Preserve the earlier candidate's static-review failure and its separate
+20-case pass. The actual typed operation and its independent artifact audit passed only their
+reservation-release scope. A subsequent exact build-history read showed the native binary,
+frontend and Python-package steps completed before the overall assembly deadline; no completed
+image or native assistant result follows. See the
+[F6 recovery and history checkpoint](../../MVP-PLAN.md#r-astra-121-f6-typed-timeout-recovery-and-build-history-checkpoint-2026-10-18).
+
+### Print media synchronization
+
+The M04 responsive/accessibility journey waits at most five seconds for each emulated print
+surface to compute black text on white before recording Light/Dark samples. It retains the
+original theme-parity and white-background assertions and its existing 90-second test budget.
+This makes the browser state transition explicit; it is not a product CSS change or a confirmed
+root cause for the earlier aggregate-only print mismatch. The original single-case reproduction
+passed unchanged, while that earlier complete browser aggregate remains failed.
+
+### F6 current-model acceptance selection (2026-10-21)
+
+A native run on the exact `9ddd82f` image passed readiness, then failed at `model_inventory`
+with `reviewed_model_not_in_inventory` before either owner started a turn. Preserve that Fail.
+A bounded public inventory GET and the maintained catalog parser confirmed that SpaceBunny is
+absent while the already reviewed LongCat free/no-training row remains available. The explicit
+`zen.native_acceptance_model_id` initially selected LongCat; missing or ineligible selections still fail
+closed. The six-case Super VL regression first failed on the missing NVIDIA trial exclusion;
+it covers the native, Console, and custom identities on both canonical Zen routes.
+
+The headless native builder and its scoped 24-test review remain unchanged. Its successful
+cached `9ddd82f` image build does not accept the later catalog bytes. Bind a fresh image before
+another native functional run, and complete that run before the mandatory release aggregate.
+The full-200 browser Fail and remaining resource, security, rollback, guide, and live-owner
+acceptance gates remain separate. Detailed receipts are in the dated F6 MVP-plan checkpoint.
+
+The newly bound `39d9c20` image later passed readiness but failed its one two-owner native run:
+both turns timed out without answers, and only one completed the summary/search portion. A closed
+diagnostic recorded one anonymous upstream HTTP 503; it does not prove both timeout causes. The
+next catalog candidate adds the currently documented MiniMax M3.1 Flash Free model and explicitly
+selects it for the same full native test. LongCat remains reviewed and selectable; no automatic
+fallback is added. The new row uses the existing OpenAI-compatible adapter and requires the
+existing privacy and billing acknowledgements. A fresh image and native result remain required.
+
+The `858192b` MiniMax image passed its build/source/stage bindings but failed the sole native
+trial during conversation polling. Both owners had matching model and summary receipts, with
+no completed answer or search/fetch source. One read timeout aborted the observation while the
+last snapshots still reported running turns. The default `same_supervised_app_reachable=false`
+does not establish an outage: the final health request was not reached. The runtime cause remains
+unproven; keep the original Fail and its separate successful fixture cleanup.
+
+The attached probe now permits at most two retries after a read timeout only for the current
+owner's read-only conversation poll in that phase. At request start, the original eight-second
+read/two-second connect caps shrink to the remaining polling time. Retry admission and at most
+100 ms backoff use the original deadline without resetting it. These per-phase inactivity limits
+do not guarantee a hard total request duration. The deadline gates polling and retry admission.
+The probe never retries mutations, readiness requests, authorization/protocol failures,
+or connection errors. The 120-second application turns, two-owner answer/tool criteria and
+separate readiness/resource gates are unchanged. Synthetic recovery tests do not establish a
+recovered native run or the timeout cause.
+
+The application-health concurrency regression in `tests/test_api.py` holds a protected request
+inside a synthetic synchronous authentication wait, then requests liveness or readiness on the
+same ASGI event loop. It covers accepted-Origin and no-Origin middleware branches, requires the
+health response before authentication returns, and verifies the protected request is still denied.
+The actual app lifespan runs for the readiness cases. The initial two liveness cases failed before
+the worker-pool repair and passed afterward. This demonstrates event-loop starvation at that
+boundary; it does not establish SQLite contention, worker-pool saturation behavior, or the cause
+of the native trial's readiness timeout. No readiness assertion or retry policy is relaxed.
+
+Authentication uses the same Starlette worker-pool cancellation policy as existing FastAPI sync
+handlers. A bounded independent probe observed AnyIO-scope cancellation waiting for the worker,
+while direct `asyncio.Task.cancel()` could return before it finished. Uvicorn uses direct task
+cancellation after its graceful-shutdown timeout. Absolute request-gate retention through forced
+shutdown is therefore not claimed; the complete ASGI shutdown/restore interaction was not run.
+
+The provider-authorization concurrency regression in `tests/test_assistant_api.py` holds each
+stream guard before upstream read, before chunk yield, or before headers. The first six synchronous
+cases failed before the repair: unrelated liveness/readiness completed only after authorization
+returned. All six passed after moving synchronous checks off the event loop. Expanded coverage
+also checks awaited callbacks and initial lease lookup on the actual native/compatible-chat HTTP
+routes; all 16 cases passed, with denial and upstream cleanup retained. The provider manager already
+accepts awaited authorization callbacks, so both internal routes pass a fresh awaited execution
+check through transport and response guards. Callback fixtures now await that result without
+weakening their true/false assertions. Worker-pool and database contention, forced-cancellation
+limits, and the unproven native timeout cause remain separate; these are synthetic local checks.
+The initial full affected run retained one lease-lookup case that never reached its held lookup
+and six stale callback-test failures. The six assertions were corrected to await actual checks;
+all six plus four unchanged lookup cases passed a focused rerun. The original setup failure
+remains recorded with an unproven cause; a focused pass does not replace a complete affected run.
+
+Repeated full-scope lookup setup failures left the fixture request pending before its held lookup;
+a 74-case provider subset did not reproduce them. The lookup fixture separates a five-second
+setup admission bound from the unchanged two-second health deadline and records admission time
+in JUnit. Health must still answer before the one-second authorization hold returns; denial and
+no-byte-release criteria remain. The setup delay cause and prior failures remain recorded.
+The complete affected rerun passed 175 tests with 518 stable input hashes; its previously failing
+lookup entry took 2.001108 seconds, just beyond the old setup bound, then passed the unchanged
+health/denial criteria. Independent lease/guard re-review passed all 16 cases. This source evidence
+does not establish native runtime health or replace the required newly bound image run.
+
+
+The 2026-10-21 F6 reasoning candidate (`020121b`) built with 150 packaged inputs and 53
+served/export pairs unchanged, then failed its one genuine native trial: owner 0 completed a
+477-byte answer; owner 1 completed approved search/fetch but timed out without an answer. The
+native snapshot retained two reasoning parts; it does not establish the timeout cause or a repair
+causal claim. Exact owned cleanup and parent result-integrity review passed; independent functional
+acceptance is not claimed. Retain the initial receipt/comparator failures and their bounded
+corrections. See the [native-result ledger](../../MVP-PLAN.md#r-astra-121-f6-reasoning-candidate-native-result-2026-10-21).
+No unchanged native retry or full aggregate follows from this failure; the next source-only
+question is the documented MiniMax effort default under the existing interactive deadline.
+
+
+The F6 low-effort candidate (`004c163`) completed both genuine free Zen answers, including approved
+native search and guarded fetch, but its complete native aggregate failed on two health transport
+observations. Unavailable observations carry no schema value; do not describe the resulting schema
+guard failure as an observed wrong schema response. Preserve the three-second observer, existing
+readiness assertions and original 120-second turns while diagnosing the specific blocking path.
+The exact five-object cleanup and parent terminal binding review passed. See the
+[native-result ledger](../../MVP-PLAN.md#r-astra-121-f6-low-effort-candidate-native-result-2026-10-21)
+for bounds, original failures and remaining release gates. Both answers do not establish aggregate
+reliability, authenticated browser acceptance or actual combined 1 GB host acceptance.
+
+
+F6 event-stream responsiveness checks hold the real public SSE route's storage read and require
+both liveness and readiness to answer before that read returns. Both cases failed before moving
+stream reads to the existing Starlette worker pool. A second regression revokes the session while
+browser-event projection waits and requires the pending token to be withheld. The first offload
+candidate failed that regression; final per-event authorization now runs after projection, with
+fresh session, access, turn and execution checks before bytes are emitted. Existing live-stream
+revocation, owner isolation, cursor/replay and UTF-8/output-bound checks remain part of the affected
+scope. These deterministic checks do not establish the earlier native health transport failures'
+cause or replace the required newly bound native image test.
+
+
+The completion-transition regression pauses the public SSE worker's execution recheck while the
+real test runtime finishes. A completed turn must still deliver its saved terminal event; revocation
+during that transition must deliver no bytes. A closed lease without settled terminal state must
+also fail closed. The authorizer permits one fresh state/authorization read only for a normal,
+exactly owner-bound closure; no provider call is retried. Preserve the original empty-stream failure
+and the earlier unrelated native transport failure separately. See the
+[completion-transition ledger](../../MVP-PLAN.md#r-astra-121-f6-sse-completion-transition-repair-2026-10-21).
+
+
+Provider HTTP fixture assertions must await the asynchronous authorization callback both before
+and after revocation. When a session is revoked during SSE event projection, require zero emitted
+bytes and retain the exact committed-revocation timeline and denied follow-up request. For the
+complete-write concurrency fixture, interleave finite write/read waves rather than assuming that
+a continuously queued burst gets fair acquisition of the repository lock. Retain the same total
+writes/reads and verify the production timeout boundary separately; do not extend that bound or
+retry failed writes to make the fixture pass. See the
+[native and canonical reconciliation ledger](../../MVP-PLAN.md#r-astra-121-f6-native-verification-and-canonical-fixture-reconciliation-2026-10-21).
+
+
+The synthetic assistant's loopback MCP client uses the application's existing turn bound for HTTP
+response reads, while retaining three-second connect/write/pool limits. The browser's completion,
+action and case assertions keep their own deadlines. A controlled real-loopback regression checks
+that a valid response beyond three seconds completes and an HTTP failure still emits no answer.
+This fixture contract does not establish the cause of an earlier browser failure; preserve failed
+aggregates beside isolated or controlled passes. See the
+[F6 browser/fixture checkpoint](../../MVP-PLAN.md#r-astra-121-f6-browser-aggregate-and-synthetic-mcp-client-contract-2026-10-21).
+
+
+Held-await authorization fixtures should send requests through their already-entered lifespan
+TestClient, setting the existing helper's session/CSRF cookies before the timed request. This keeps
+portal startup outside the held-await entry check without extending its deadline. Preserve every
+authorization rejection, consent/provider side-effect assertion and release-in-finally operation.
+A passing subset does not repair a failed aggregate or prove a latency cause. Keep host startup
+admission separate from later reserve readings, and verify restoration of the original image and
+rollout mode independently of a failed pair trial. See the
+[F6 host/fixture checkpoint](../../MVP-PLAN.md#r-astra-121-f6-host-reserve-failure-and-held-await-fixture-setup-2026-10-21).
+
+
+For the completion-transition SSE regression, keep the worker held until the parent's protected
+finally explicitly releases it. Equal independent release/completion timers can end the intended
+interleaving early. Retain the original entry, completion and future-result deadlines. Cleanup must
+preserve a primary assertion when an ordinary secondary future exception occurs, recording only its
+exception type; without a primary failure, propagate cleanup errors. Preserve the original failed
+aggregate and earlier review finding beside the final selected pass.
+
+On unexpected assistant browser-fixture outcomes, attach the existing bounded synthetic stderr tail
+and stop the app in a nested finally even if attachment fails. Keep those artifacts private. A
+failure-only attachment does not establish a cause, and a later diagnostic pass cannot replace a
+failed aggregate. Do not infer disk causation from traced syscall duration or extend browser bounds
+to conceal unresolved latency. See the
+[F6 completion/browser evidence checkpoint](../../MVP-PLAN.md#r-astra-121-f6-completion-barrier-and-bounded-browser-failure-evidence-2026-10-21).
+
+
+Keep spawn-based lock helpers free of application/CLI imports they do not use. Import those modules
+inside the individual tests that require them, retaining every lock, startup, join and critical-
+section assertion. Measure import-only footprint separately from runtime acceptance and preserve the
+original failed aggregate beside a passing affected module; reduced footprint does not prove the
+original failure's cause.
+
+Approval-focused browser journeys may prepare a conversation through the existing UI before their
+per-turn response waiter, while a separate journey continues to cover automatic creation on Send.
+Do not increase response, fixture or case bounds. When adding a fixed anonymous fixture checkpoint,
+include it in the existing bounded attachment allowlist; an omitted consumer stage cannot be
+reconstructed into a delivered attachment. Distinguish fixture-start, pre-MCP and later context
+failures before assigning a shared cause. See the
+[F6 backup/browser checkpoint](../../MVP-PLAN.md#r-astra-121-f6-backup-spawn-imports-and-focused-browser-failure-checkpoint-2026-10-21).
+
+
+Turn-history liveness checks must hold the real service's storage read while requesting health
+through the same entered application lifespan. Preserve cancellation and session-revocation
+interleavings before releasing that read, and assert that generation never starts afterward.
+An off-loop read must remain inside the turn's cancellation/finalization boundary and recheck
+execution authorization before runtime entry. These synthetic checks establish only the held-I/O
+path; they do not prove the cause of an earlier browser timeout. A changed application image input
+requires a newly bound image/runtime result. Keep backup-capacity failures separate from native
+failures, retain all archives pending an explicit retention decision, and distinguish restored
+production state from a failed rehearsal. See the
+[F6 capacity/liveness checkpoint](../../MVP-PLAN.md#r-astra-121-f6-backup-capacity-and-turn-history-liveness-checkpoint-2026-10-22).
+
+
+For an exact local-fixture database coordination timeout, the opt-in
+`STOCK_PROBS_BROWSER_LOCK_DIAGNOSTIC=1` flag captures stacks once without local values. It retains
+the original exception and lock bounds; a diagnostic-output failure must not replace the database
+error. Diagnostic mode retains the existing bounded stderr attachment on successful cases too.
+Keep logs private, preserve failed/interrupted results, and distinguish a scoped later pass from
+an original cause or aggregate acceptance. A temporary pending-request probe that did not fire
+was preserved separately and removed from the maintained fixture; no application fix follows.
+See the [F6 coordination diagnostic checkpoint](../../MVP-PLAN.md#r-astra-121-f6-recovered-resource-browser-and-coordination-diagnostic-checkpoint-2026-10-22).
+
+
+Turn-creation liveness checks hold real persistence while querying health/readiness through the
+same entered application lifespan. Off-loop writes must retain their result future across request
+cancellation so an exact late-created lease can be retired. Recheck session/CSRF and consent before
+dispatch, and serialize lifecycle validation with task registration. Test cancellation during both
+persistence and post-write authorization, plus revocation and close; assert no model generation and
+exact lease/record retirement. Preserve bounded shutdown and report cleanup limits when I/O outlives
+that bound. Cancel the service operation in controlled fixtures, distinguishing this from browser
+connection-disconnect acceptance. Keep a non-reproduced late-cleanup failure unresolved beside later
+passes. These checks prove the held-write path, not an earlier native timeout's cause.
+
+The coordination diagnostic must catch acquisition failures only around context entry. An identical
+exception raised by the protected body must propagate without a lock-acquisition dump. Retain exact
+exception identity, output-error suppression and the default-off flag. See the
+[F6 persistence checkpoint](../../MVP-PLAN.md#r-astra-121-f6-turn-persistence-liveness-repair-checkpoint-2026-10-22).
+
+
+SSE release-contract tests that create background turns must send turn creation and replay through
+the already-entered lifespan TestClient. An unentered client creates a per-request portal whose
+shutdown can cancel the background turn after an off-loop storage yield. Keep separate owner
+cookies for cross-owner denial, retain complete tool/token/terminal/replay assertions, and require
+the intended first tool event before testing post-projection session revocation. An early error
+must not accidentally satisfy a revocation test. Preserve the isolated red `turn_cancelled`
+evidence beside a passing fixture repair; do not change production behavior or deadlines to repair
+this setup. Reuse unchanged image/native/browser evidence only within its exact input bindings,
+and rerun the mandatory aggregate after affected QA. A failed/interrupted aggregate has no final
+coverage or Python-completion acceptance even when its earlier subchecks passed. See the
+[F6 repaired-image/SSE checkpoint](../../MVP-PLAN.md#r-astra-121-f6-repaired-image-native-pass-and-sse-fixture-checkpoint-2026-10-22).
+
+
+WebFetch authorization liveness checks must hold both the initial and periodic execution check
+while requesting health/readiness through the same entered application lifespan. Keep synchronous
+storage/session checks off the event loop while leaving waiter/future mutation on its owning loop.
+Cover session revocation and turn cancellation during those waits; assert no URL release, terminal
+turn state and revoked lease. An already approved future must still fail closed if the final delayed
+check passes beyond existing expiry/deadline. Do not increase response, fixture, case or provider
+bounds to conceal unresolved latency. An off-loop repair does not establish why a repository lock
+was contended, and it does not repair independent event-persistence waits or forecast latency.
+
+Independent QA must record an explicit worktree cwd for every command and subprocess, use absolute
+test paths, and bind actual in-process package/service imports before pytest when worktree identity
+is in doubt. A relative argv or a matching source manifest does not replace that import/cwd proof.
+Preserve wrong-checkout/unbound checks as Unavailable for the target, retain pre-launch setup failures,
+and require a fresh correctly bound run before acceptance. Keep normal child umask `022` and create
+private receipts/logs with explicit `0600` mode; a later chmod is a metadata correction, not proof of
+initial mode. See the [F6 WebFetch liveness checkpoint](../../MVP-PLAN.md#r-astra-121-f6-full-browser-failure-and-webfetch-authorization-liveness-checkpoint-2026-10-22).
+
+
+Runtime output liveness tests must hold normalization, event/message persistence and finalization
+while checking application health/readiness in the same entered lifespan. Keep synchronous work in
+tracked thread tasks and retain its result through cancellation. Per-turn output ordering must stay
+locked until the worker finishes, even when its awaiting emitter is cancelled. Exercise live,
+revoked and cancelled writes through both runtime emission and the separate MCP proposal/receipt
+entry points. Check committed rows after the held worker returns; an early absence check is not
+late-write rejection evidence. Bind runtime writes to fresh durable lease/session/factor/consent,
+model/context and owner-canary authority inside their transaction. Keep provider metadata/cache
+synchronization outside SQLite explicitly unresolved until separately verified.
+
+Terminal lease closure, status and replay error/complete events must publish atomically. A separate
+SQLite reader should see the pre-transition state while the writer is held before commit. Cover
+quota failure before and after terminal-event insertion, no partial rows, losing terminal CAS,
+revoked/expired completion and duplicate finalization. A fallback from completed to failed must
+return the durable terminal status to timing and the existing bounded runtime-cache purge. Preserve
+the original split-finalizer and stale-completion failures beside their focused passing repairs.
+
+Search approval tests must cover held initial checks, preview persistence and the true final check,
+plus revocation/cancellation and delayed expiry of an already-approved query. Use explicit
+preview-emitted and approval-sent signals; runtime preview emission itself performs an execution
+check, so call-count assumptions can select the wrong phase. Keep waiter/future operations on the
+owning event loop and preserve exact-query, lease/deadline and tool-count bounds. Synthetic future
+approval is a fixture seam, not a production browser approval or native-search acceptance.
+
+Independent selected QA needs successful child termination, positive completed JUnit cases, no
+failures/errors, complete bounded output, exact import/cwd/source bindings and owned cleanup. A
+`testsuites` root need not carry count attributes; validate actual testcase counts against declared
+suite totals and reject empty/inconsistent results. Precreate private JUnit at 0600 while retaining
+normal child umask 022. Process supervision must remain bounded after stdout/stderr close and when
+a child retains pipes. A launcher failure after fixture startup establishes no test Pass; retain
+its unavailable assertion extent and source/metadata corrections. Reuse unchanged harness process
+validation when only its parser changes. See the
+[F6 runtime persistence checkpoint](../../MVP-PLAN.md#r-astra-121-f6-runtime-persistence-atomic-completion-and-search-liveness-repair-checkpoint-2026-10-22).
+
+
+Cancellation/deletion liveness checks must hold their synchronous preparation reads while requesting
+health/readiness through the same entered lifespan. Keep storage/access phases in tracked thread
+work and task/waiter mutation on the event loop. Verify durable cancelled status/error and a fully
+confirmed deletion with an explicitly synthetic successful cache-purge seam; separately retain
+stale confirmation, live authorization and cache-clear failure boundary controls. Do not move a
+native await or event-loop mutation into a storage worker.
+
+A fixture failing its runtime-ready signal before the selected action is an unresolved startup
+failure, not evidence that later cancellation/deletion assertions failed. Preserve the exact failed
+aggregate and wait bound. A later affected-path selection cannot replace it; use a bounded anonymous
+startup-stage diagnostic before repeating that path, and do not raise timeouts to make it pass.
+
+
+Provider-policy persistence tests must use the real policy manager, not only a mutable fake boolean.
+Hold a runtime storage entry after the service's policy check, complete an administrator policy
+change, release the write, then inspect committed rows; keep an unchanged-policy live control.
+A manager call is not an authenticated administrator HTTP/browser observation. Preserve a failing
+regression as Fail until the application rejects or correctly serializes the late write.
+
+The policy authority boundary must begin before SQLite and cover commit without provider/auth
+callbacks inside SQL. Test event-loop health under contention, coherent catalog/Console cache
+publication, stale in-flight refresh rejection and expiry during database-lock waits. Locks freeze
+mutations, not time. Keep fresh publication authorization outside held synchronous scopes and
+preserve original deadlines. See the [F6 policy-race record](../../MVP-PLAN.md#r-astra-121-f6-reproduced-provider-policy-persistence-race-2026-10-22).
+
+
+The maintained authority regressions also cover bounded admission while a policy write owns the
+lock, executor availability after expired waiters, queued-dispatch abandonment, and retained
+admitted writes through repeated cancellation. Use real manager/catalog objects for model state;
+keep synthetic generation, transports and expiry controls explicit. Observe request dispatch
+before releasing a held authority scope, rather than waiting for code that correctly runs only
+after admission. Model policy `revision` and Console `review_revision` are separate CAS values.
+
+OAuth tests must distinguish cancellation before publication from an already-admitted vault write.
+After a one-time handoff is consumed, failed admission, expiry or disconnect must retire the attempt
+and revoke its transport; repeated cancellation must not detach that cleanup. Publication checks
+expiry and payload again, while an admitted completed write keeps its matching connected status.
+Caller authorization occurs outside synchronous policy scopes for the bounded request. Runtime
+output separately checks durable caller/consent/lease state in its write transaction and holds
+external model-policy authority through commit; no universal instantaneous cancellation of an
+already-authorized metadata request is inferred. See the [scoped repair record](../../MVP-PLAN.md#r-astra-121-f6-provider-policy-authority-repair-2026-10-22).
+
+## Free Zen inventory changes
+
+Before a native trial, require the explicit `zen.native_acceptance_model_id` to appear in the
+current public inventory and satisfy every reviewed free/no-training policy predicate. A missing
+selection must fail without choosing another model by sort order or enabling a paid fallback.
+Review new exact IDs against current official pricing, privacy and compatible-route documentation
+before adding them; live model names alone cannot grant eligibility. Retained unavailable rows
+must stay unavailable even if a stale upstream response echoes their IDs.
+
+The October 22 inventory failure occurred before either owner started a native turn. The current
+reviewed selection is DeepSeek V4.1 Flash Free, explicitly chosen after the GLM low-effort trial
+completed its simple answer but timed out after native search and fetch. GLM-5.3-Flash Free remains
+reviewed. This selection is a different-model latency hypothesis, not an automatic fallback or a
+completed native result. LongCat remains documented upstream while absent from the observed endpoint;
+preserve that discrepancy and follow runtime availability. See the [catalog-review checkpoint](../../MVP-PLAN.md#r-astra-121-f6-native-inventory-failure-and-free-model-catalog-review-2026-10-22)
+for the failed trial, independent selected checks and remaining release gates.
+
+
+### Canonical environment and current dependency audits
+
+An SD checkout that reuses the private Python environment must keep its `pyvenv.cfg` beside
+its linked `bin` and `lib` entries. Verify that `sys.prefix` identifies that checkout wrapper
+and differs from `sys.base_prefix`, then check the actual bootstrap command with the same
+private UV cache. A cached interpreter lookup made before restoring the configuration can
+retain the base-interpreter result; preserve that failed attempt and use a fresh task cache.
+Do not bypass the externally-managed guard or modify the shared primary environment. Restore
+and verify the private editable package binding after the SD check.
+
+Run fresh dependency audits before accepting a release candidate; an unchanged lockfile does
+not make an earlier advisory result current. The Next.js 16.4.2 candidate updates Next and its
+companion packages while retaining the React pins. Its lock-only audit is separate from the
+required approved frontend build/stage, browser, image and release checks. See the
+[canonical/dependency checkpoint](../../MVP-PLAN.md#r-astra-121-f6-canonical-bootstrap-and-next-security-repair-2026-10-23).
+
+
+### Browser trigger waits and intended request cancellation
+
+Register assistant model/context response waits after navigation and launcher visibility and before
+opening the panel. Keep their existing response deadlines. Startup consumers share a pending auth
+check: verify fresh successful session validation and denied member/admin behavior rather than
+requiring duplicate HTTP reads. A finite synthetic assistant stream must use the existing exact-path
+classifier, retaining one GET, one HTTP 200 event-stream response and one terminal browser outcome.
+
+For news journeys, only the exact autocomplete request already pending before a forecast submission
+may be classified as intentionally cancelled. Bound the pending count before taking that identity
+snapshot; later/restarted same-query requests remain unexpected. Preserve the exact origin, method,
+path, query and `net::ERR_ABORTED` checks, all forecast/news assertions and raw network failures.
+Settle response-wait rejections immediately and put the triggering click inside the existing bounded
+failure diagnostic so a click failure cannot bypass it. Do not increase deadlines or force clicks to
+accept an unresolved action stall. Source-review success and selected case passes do not replace a
+failed aggregate or establish its cause. See the
+[F6 browser-result checkpoint](../../MVP-PLAN.md#r-astra-121-f6-browser-result-reconciliation-and-bounded-test-repairs-2026-10-23).
+
+
+For unexpected test failures, the existing browser-diagnostics fixture records a fixed anonymous
+post-failure visibility/focus/readiness and two-frame snapshot. Its page observation is 250 ms and
+the host-side bound is 500 ms; evaluation failure or expiry is Unavailable. The attachment's
+`after_test_failure` stage must remain explicit: later frame progress does not establish what
+happened during the failed action, and absence of frames does not establish a root cause. Passing
+cases do not execute this observation. Keep action/assertion/test budgets unchanged.
+
+### Authenticator focus after rejected administrator proof
+
+When a catalog or invitation request rejects fresh administrator verification, check that the
+authenticator input receives focus and that both it and the Verify control are fully visible.
+Sample their positions across animation frames before typing; focus alone does not prove a usable
+handoff while the page scrolls. Retain ordinary clicks and existing action/test deadlines. The
+administrator page now centers this handoff immediately and focuses without initiating another
+scroll; general page scrolling and authentication requirements are unchanged. Use the current
+approved frontend build/stage and verify served/export bytes before rendered checks. See the
+[local focus repair evidence](../../MVP-PLAN.md#r-astra-121-f6-admin-verification-focus-repair-2026-10-24)
+for the original failures and separate scoped retests; those results do not establish a full
+browser aggregate or genuine Zen answer.
+
+For native provider routing, check the actual pinned SDK request path against the protected app
+route. The OpenAI SDK appends `/responses` directly, so its generated private base URL includes
+`/v1`; the other reviewed SDKs retain their existing base URLs. Exercise the same closed profile
+configuration in the local native run before claiming a provider response. Do not add a public
+proxy alias or relax the capability/session checks to compensate for a configuration mismatch.
+
+The native ChatGPT HTTP regression uses the SDK's actual `x-opencode-session`/`x-opencode-project`
+shape, without inventing a `session-id` header. Check matching active execution metadata, optional
+matching legacy correlation, wrong/duplicate/missing fields, invalid capability and revoked session.
+A diagnostic with a synthetic local provider can establish SDK wire shape; it is not account or
+model acceptance.
+
+For ChatGPT's missing-media response, exercise the manager through the real guarded HTTP parser
+with only DNS/TLS sockets replaced. Cover a valid chunked Responses event, an ordinary SSE
+header, explicit wrong/empty media headers, HTML, plain JSON, malformed/duplicate JSON and
+mismatched event/data types. Verify rejected inputs release no bytes. The compatibility option
+must reject other URLs, query variants and missing live authorization before network access.

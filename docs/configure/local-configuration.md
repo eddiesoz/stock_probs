@@ -5,8 +5,38 @@ description: "Supported Stock Probability environment variables for local runtim
 
 # Local configuration
 
+## ChatGPT account testing model
+
+The reviewed ChatGPT account catalog includes `openai-chatgpt/gpt-6-luna`. For that exact account
+model, the application fixes Responses reasoning effort to `low`. Connect through the existing
+native ChatGPT sign-in controls, approve the exact model policy and provide the user's consent.
+Account access and plan capacity require a successful live turn to verify; catalog presence alone
+does not establish either. This connection uses the existing protected OAuth vault and does not
+fall back to an API-key provider. Other account models keep their existing request settings.
+See the [testing workflow](../develop/testing.md#temporary-chatgpt-subscription-testing) and the
+[official Luna model reference](https://developers.openai.com/api/docs/models/gpt-6-luna).
+
+For browser sign-in, paste the complete returned callback link into the private administrator
+form. A dotted opaque code and an optional echo of the four requested OpenAI scopes are supported.
+The app validates the exact local destination, unique parameters and attempt state, then forwards
+the unchanged code/state to the native PKCE exchange. Scope metadata grants no extra permissions;
+unknown, duplicate or changed scopes are rejected. Never paste callback links into chat.
+
+## Environment settings
+
 The application reads a small environment-only configuration. Keep machine-local values out
 of tracked files and shell history when they could expose private locations.
+
+The provider bridge preserves initial upstream 401, 403 and 429 statuses as sanitized no-store
+JSON before starting SSE, after checking that the application session is still current. This has
+no operator override and does not raise provider limits, guess reset times, or enable paid fallback.
+An error after streaming begins remains an interrupted stream.
+
+Assistant status reads quota/storage data off the event loop so a waiting database read does
+not block health or readiness. The status route rechecks the same live application session
+after that read; revocation during the wait returns an authorization failure without storage
+metadata, and the returned role comes from that revalidated session. No database, turn or tool
+timeout is increased by this behavior.
 
 | Variable | Default | Constraint and effect |
 | --- | --- | --- |
@@ -20,9 +50,15 @@ of tracked files and shell history when they could expose private locations.
 
 ## Ledger assistant candidate settings
 
-These source settings belong to the R-ASTRA-120 candidate. They do not enable the production
-assistant, which remains disabled on schema 12 while the required acceptance gates are open.
-Do not enable rollout based on configuration presence.
+These source settings control the managed assistant. Configuration presence does not identify
+the deployed revision or enable production rollout by itself. Use the
+[current deployment and release ledger](../../MVP-PLAN.md) for the observed rollout state.
+
+The fixed Zen chat base is `https://opencode.ai/inference/openai/v1`, matching the
+[reviewed OpenCode model route](https://opencode.ai/v2/docs/console/models/). Stored Zen base
+URLs cannot override it. Endpoint identity and consent remain bound to the effective route;
+a changed identity requires the existing review and consent flow. Model discovery retains its
+separate catalog URL. No automatic route or paid-provider fallback is enabled.
 
 The managed worker source fixes `BUN_OPTIONS` to `--smol` and discards any caller-supplied
 value. This candidate asks Bun to collect garbage more frequently; it can reduce heap growth
@@ -31,6 +67,13 @@ improvement. The local image containing this setting completed search and fetch,
 two-user native run failed final-answer acceptance. A lower sampled peak does not establish a
 causal improvement or the combined 1 GB resource gate. The US$15 monthly Linode cap includes
 tax and existing backups; the 1 GB plan and backups remain in place.
+
+The candidate native image builder separately fixes `BUN_OPTIONS=--smol` for the pinned Bun
+compilation command and its embedded app/Vite children. The strict build environment ignores the
+host's `BUN_OPTIONS`; dependency installation and selected source tests keep their existing build
+environment. This is fixed build behavior rather than a configurable application setting. It does
+not change the installed runtime flags, container limits or build deadlines, and needs a fresh
+image build before any reduction in build memory can be claimed.
 
 The current source also uses the native V2 build-agent system prompt to request concise final
 answers by default, preserving necessary caveats, citations, retrieval dates and user-requested
@@ -93,6 +136,12 @@ operation was invoked. Future configuration changes require another fresh Codex 
 [developer testing guide](../develop/testing.md#exact-pr-pair-review-pins) for the command contract
 and [getting started](../operations/getting-started.md#review-a-pr-pair-before-rehearsal) for the
 operator sequence.
+
+The PR #9 reserve checker uses a fixed, read-only startup observation of at most 30 seconds before
+the existing final memory and readiness checks; there is no environment variable to configure this
+wait. It preserves the 512 MiB startup and 128 MiB running floors and the 1,080-second absolute
+operation budget. E22's five-second wait is historical. E29's local source/test and parent reviews
+do not establish a host retry, deployed checker, native answer, or actual 1 GB acceptance.
 
 ## Authentication settings
 
@@ -234,3 +283,51 @@ expire active query history. See [backup and restore](../operations/backup-resto
 trust-key lifecycle, restore behavior, and exact managed-name constraint.
 
 Continue with [getting started](../operations/getting-started.md).
+
+
+## Free Zen native tool registration repair
+
+R-ASTRA-121 preserves genuine OpenCode V2 read and shell SDK registrations for reviewed Zen
+models while prohibiting their execution in Signal Ledger. The supervisor fixes
+`STOCK_PROBS_MANAGED_ASSISTANT=1` in the worker environment. Checksum-pinned native guards
+abort before filesystem access, shell parsing, or execution, including saved permission grants.
+The verified managed build must bind both original and patched read/shell source digests.
+The location and session rules change read/shell to `ask` only for Zen with verified guards;
+`execute`, edits, subagents and unrelated permissions remain denied. The application separately
+rejects unsupported permission events. This variable is fixed internal policy, not an operator
+option for enabling shell access.
+
+The provider route accepts the pinned SDK declarations only for an authorized Zen turn with
+verified native transport/guards. It preserves their actual descriptions and schemas. Missing,
+modified or unverified declarations fail closed. The current repair is a candidate: local real-Zen
+answers do not establish production rollout, installed-image readiness, or actual 1 GB acceptance.
+The existing host, backups and US$15 monthly cap remain fixed.
+
+
+The current fixed restoration rehearsal target is PR #9. The operator cannot supply another PR
+number through MCP. Bootstrap, local verification and the installed helper must agree on that
+identity and the exact clean candidate head/pair. Earlier PR #2 receipts remain historical. A helper
+commit on PR #9 requires a new exact-head image label and pair, even if application context bytes
+are unchanged; never relabel the earlier image or claim unchanged helper/runtime acceptance.
+
+
+### Rehearsal baseline identity
+
+The candidate source also recognizes a separately approved `temporary_recovery` baseline. It is
+fixed to the reviewed 6359 source/overlay and schema 13, and requires bounded root-owned approval,
+manifest, operation and current-state records to match the actual image/container and ready
+assistant-disabled projection. Only the completed startup-floor phase admits a rehearsal; the
+512 MiB startup and 128 MiB running floors remain unchanged. This is neither a configuration
+shortcut nor a retained-release identity. Current source/mock passes do not show that the running
+MCP process loaded this consumer or that a temporary image was built, approved or started.
+
+The candidate rehearsal checker uses a separate fixed running-production identity; the schema-12
+PR-pair fixture remains unchanged. The registered schema-13 recovery alternative is an exact
+source allowlist with a disabled-ready requirement, not a configurable arbitrary image, archive
+or database. It does not lower the startup/running memory floors or replace the reviewed PR's
+candidate/recovery pair. Source presence does not prove host installation or production acceptance;
+see [E19](../../MVP-PLAN.md#r-astra-121-e19-installed-rollout-repair-and-signed-schema-13-backup).
+
+The generated native OpenAI Responses profile includes `/v1` in its private app proxy base URL,
+matching the pinned SDK's `/responses` suffix. This applies to the API and ChatGPT account
+connections; the external provider endpoint and the app's protected route contract are unchanged.

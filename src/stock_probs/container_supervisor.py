@@ -81,8 +81,12 @@ _BUILD_RECEIPT_FIXED_FIELDS = {
     "mcp_tool_source_sha256": "27766cf6f5ec17ec2c0e1806734123ea573731a633ab9b6bf1b31536fd0b730a",
     "mcp_tool_patched_sha256": "aa7bf4c584cd8f836a738ab1f015296a0ca5bf2eec3c2cb99bf82d6b9e38cd5a",
     "mcp_patch_script_sha256": "366e48631fc1c296f33bbbaa39b917549cbedf70f640b3bbe4853bbafa8dd650",
+    "read_source_sha256": "ebada576cde856bf058886e024d9cfee4cd1462fe5cd8102339fff098d7ee1e6",
+    "shell_source_sha256": "464b69e511f47d41a4ae307b746bc39fafcc198d967ebe1e70b7e805c64169da",
+    "read_patched_sha256": "a01a2d8564451977b7a27eda549de87b51e396f6c7bbd287b957659f6bc8b04c",
+    "shell_patched_sha256": "f3366116a1b371fa820880959e8d36aa91e6838580712e0edc1a215a15e3b960",
     "native_integration_test": "passed",
-    "manifest_sha256": "621bb4a2e132b419097f7cfb5f6d87162b8e466c60c0b63b83e481f3114689e2",
+    "manifest_sha256": "c1b9da7b0b75214ca3d4a76c8f06ce10ebaac586496bdc3635062388817c63a9",
     "oauth_patch_runner_sha256": "e899eee083dc287b8a717995b4d1f3c1ebb3e3822788f3fb2c569b2841ad29d5",
     "oauth_handoff_patch_sha256": (
         "18a2714f6a06b00147db833b9a1dfec75303d0108b88aab299edf34db82c1691"
@@ -115,6 +119,10 @@ _BUILD_RECEIPT_FIELDS = frozenset(
         "mcp_tool_source_sha256",
         "mcp_tool_patched_sha256",
         "mcp_patch_script_sha256",
+        "read_source_sha256",
+        "shell_source_sha256",
+        "read_patched_sha256",
+        "shell_patched_sha256",
         "native_integration_test",
         "manifest_sha256",
         "oauth_patch_runner_sha256",
@@ -380,6 +388,7 @@ def _clean_worker_environment(password: str) -> dict[str, str]:
         "BUN_OPTIONS": "--smol",
         "OPENCODE_SERVER_PASSWORD": password,
         "OPENCODE_SERVER_USERNAME": "opencode",
+        "STOCK_PROBS_MANAGED_ASSISTANT": "1",
         # Managed OAuth grants stay in bounded worker memory for app-vault handoff.
         "OPENCODE_ASSISTANT_OAUTH_HANDOFF": "1",
     }
@@ -473,6 +482,8 @@ def _fixed_location_config(
     adapter_id: str = "openai-compatible-chat",
     native_provider_id: str = "assistant-proxy",
     webfetch_guard_ready: bool = False,
+    provider_id: str = "",
+    restricted_tools_guard_ready: bool = False,
 ) -> dict[str, object]:
     """Build a closed native config from one reviewed adapter and fixed local endpoints."""
 
@@ -495,6 +506,11 @@ def _fixed_location_config(
     ]
     if webfetch_guard_ready:
         permissions.append({"action": "webfetch", "resource": "*", "effect": "ask"})
+    if provider_id == "opencode-zen" and restricted_tools_guard_ready is True:
+        permissions = [
+            {**rule, "effect": "ask"} if rule["action"] in {"read", "shell"} else rule
+            for rule in permissions
+        ]
     build_agent_system = _BUILD_AGENT_SYSTEM
     if webfetch_guard_ready:
         build_agent_system += _BUILD_AGENT_FETCH_GUIDANCE
@@ -524,7 +540,12 @@ def _fixed_location_config(
                 "name": "Signal Ledger provider proxy",
                 "package": descriptor.package_id,
                 "settings": {
-                    "baseURL": proxy_base_url,
+                    # The pinned OpenAI SDK appends /responses without its own /v1 prefix.
+                    "baseURL": (
+                        proxy_base_url + "/v1"
+                        if descriptor.protocol == "openai-responses"
+                        else proxy_base_url
+                    ),
                     "timeout": 120_000,
                 },
                 "headers": {
@@ -1467,6 +1488,8 @@ class ContainerSupervisor:
             adapter_id=cast(str, request["adapter_id"]),
             native_provider_id=cast(str, request["native_provider_id"]),
             webfetch_guard_ready=self._webfetch_guard_ready,
+            provider_id=cast(str, request["provider_id"]),
+            restricted_tools_guard_ready=self._webfetch_guard_ready,
         )
         try:
             directory = _write_location(LOCATION_ROOT, execution_id, document)

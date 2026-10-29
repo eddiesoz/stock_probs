@@ -65,6 +65,54 @@ _NATIVE_WEBSEARCH_DESCRIPTION_SUFFIX = (
 NATIVE_WEBFETCH_DESCRIPTION_SHA256 = (
     "b958b70f4a4edd3ce9add115a5d127f6a7948e65f95c0793f11c871456d59d8c"
 )
+_RESTRICTED_NATIVE_DECLARATIONS_SHA256 = (
+    "34b60fa6f58b8fd72faa6aa323ce42afaea5718d9f22350fbd9873dd4d121904"
+)
+
+
+def native_restricted_tool_declarations() -> dict[str, tuple[str, Mapping[str, object]]]:
+    """Validate real pinned SDK declarations; managed native execution stays prohibited."""
+
+    try:
+        raw = files("stock_probs.assistant").joinpath("native_restricted_tools.json").read_bytes()
+    except OSError as exc:
+        raise ValueError("reviewed restricted native declarations are unavailable") from exc
+    if (
+        len(raw) > 16_384
+        or hashlib.sha256(raw).hexdigest() != _RESTRICTED_NATIVE_DECLARATIONS_SHA256
+    ):
+        raise ValueError("restricted native declarations do not match their reviewed digest")
+    record = json.loads(raw)
+    return {
+        item["function"]["name"]: (
+            item["function"]["description"],
+            item["function"]["parameters"],
+        )
+        for item in record["tools"]
+    }
+
+
+def native_restricted_tool_matches(name: str, description: object, schema: object) -> bool:
+    """Accept actual pinned native input definitions without rewriting their descriptions."""
+
+    expected = native_restricted_tool_declarations().get(name)
+    if expected is None:
+        return False
+    expected_description, expected_schema = expected
+    descriptions = {expected_description}
+    if name == "shell":
+        descriptions.update(
+            expected_description.replace("using bash.", f"using {shell}.")
+            for shell in ("sh", "dash")
+        )
+    return (
+        isinstance(description, str)
+        and description in descriptions
+        and isinstance(schema, Mapping)
+        and dict(schema) == expected_schema
+    )
+
+
 _NATIVE_WEBSEARCH_SCHEMA: dict[str, object] = {
     "type": "object",
     # The pinned 2.0.7 wire capture includes this native parameter description.

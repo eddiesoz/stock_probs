@@ -35,6 +35,22 @@ test("pasted loopback callback is fixed and contains one attempt code and state"
   assert.equal(safePastedOAuthCallback(callback.replace("state=", "state=wrong&state=")), false);
 });
 
+test("OpenAI callback accepts an opaque dotted code and only the requested scope metadata", () => {
+  const callback = `http://localhost:1455/auth/callback?code=synthetic.first-segment&state=${"S".repeat(43)}`;
+  assert.equal(safePastedOAuthCallback(callback), true);
+  assert.equal(safePastedOAuthCallback(callback + "&scope=openid+profile+email+offline_access"), true);
+  assert.equal(safePastedOAuthCallback(callback + "&scope=email+offline_access+profile+openid"), true);
+  for (const suffix of ["&scope=", "&scope=openid", "&scope=openid+profile+email+admin", "&scope=openid+profile+email+offline_access+openid", "&scope=openid+profile+email+offline_access&scope=openid", "&other=x"]) {
+    assert.equal(safePastedOAuthCallback(callback + suffix), false);
+  }
+  for (const code of ["bad%0Acode", "bad%20code", "%E2%98%83", "x".repeat(2049)]) {
+    assert.equal(safePastedOAuthCallback(callback.replace("synthetic.first-segment", code)), false);
+  }
+  for (const invalid of [" " + callback, callback + " ", callback.replace("http://", "http:\\\\"), callback.replace("S".repeat(43), "%E2%98%83")]) {
+    assert.equal(safePastedOAuthCallback(invalid), false);
+  }
+});
+
 test("OAuth DTO readers reject unknown methods, malformed states and secret-like fields", () => {
   const methods = readNativeOAuthMethods({ methods: [
     { integration_id: "openai", method_id: "chatgpt-headless", label: "Headless", mode: "device", connection_status: "ready", connection_supported: true, model_access_supported: true, availability_reason: null },
