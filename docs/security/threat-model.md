@@ -623,3 +623,25 @@ React remains pinned at 19.3.0. Preserve the original advisory findings and veri
 update, approved build/stage and browser behavior before promotion. See the
 [upstream security release](https://github.com/vercel/next.js/releases/tag/v16.4.1) and the
 [scoped evidence ledger](../../MVP-PLAN.md#r-astra-121-f6-canonical-bootstrap-and-next-security-repair-2026-10-23).
+
+## Native ChatGPT request correlation
+
+The pinned OpenAI SDK supplies `x-opencode-session` and `x-opencode-project` on its private
+Responses request. After authenticating the execution capability and its current app session,
+the app requires exactly one of each field, matching the runtime's active session/project for
+that execution. It derives the upstream `session-id` from that bound runtime metadata. An optional
+incoming `session-id` must match it too. Missing, duplicate, stale or mismatched correlation fails
+closed. These fields correlate an already authorized request; they do not grant authority or
+replace owner, policy, consent, body, loopback or ongoing stream authorization checks.
+
+## ChatGPT SSE without a media header
+
+The authenticated ChatGPT Responses endpoint has been observed returning chunked SSE data with
+no `Content-Type` header. Only the fixed `https://chatgpt.com/backend-api/codex/responses` route
+can use the internal compatibility option, and a live authorization check is mandatory. An
+explicit empty or non-SSE media type remains rejected. Other routes retain strict media checks.
+The account provider validates each complete, bounded, UTF-8 Responses event before the existing
+secret guard releases it: JSON must be duplicate-free and finite, event/data types must agree,
+and HTML, ordinary JSON, malformed events and incomplete frames fail closed. Comments are
+ignored. DNS pinning, TLS, redirects, compression, byte/deadline limits and authorization checks
+remain enforced. This is a tested transport compatibility path, not a release-gate waiver.

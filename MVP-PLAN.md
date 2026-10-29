@@ -12917,3 +12917,53 @@ quota exemption or new reset time is established. Reuse local replay/synthetic c
 declared scope and reserve focused genuine calls for required acceptance; ChatGPT results do not
 become Zen evidence. Preserve the seven-feature/four-release goal, data, existing 1 GB host/backups
 and US$15 monthly total cap.
+
+### R-ASTRA-121 F6 local account and free Zen follow-up (2026-10-28)
+
+The parent repaired the observed ChatGPT OAuth callback, typed content headers, native OpenAI
+proxy routing and execution-bound session correlation. The account endpoint then returned chunked
+Responses SSE without a `Content-Type` header. A fixed-endpoint compatibility path now requires
+live authorization and validates bounded, complete Responses events before the existing secret
+filter releases them; explicit wrong media types and malformed events remain rejected. Other
+provider routes retain their media checks. Independent security review and release acceptance
+remain pending.
+
+The affected provider and OAuth suite passed 285 tests on native x86_64 after an interrupted prior
+attempt; the separate network-file selection passed 126 cases within its otherwise failed aggregate.
+The first aggregate failed on an outdated fake transport signature; its fixture repair and the
+subsequent complete provider selection are separate results. The unchanged frontend build passed
+80 tests, and all 52 served/export pairs matched. Earlier focused callback, API and runtime checks
+remain scoped to their recorded inputs; they do not establish a current canonical gate.
+
+With the user's approved local account connection, one real OpenCode V2 and ChatGPT Luna turn
+completed in the authenticated local UI: the workspace-summary tool returned and the answer
+reported zero saved forecasts and zero watchlist entries. The outgoing requests were observed with
+`gpt-6-luna`, low reasoning effort and `store: false`. This temporary testing result does not
+establish free Zen acceptance. A subsequent real DeepSeek V4.1 Flash Free UI turn failed at the
+provider with HTTP 429 `free_usage_limit_error`; no answer was produced, and reset timing was not
+observed. No quota bypass or paid fallback is claimed.
+
+The scoped local evidence is under
+`/var/tmp/r12r/f6-chatgpt-sse-retest-20261029T021534Z/`: `luna-ui-result-v1.json`,
+`zen-ui-result-v1.json` and `local-container-restored-v1.json`. The exact original local container
+was restored after testing. The 420 bound source inputs remained unchanged through both turns.
+The earlier UI incorrectly described a post-save catalog-refresh failure as a credential-save
+failure; refreshing showed the encrypted connection present. That messaging defect remains open.
+No candidate image was built during this work. Genuine free Zen completion, current canonical,
+independent security, resource, recovery, rollback, release and seven-feature gates remain open;
+the existing 1 GB host, backups and US$15 monthly total cap remain unchanged.
+
+
+### R-ASTRA-121 F6 connection refresh feedback repair (2026-10-28)
+
+A successful OAuth completion followed by a failed methods refresh previously showed a false
+save-failure message. The client now retains the successful encrypted-save notice and reports
+the separate refresh failure, with a Refresh action for rechecking. The full approved frontend
+build passed 80 tests and all 52 served/export pairs matched. A focused synthetic browser
+regression passed in desktop Chromium and Pixel 7 emulation: it observes the successful save,
+the later HTTP 503, the distinct messages and successful manual refresh. Receipt:
+`/var/tmp/r12r/f6-oauth-refresh-message-20261029/browser-review-v1.json`. The initial served-file
+comparison incorrectly included an unserved Next 404 page and failed; its corrected served-only
+comparison passed. This is parent local verification, not independent QA, live provider, physical
+mobile, image or release acceptance. Free Zen's latest real turn remains a 429 limit failure,
+and current canonical, security, resource, recovery and release gates remain open.

@@ -381,7 +381,13 @@ export function AssistantProviderSettings({
       setOAuthAttempts((current) => current.map((item) => item.attempt_id === updated.attempt_id ? updated : item));
       setOAuthInputs((current) => ({ ...current, [attempt.attempt_id]: { code: "", callbackUrl: "" } }));
       if (updated.status === "connected") {
-        await reloadOAuth();
+        try {
+          await reloadOAuth();
+        } catch (reason) {
+          handleRequestError(reason, "The connection was stored, but its status could not be refreshed. Use Refresh to check it.");
+          setNotice("The provider connection was stored encrypted for this account.");
+          return;
+        }
         if (attempt.integration_id === "opencode") {
           await reloadOpenCodeModels(true);
           setNotice("The OpenCode connection is stored encrypted and can load this account’s model catalog. Each model still needs administrator review, a supported provider credential, model approval, and user consent.");

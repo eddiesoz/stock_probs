@@ -7,6 +7,7 @@ from urllib.parse import parse_qs
 
 import pytest
 
+from stock_probs.assistant import net
 from stock_probs.assistant.net import PublicHTTPError, PublicHTTPResponse
 from stock_probs.assistant.oauth_transport import OAuthTransport, OAuthTransportError
 
@@ -25,6 +26,87 @@ def _response(value: object, status: int = 200) -> PublicHTTPResponse:
         {"content-type": "application/json"},
         json.dumps(value, separators=(",", ":")).encode(),
     )
+
+
+@pytest.mark.parametrize("operation", ["openai.device_start", "openai.token_exchange"])
+def test_oauth_transport_reaches_the_real_header_guard_with_the_correct_wire_type(
+    monkeypatch, operation
+):
+    """Exercise the default guarded transport; substitute only DNS and the TLS socket."""
+    captured = bytearray()
+    checks = []
+
+    class Writer:
+        def write(self, data):
+            captured.extend(data)
+
+        async def drain(self):
+            return None
+
+        def close(self):
+            return None
+
+        async def wait_closed(self):
+            return None
+
+    async def resolve(_loop, host, port, **_kwargs):
+        assert host == "auth.openai.com" and port == 443
+        return [(2, 1, 6, "", ("93.184.216.34", 443))]
+
+    async def open_connection(host, port, **options):
+        assert host == "93.184.216.34" and port == 443
+        assert options["server_hostname"] == "auth.openai.com"
+        payload = (
+            {"device_auth_id": "synthetic-device", "user_code": "SYNTHETIC", "interval": "5"}
+            if operation == "openai.device_start"
+            else {
+                "id_token": "synthetic-id",
+                "access_token": "synthetic-access",
+                "refresh_token": "synthetic-refresh",
+            }
+        )
+        body = json.dumps(payload).encode()
+        reader = asyncio.StreamReader()
+        reader.feed_data(
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
+            + str(len(body)).encode()
+            + b"\r\n\r\n"
+            + body
+        )
+        reader.feed_eof()
+        return reader, Writer()
+
+    async def authorize():
+        checks.append(True)
+        return True
+
+    monkeypatch.setattr(net.asyncio.BaseEventLoop, "getaddrinfo", resolve)
+    monkeypatch.setattr(net.asyncio, "open_connection", open_connection)
+    values = (
+        {}
+        if operation == "openai.device_start"
+        else {
+            "code": "synthetic.first-segment",
+            "redirect_uri": "http://localhost:1455/auth/callback",
+            "code_verifier": "synthetic-verifier",
+        }
+    )
+    result = asyncio.run(OAuthTransport().perform(operation, values, authorization_check=authorize))
+    head, body = bytes(captured).split(b"\r\n\r\n", 1)
+    expected_type = (
+        b"application/json"
+        if operation == "openai.device_start"
+        else b"application/x-www-form-urlencoded"
+    )
+    assert head.lower().count(b"content-type:") == 1
+    assert b"content-type: " + expected_type in head.lower()
+    assert len(checks) >= 3
+    if operation == "openai.token_exchange":
+        assert parse_qs(body.decode())["code"] == ["synthetic.first-segment"]
+        assert result["access_token"] == "synthetic-access"  # noqa: S105 - Synthetic wire fixture.
+    else:
+        assert json.loads(body)["client_id"] == "app_EMoamEEZ73f0CkXaXp7hrann"
+        assert result["device_auth_id"] == "synthetic-device"
 
 
 @_async_test
@@ -94,6 +176,7 @@ async def test_oauth_registry_binds_capability_method_owner_and_expiry():
 @_async_test
 async def test_oauth_transport_uses_only_fixed_protocol_destinations_and_fields():
     calls: list[tuple[str, str, dict[str, str], bytes]] = []
+    content_types: list[str] = []
     expected_checks = []
     received_checks = []
     callback_invocations = []
@@ -151,9 +234,17 @@ async def test_oauth_transport_uses_only_fixed_protocol_destinations_and_fields(
         return check
 
     async def fake_request(
-        url: str, *, method: str, headers, body=b"", authorization_check, **_options
+        url: str,
+        *,
+        method: str,
+        headers=None,
+        content_type="application/json",
+        body=b"",
+        authorization_check,
+        **_options,
     ):
-        calls.append((url, method, dict(headers), body))
+        calls.append((url, method, dict(headers or {}), body))
+        content_types.append(content_type)
         received_checks.append(authorization_check)
         assert await authorization_check() is True
         return responses.pop(0)
@@ -246,7 +337,9 @@ async def test_oauth_transport_uses_only_fixed_protocol_destinations_and_fields(
         "https://opencode.ai/console/api/user",
         "https://opencode.ai/console/api/orgs",
     ]
-    assert calls[0][2] == {"content-type": "application/json"}
+    assert all("content-type" not in row[2] for row in calls)
+    assert content_types[0] == "application/json"
+    assert content_types[3] == "application/x-www-form-urlencoded"
     assert json.loads(calls[0][3]) == {"client_id": "app_EMoamEEZ73f0CkXaXp7hrann"}
     assert parse_qs(calls[3][3].decode()) == {
         "grant_type": ["authorization_code"],

@@ -540,7 +540,12 @@ def _fixed_location_config(
                 "name": "Signal Ledger provider proxy",
                 "package": descriptor.package_id,
                 "settings": {
-                    "baseURL": proxy_base_url,
+                    # The pinned OpenAI SDK appends /responses without its own /v1 prefix.
+                    "baseURL": (
+                        proxy_base_url + "/v1"
+                        if descriptor.protocol == "openai-responses"
+                        else proxy_base_url
+                    ),
                     "timeout": 120_000,
                 },
                 "headers": {

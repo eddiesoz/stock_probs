@@ -246,7 +246,7 @@ class OAuthTransport:
             response = await self._checked_request(
                 f"{_OPENAI_ROOT}/oauth/token",
                 method="POST",
-                headers={"content-type": "application/x-www-form-urlencoded"},
+                content_type="application/x-www-form-urlencoded",
                 body=form,
                 timeout_seconds=_OPERATION_TIMEOUT_SECONDS,
                 max_response_bytes=_MAX_RESPONSE_BYTES,
@@ -349,7 +349,7 @@ class OAuthTransport:
         response = await self._checked_request(
             url,
             method="POST",
-            headers={"content-type": "application/json"},
+            content_type="application/json",
             body=body,
             timeout_seconds=_OPERATION_TIMEOUT_SECONDS,
             max_response_bytes=_MAX_RESPONSE_BYTES,

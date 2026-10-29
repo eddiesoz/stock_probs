@@ -2956,6 +2956,8 @@ class OpenCodeV2Runtime:
                 expected_proxy_url = (
                     f"{_APP_BASE_URL}/api/v1/assistant/internal/provider/{context.execution_id}"
                 )
+                if descriptor.protocol == "openai-responses":
+                    expected_proxy_url += "/v1"
                 model_inputs = (
                     capabilities.get("input") if isinstance(capabilities, Mapping) else None
                 )

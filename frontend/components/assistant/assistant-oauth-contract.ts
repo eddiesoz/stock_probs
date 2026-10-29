@@ -199,7 +199,7 @@ export function safeNativeOAuthAuthorizationUrl(
 }
 
 export function safePastedOAuthCallback(raw: string): boolean {
-  if (!cleanText(raw, 4096)) return false;
+  if (!cleanText(raw, 4096) || raw !== raw.trim() || raw.includes("\\")) return false;
   try {
     const url = new URL(raw);
     const query = [...url.searchParams.entries()];
@@ -208,10 +208,17 @@ export function safePastedOAuthCallback(raw: string): boolean {
       if (params.has(key)) return false;
       params.set(key, value);
     }
+    const scope = params.get("scope");
+    if (scope !== undefined) {
+      const scopes = scope.split(" ");
+      const requestedScopes = new Set(["openid", "profile", "email", "offline_access"]);
+      if (scopes.length !== 4 || new Set(scopes).size !== 4 || scopes.some((value) => !requestedScopes.has(value))) return false;
+    }
     return url.protocol === "http:" && url.hostname === "localhost" && url.port === "1455"
       && !url.username && !url.password && url.pathname === "/auth/callback" && !url.hash
-      && query.length === 2 && params.size === 2
-      && /^[A-Za-z0-9_-]{1,2048}$/.test(params.get("code") ?? "")
+      && (query.length === 2 || query.length === 3)
+      && [...params.keys()].every((key) => ["code", "state", "scope"].includes(key))
+      && /^[A-Za-z0-9._~-]{1,2048}$/.test(params.get("code") ?? "")
       && /^[A-Za-z0-9_-]{43}$/.test(params.get("state") ?? "");
   } catch {
     return false;

@@ -224,7 +224,7 @@ def test_fixed_v2_config_is_closed_and_matches_only_the_backend_tool_catalog() -
         "input": ["text"],
         "output": ["text"],
     }
-    assert provider["settings"]["baseURL"] == request["proxy_base_url"]
+    assert provider["settings"]["baseURL"] == str(request["proxy_base_url"]) + "/v1"
     assert provider["headers"] == {"Authorization": "Bearer " + str(request["proxy_capability"])}
     assert "apiKey" not in provider.get("settings", {})
     assert "provider" not in config
@@ -748,6 +748,11 @@ def test_fixed_v2_config_uses_only_the_selected_closed_native_adapter(
     assert config["model"] == f"{native_provider_id}/assistant-selected"
     assert list(config["providers"]) == [native_provider_id]
     assert provider["package"] == package_id
+    # The pinned OpenAI SDK appends /responses directly; the other SDKs own their prefixes.
+    expected_base = "http://127.0.0.1:8000/api/v1/assistant/internal/provider/" + "a" * 32
+    if adapter_id == "openai-responses":
+        expected_base += "/v1"
+    assert provider["settings"]["baseURL"] == expected_base
     assert provider["headers"] == {"Authorization": "Bearer " + "b" * 48}
     assert provider["models"]["assistant-selected"]["modelID"] == "assistant-selected"
     assert provider["models"]["assistant-selected"]["capabilities"]["tools"] is True

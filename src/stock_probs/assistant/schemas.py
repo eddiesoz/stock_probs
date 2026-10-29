@@ -463,13 +463,21 @@ class AssistantOAuthAttemptCallbackRequest(AssistantStrictModel):
             or len(query) != len(query_map)
             or not query_values_are_plain
             or not {"state"}.issubset(keys)
-            or keys - {"code", "state", "error", "error_description"}
+            or keys - {"code", "state", "scope", "error", "error_description"}
             or has_success == has_error
             or not query_map.get("state")
             or not query_map.get("code" if has_success else "error")
             or ("error_description" in keys and not has_error)
         ):
             raise ValueError(message)
+        if "scope" in query_map:
+            scopes = query_map["scope"].split(" ")
+            if (
+                not has_success
+                or len(scopes) != 4
+                or set(scopes) != {"openid", "profile", "email", "offline_access"}
+            ):
+                raise ValueError(message)
         return value
 
 

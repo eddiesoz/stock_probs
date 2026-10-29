@@ -1735,3 +1735,34 @@ def test_public_https_request_cancellation_during_body_read_closes_writer(
 
     asyncio.run(exercise())
     assert writer_state == {"closed": True, "wait_closed": True}
+
+
+@pytest.mark.parametrize(
+    "url,enabled,authorized,code",
+    [
+        ("https://provider.example/v1/responses", True, True, "request_invalid"),
+        ("https://chatgpt.com/backend-api/codex/responses?other=x", True, True, "request_invalid"),
+        ("https://chatgpt.com/backend-api/codex/responses", "yes", True, "request_invalid"),
+        (
+            "https://chatgpt.com/backend-api/codex/responses",
+            True,
+            False,
+            "provider_authorization_required",
+        ),
+    ],
+)
+def test_chatgpt_sse_compatibility_is_fixed_route_and_live_authorization_only(
+    url, enabled, authorized, code
+):
+    async def exercise():
+        with pytest.raises(net.PublicHTTPError) as caught:
+            async for _ in net.stream_public_https(
+                url,
+                body=b"{}",
+                chatgpt_sse_compatibility=enabled,
+                authorization_check=(lambda: True) if authorized else None,
+            ):
+                raise AssertionError("invalid compatibility admission released data")
+        assert caught.value.code == code
+
+    asyncio.run(exercise())

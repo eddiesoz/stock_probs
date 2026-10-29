@@ -9,6 +9,7 @@ import ipaddress
 import json
 import math
 import re
+import secrets
 import unicodedata
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import suppress
@@ -3278,8 +3279,21 @@ def create_assistant_router(
         user_id = int(lease["user_id"])
         model_id = str(turn["model_id"])
         policy_version = str(turn["policy_version"])
-        if policy.provider_id == "openai-chatgpt" and not native_session_id:
-            return denied
+        if policy.provider_id == "openai-chatgpt":
+            # The pinned OpenAI SDK sends the native x-opencode correlation fields, not
+            # session-id. Bind them to this live execution before deriving upstream correlation.
+            # The capability, app session and policy checks above remain the authorization.
+            metadata = _native_zen_runtime_metadata(assistant.runtime, execution_id)
+            if (
+                metadata is None
+                or request.headers.getlist("x-opencode-session") != [metadata[0]]
+                or request.headers.getlist("x-opencode-project") != [metadata[1]]
+                or (
+                    native_session_id and not secrets.compare_digest(native_session_id, metadata[0])
+                )
+            ):
+                return denied
+            native_session_id = metadata[0]
 
         async def authorization_check() -> bool:
             return await run_in_threadpool(

@@ -5020,6 +5020,128 @@ def test_native_oauth_browser_callback_is_attempt_state_bound_and_never_fetched(
         assert invalid.value.code == "oauth_callback_invalid"
 
 
+@pytest.mark.parametrize(
+    "scope", [None, "openid profile email offline_access", "email offline_access profile openid"]
+)
+def test_native_oauth_callback_normalizes_only_validated_scope_metadata(
+    tmp_path: Path, scope: str | None
+) -> None:
+    class RecordingRuntime(_NativeOAuthRuntime):
+        async def submit_native_oauth_callback(self, *args: object, **kwargs: object) -> None:
+            self.forwarded = (args, kwargs)
+            await super().submit_native_oauth_callback(*args, **kwargs)
+
+    runtime = RecordingRuntime()
+    manager = _oauth_manager(tmp_path, runtime)
+    attempt = asyncio.run(
+        manager.begin_native_oauth(
+            "openai",
+            "chatgpt-browser",
+            owner_id=17,
+            session_id="a" * 32,
+            session_token_hash="b" * 64,
+        )
+    )
+    query = {"code": "synthetic.first-segment", "state": "S" * 43}
+    if scope is not None:
+        query["scope"] = scope
+    asyncio.run(
+        manager.submit_native_oauth_callback(
+            str(attempt["attempt_id"]),
+            owner_id=17,
+            session_id="a" * 32,
+            callback_url="http://localhost:1455/auth/callback?" + urlencode(query),
+        )
+    )
+    args, forwarded = runtime.forwarded
+    assert args == ("openai", attempt["attempt_id"])
+    assert forwarded == {
+        "owner_id": 17,
+        "session_id": "a" * 32,
+        "callback_url": "http://localhost:1455/auth/callback?"
+        + urlencode({"code": query["code"], "state": query["state"]}),
+    }
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        "&scope=",
+        "&scope=openid",
+        "&scope=openid+profile+email+admin",
+        "&scope=openid+profile+email+offline_access+openid",
+        "&scope=openid+profile+email+offline_access&scope=openid",
+        "&other=x",
+    ],
+)
+def test_native_oauth_callback_rejects_unrequested_or_ambiguous_scope(
+    tmp_path: Path, suffix: str
+) -> None:
+    runtime = _NativeOAuthRuntime()
+    manager = _oauth_manager(tmp_path, runtime)
+    attempt = asyncio.run(
+        manager.begin_native_oauth(
+            "openai",
+            "chatgpt-browser",
+            owner_id=17,
+            session_id="a" * 32,
+            session_token_hash="b" * 64,
+        )
+    )
+    with pytest.raises(CredentialRejected) as invalid:
+        asyncio.run(
+            manager.submit_native_oauth_callback(
+                str(attempt["attempt_id"]),
+                owner_id=17,
+                session_id="a" * 32,
+                callback_url="http://localhost:1455/auth/callback?"
+                + urlencode({"code": "synthetic.first-segment", "state": "S" * 43})
+                + suffix,
+            )
+        )
+    assert invalid.value.code == "oauth_callback_invalid"
+    assert "callback" not in runtime.calls
+
+
+@pytest.mark.parametrize(
+    "code,state",
+    [
+        ("bad\ncode", "S" * 43),
+        ("bad code", "S" * 43),
+        ("\u2603", "S" * 43),
+        ("x" * 2049, "S" * 43),
+        ("synthetic", "\u2603"),
+        ("synthetic", "S" * 44),
+    ],
+)
+def test_native_oauth_callback_rejects_invalid_code_or_state(
+    tmp_path: Path, code: str, state: str
+) -> None:
+    runtime = _NativeOAuthRuntime()
+    manager = _oauth_manager(tmp_path, runtime)
+    attempt = asyncio.run(
+        manager.begin_native_oauth(
+            "openai",
+            "chatgpt-browser",
+            owner_id=17,
+            session_id="a" * 32,
+            session_token_hash="b" * 64,
+        )
+    )
+    with pytest.raises(CredentialRejected) as invalid:
+        asyncio.run(
+            manager.submit_native_oauth_callback(
+                str(attempt["attempt_id"]),
+                owner_id=17,
+                session_id="a" * 32,
+                callback_url="http://localhost:1455/auth/callback?"
+                + urlencode({"code": code, "state": state}),
+            )
+        )
+    assert invalid.value.code == "oauth_callback_invalid"
+    assert "callback" not in runtime.calls
+
+
 def test_native_oauth_attempt_is_bound_and_hides_native_attempt_id(tmp_path: Path) -> None:
     runtime = _NativeOAuthRuntime()
     manager = _oauth_manager(tmp_path, runtime)

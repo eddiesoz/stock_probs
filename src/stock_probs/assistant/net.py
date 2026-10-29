@@ -582,6 +582,7 @@ async def stream_public_https(
     timeout_seconds: float = 120.0,
     max_response_bytes: int = 1_048_576,
     authorization_check: StreamAuthorizationCheck | None = None,
+    chatgpt_sse_compatibility: bool = False,
 ) -> AsyncIterator[bytes]:
     """Stream a pinned public HTTPS response in bounded chunks under one hard deadline.
 
@@ -596,6 +597,8 @@ async def stream_public_https(
         not isinstance(url, str)
         or len(url) > 4096
         or method != "POST"
+        or type(chatgpt_sse_compatibility) is not bool
+        or (chatgpt_sse_compatibility and url != "https://chatgpt.com/backend-api/codex/responses")
         or not isinstance(body, bytes)
         or len(body) > 262_144
         or not 0 < timeout_seconds <= 120
@@ -607,9 +610,12 @@ async def stream_public_https(
         if authorization_check is not None
         else _STREAM_AUTHORIZATION_CHECK.get()
     )
-    if any(
-        isinstance(name, str) and name.lower() in _AUTHENTICATION_HEADERS
-        for name in (headers or {})
+    if (
+        chatgpt_sse_compatibility
+        or any(
+            isinstance(name, str) and name.lower() in _AUTHENTICATION_HEADERS
+            for name in (headers or {})
+        )
     ) and not callable(live_authorization):
         raise PublicHTTPError("provider_authorization_required")
     deadline = time.monotonic() + timeout_seconds
@@ -824,7 +830,11 @@ async def stream_public_https(
                 response_failure_phase="transfer_framing",
             )
         content_type = response_headers.get("content-type", "").split(";", 1)[0].strip().lower()
-        if content_type != "text/event-stream":
+        # This fixed account endpoint can omit the header on actual chunked SSE. Its caller
+        # validates complete Responses events before release; explicit wrong types still fail.
+        if content_type != "text/event-stream" and not (
+            chatgpt_sse_compatibility and "content-type" not in response_headers
+        ):
             raise PublicHTTPError(
                 "provider_response_invalid",
                 status_code=status_code,

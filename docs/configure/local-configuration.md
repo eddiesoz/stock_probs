@@ -16,6 +16,12 @@ fall back to an API-key provider. Other account models keep their existing reque
 See the [testing workflow](../develop/testing.md#temporary-chatgpt-subscription-testing) and the
 [official Luna model reference](https://developers.openai.com/api/docs/models/gpt-6-luna).
 
+For browser sign-in, paste the complete returned callback link into the private administrator
+form. A dotted opaque code and an optional echo of the four requested OpenAI scopes are supported.
+The app validates the exact local destination, unique parameters and attempt state, then forwards
+the unchanged code/state to the native PKCE exchange. Scope metadata grants no extra permissions;
+unknown, duplicate or changed scopes are rejected. Never paste callback links into chat.
+
 ## Environment settings
 
 The application reads a small environment-only configuration. Keep machine-local values out
@@ -321,3 +327,7 @@ source allowlist with a disabled-ready requirement, not a configurable arbitrary
 or database. It does not lower the startup/running memory floors or replace the reviewed PR's
 candidate/recovery pair. Source presence does not prove host installation or production acceptance;
 see [E19](../../MVP-PLAN.md#r-astra-121-e19-installed-rollout-repair-and-signed-schema-13-backup).
+
+The generated native OpenAI Responses profile includes `/v1` in its private app proxy base URL,
+matching the pinned SDK's `/responses` suffix. This applies to the API and ChatGPT account
+connections; the external provider endpoint and the app's protected route contract are unchanged.

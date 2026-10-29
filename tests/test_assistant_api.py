@@ -9846,3 +9846,108 @@ def test_long_conversation_pages_keep_turn_context_and_recent_pending_actions(se
             assert old_detail["events"]["items"][-1]["data"]["call_id"] == "call-5"
         finally:
             browser.close()
+
+
+@pytest.mark.parametrize(
+    "case,expected_status",
+    [
+        ("native_headers", 200),
+        ("matching_session_id", 200),
+        ("session_id_without_native_headers", 404),
+        ("session_id_with_wrong_native_session", 404),
+        ("metadata_missing", 404),
+        ("session_mismatch", 404),
+        ("project_mismatch", 404),
+        ("session_missing", 404),
+        ("project_missing", 404),
+        ("session_duplicate", 404),
+        ("project_duplicate", 404),
+        ("session_id_mismatch", 404),
+        ("capability_mismatch", 404),
+        ("session_revoked", 404),
+    ],
+)
+def test_chatgpt_native_request_binds_correlation_to_live_execution(
+    settings, case, expected_status
+):
+    """Use the pinned SDK's real header shape without trusting it as authorization."""
+
+    class NativeProviders(FakeProviders):
+        async def proxy_native_stream(self, provider_id, model_id, body, **context):
+            self.call_contexts.append(context)
+            yield b'data: {"type":"response.completed"}\n\n'
+
+    providers = NativeProviders()
+    runtime = FakeRuntime()
+    model = replace(MODEL, model_id="openai-chatgpt/gpt-6-luna", provider_id="openai-chatgpt")
+    application = create_app(
+        _auth_settings(settings),
+        FixtureProvider(),
+        lambda: NOW,
+        assistant_runtime=runtime,
+        assistant_catalog=FakeCatalog(model),
+        assistant_providers=providers,
+    )
+    with TestClient(application, client=("127.0.0.1", 51092)) as machine:
+        owner = _add_signed_in_user(application, 50092)
+        browser = _browser_client(application, owner)
+        try:
+            _context, _conversation, turn, _lease, capability = _conversation_and_running_turn(
+                browser, owner, model_id=model.model_id
+            )
+            execution_id = str(turn["execution_id"])
+            runtime.native_provider_sessions[execution_id] = (
+                NATIVE_SESSION_FIXTURE,
+                NATIVE_PROJECT_FIXTURE,
+            )
+            headers = [
+                ("authorization", f"Bearer {capability}"),
+                ("content-type", "application/json"),
+                ("x-opencode-session", NATIVE_SESSION_FIXTURE),
+                ("x-opencode-project", NATIVE_PROJECT_FIXTURE),
+            ]
+            if case == "matching_session_id":
+                headers.append(("session-id", NATIVE_SESSION_FIXTURE))
+            elif case == "session_id_without_native_headers":
+                headers = headers[:2] + [("session-id", NATIVE_SESSION_FIXTURE)]
+            elif case == "session_id_with_wrong_native_session":
+                headers.append(("session-id", NATIVE_SESSION_FIXTURE))
+                headers[2] = ("x-opencode-session", "ses_other_execution_0123456789")
+            elif case == "metadata_missing":
+                runtime.native_provider_sessions.clear()
+            elif case == "session_mismatch":
+                headers[2] = ("x-opencode-session", "ses_other_execution_0123456789")
+            elif case == "project_mismatch":
+                headers[3] = ("x-opencode-project", "other-project")
+            elif case == "session_missing":
+                headers.pop(2)
+            elif case == "project_missing":
+                headers.pop(3)
+            elif case == "session_duplicate":
+                headers.append(headers[2])
+            elif case == "project_duplicate":
+                headers.append(headers[3])
+            elif case == "session_id_mismatch":
+                headers.append(("session-id", "ses_other_execution_0123456789"))
+            elif case == "capability_mismatch":
+                headers[0] = ("authorization", "Bearer " + "e" * 48)
+            elif case == "session_revoked":
+                application.state.repository.auth_revoke_session(
+                    str(owner["token_hash"]), NOW.isoformat()
+                )
+            response = machine.post(
+                f"/api/v1/assistant/internal/provider/{execution_id}/v1/responses",
+                headers=headers,
+                json={"model": "assistant-selected", "stream": True, "input": "synthetic"},
+            )
+            assert response.status_code == expected_status
+            if expected_status == 200:
+                assert len(providers.call_contexts) == 1
+                context = providers.call_contexts[0]
+                assert context["native_session_id"] == NATIVE_SESSION_FIXTURE
+                assert context["owner_id"] == owner["user_id"]
+                assert context["app_session_id"] == owner["session_id"]
+            else:
+                assert providers.call_contexts == []
+        finally:
+            browser.close()

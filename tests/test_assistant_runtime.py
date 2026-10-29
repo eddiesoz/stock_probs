@@ -1752,6 +1752,8 @@ def _native_model_payload(
     descriptor = resolve_native_adapter(adapter_id, native_provider_id)
     execution_id = directory.rsplit("/", 1)[-1]
     proxy_url = f"http://127.0.0.1:8000/api/v1/assistant/internal/provider/{execution_id}"
+    if descriptor.protocol == "openai-responses":
+        proxy_url += "/v1"
     model_rows = [
         {
             **row,
@@ -6377,12 +6379,17 @@ def test_model_discovery_rejects_a_different_response_location_directory() -> No
         ("package", "model_proxy_config_invalid"),
         ("model_id", "model_proxy_config_invalid"),
         ("proxy_url", "model_proxy_config_invalid"),
+        ("proxy_version", "model_proxy_config_invalid"),
         ("capability", "model_proxy_config_invalid"),
         ("capabilities", "model_capabilities_invalid"),
     ],
 )
+@pytest.mark.parametrize(
+    ("adapter_id", "native_provider_id"),
+    [("openai-responses", "openai"), ("openai-compatible-chat", "assistant-proxy")],
+)
 def test_model_alias_is_bound_to_exact_per_execution_proxy_configuration(
-    mismatch: str, expected_code: str
+    mismatch: str, expected_code: str, adapter_id: str, native_provider_id: str
 ) -> None:
     """An alias is unusable if its native package, URL, model, or capability drifts."""
 
@@ -6404,7 +6411,9 @@ def test_model_alias_is_bound_to_exact_per_execution_proxy_configuration(
         if path == "/api/model":
             payload = _native_model_payload(
                 location,
-                [{"id": "assistant-selected", "providerID": "assistant-proxy"}],
+                [{"id": "assistant-selected", "providerID": native_provider_id}],
+                adapter_id=adapter_id,
+                native_provider_id=native_provider_id,
             )
             row = payload["data"][0]
             if mismatch == "package":
@@ -6415,6 +6424,11 @@ def test_model_alias_is_bound_to_exact_per_execution_proxy_configuration(
                 row["settings"]["baseURL"] = (
                     "http://127.0.0.1:8000/api/v1/assistant/internal/provider/" + "b" * 32
                 )
+            elif mismatch == "proxy_version":
+                base = row["settings"]["baseURL"]
+                row["settings"]["baseURL"] = (
+                    base.removesuffix("/v1") if adapter_id == "openai-responses" else base + "/v1"
+                )
             elif mismatch == "capabilities":
                 row["capabilities"]["tools"] = False
             else:
@@ -6424,7 +6438,7 @@ def test_model_alias_is_bound_to_exact_per_execution_proxy_configuration(
 
     runtime = OpenCodeV2Runtime(
         SimpleNamespace(assistant_enabled=True),
-        providers=_TestProviders(),
+        providers=_TestProviders(adapter_id, native_provider_id),
         catalog=_Catalog(),
         supervisor=_Supervisor(),
         http_client_factory=lambda **kwargs: httpx.AsyncClient(

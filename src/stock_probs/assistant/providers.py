@@ -752,7 +752,7 @@ class AssistantProviderManager:
 
         async with self._oauth_lock:
             attempt = self._managed_oauth_attempt(attempt_id, owner_id, session_id)
-            self._validate_native_oauth_callback(attempt, callback_url)
+            native_callback_url = self._validate_native_oauth_callback(attempt, callback_url)
             if attempt.expires_at <= time.time():
                 await self._cancel_expired_oauth_attempt(attempt)
                 return self._managed_oauth_public(attempt)
@@ -764,7 +764,7 @@ class AssistantProviderManager:
                 attempt.attempt_id,
                 owner_id=owner_id,
                 session_id=session_id,
-                callback_url=callback_url,
+                callback_url=native_callback_url,
             )
             attempt.status = await self._runtime_oauth_status(attempt)
             return self._managed_oauth_public(attempt)
@@ -867,14 +867,16 @@ class AssistantProviderManager:
         raise ProviderUnavailable("oauth_unavailable")
 
     @staticmethod
-    def _validate_native_oauth_callback(attempt: _ManagedOAuthAttempt, callback_url: str) -> None:
-        """Validate a pasted loopback callback without making any network request."""
+    def _validate_native_oauth_callback(attempt: _ManagedOAuthAttempt, callback_url: str) -> str:
+        """Validate the full return URL and pass only its exact code/state to native OAuth."""
 
         if (
             attempt.integration_id != "openai"
             or attempt.method_id != "chatgpt-browser"
             or attempt.callback_state is None
             or not isinstance(callback_url, str)
+            or callback_url != callback_url.strip()
+            or "\\" in callback_url
             or len(callback_url.encode("utf-8", errors="ignore")) > 4096
             or any(unicodedata.category(char).startswith("C") for char in callback_url)
         ):
@@ -905,12 +907,27 @@ class AssistantProviderManager:
             or parsed.password is not None
             or parsed.path != "/auth/callback"
             or parsed.fragment
-            or set(query) != {"code", "state"}
-            or not 1 <= len(query.get("code", "").encode("utf-8")) <= 2048
-            or any(unicodedata.category(char).startswith("C") for char in query.get("code", ""))
+            or set(query) not in ({"code", "state"}, {"code", "state", "scope"})
+            or re.fullmatch(r"[A-Za-z0-9._~-]{1,2048}", query.get("code", "")) is None
+            or re.fullmatch(r"[A-Za-z0-9_-]{43}", query.get("state", "")) is None
             or not secrets.compare_digest(query.get("state", ""), attempt.callback_state)
         ):
             raise CredentialRejected("oauth_callback_invalid")
+        if "scope" in query:
+            scopes = query["scope"].split(" ")
+            if len(scopes) != 4 or set(scopes) != {"openid", "profile", "email", "offline_access"}:
+                raise CredentialRejected("oauth_callback_invalid")
+        # OpenAI may echo the requested scopes. They are metadata, not authority; the pinned
+        # native parser still receives only the unchanged attempt code/state and enforces PKCE.
+        return urlunsplit(
+            (
+                "http",
+                "localhost:1455",
+                "/auth/callback",
+                urlencode({"code": query["code"], "state": query["state"]}),
+                "",
+            )
+        )
 
     async def cancel_native_oauth(
         self, attempt_id: str, *, owner_id: int, session_id: str
@@ -3682,6 +3699,7 @@ class AssistantProviderManager:
                 body=encoded,
                 timeout_seconds=120.0,
                 max_response_bytes=1_048_576,
+                **({"chatgpt_sse_compatibility": True} if oauth_backed else {}),
             ):
                 await check_current()
                 if not isinstance(chunk, bytes) or not chunk or len(chunk) > _MAX_PROXY_CHUNK_BYTES:
@@ -3701,6 +3719,8 @@ class AssistantProviderManager:
                         raise ProviderUnavailable("provider_response_invalid")
                     frame = bytes(pending[:end])
                     del pending[:end]
+                    if oauth_backed and not _validated_chatgpt_sse_frame(frame):
+                        continue
                     for safe_frame in secret_guard.push(frame):
                         await check_current()
                         for offset in range(0, len(safe_frame), _MAX_PROXY_CHUNK_BYTES):
@@ -3708,11 +3728,12 @@ class AssistantProviderManager:
                             yield safe_frame[offset : offset + _MAX_PROXY_CHUNK_BYTES]
             if pending:
                 frame = bytes(pending)
-                for safe_frame in secret_guard.push(frame):
-                    await check_current()
-                    for offset in range(0, len(safe_frame), _MAX_PROXY_CHUNK_BYTES):
+                if not oauth_backed or _validated_chatgpt_sse_frame(frame):
+                    for safe_frame in secret_guard.push(frame):
                         await check_current()
-                        yield safe_frame[offset : offset + _MAX_PROXY_CHUNK_BYTES]
+                        for offset in range(0, len(safe_frame), _MAX_PROXY_CHUNK_BYTES):
+                            await check_current()
+                            yield safe_frame[offset : offset + _MAX_PROXY_CHUNK_BYTES]
             for safe_frame in secret_guard.finish():
                 await check_current()
                 for offset in range(0, len(safe_frame), _MAX_PROXY_CHUNK_BYTES):
@@ -5684,6 +5705,50 @@ def _bounded_json_value(value: object, *, depth: int = 0, budget: list[int] | No
     return False
 
 
+def _validated_chatgpt_sse_frame(frame: bytes) -> bool:
+    """Admit only complete bounded Responses SSE events, independent of media headers."""
+
+    if (
+        not isinstance(frame, bytes)
+        or not 1 <= len(frame) <= 65_536
+        or not frame.endswith((b"\n\n", b"\r\n\r\n"))
+    ):
+        raise ProviderUnavailable("provider_response_invalid")
+    try:
+        lines = frame.decode("utf-8", "strict").splitlines()
+    except UnicodeDecodeError as exc:
+        raise ProviderUnavailable("provider_response_invalid") from exc
+    events: list[str] = []
+    data: list[str] = []
+    for line in lines:
+        if not line or line.startswith(":"):
+            continue
+        if line.startswith("event:"):
+            events.append(line[6:].strip())
+        elif line.startswith("data:"):
+            data.append(line[5:].lstrip(" "))
+        else:
+            raise ProviderUnavailable("provider_response_invalid")
+    if len(events) > 1:
+        raise ProviderUnavailable("provider_response_invalid")
+    if not data:
+        if events:
+            raise ProviderUnavailable("provider_response_invalid")
+        return False
+    value = "\n".join(data)
+    if value == "[DONE]" and not events:
+        return True
+    payload = _parse_json_object(value, max_bytes=65_536)
+    event_type = payload.get("type") if payload is not None else None
+    if (
+        not isinstance(event_type, str)
+        or re.fullmatch(r"(?:response\.[a-z][a-z0-9_.]{0,119}|error)", event_type) is None
+        or (events and events[0] != event_type)
+    ):
+        raise ProviderUnavailable("provider_response_invalid")
+    return True
+
+
 class _SecretStreamGuard:
     """Withhold provider events until configured-secret fragments cannot span them."""
 
@@ -6036,11 +6101,16 @@ def _valid_native_webfetch_arguments(value: object) -> bool:
     return type(timeout) is float and math.isfinite(timeout) and 0 < timeout <= 120
 
 
-def _parse_json_object(value: str) -> dict[str, object] | None:
+def _parse_json_object(value: str, *, max_bytes: int = 16_384) -> dict[str, object] | None:
     """Parse one bounded, duplicate-free JSON object with finite numbers."""
 
     value_bytes = _utf8_length(value) if isinstance(value, str) else None
-    if value_bytes is None or value_bytes > 16_384:
+    if (
+        type(max_bytes) is not int
+        or not 1 <= max_bytes <= 65_536
+        or value_bytes is None
+        or value_bytes > max_bytes
+    ):
         return None
 
     def object_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:

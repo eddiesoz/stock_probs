@@ -10,13 +10,15 @@ from collections.abc import AsyncIterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from starlette.requests import Request
 
 from stock_probs.api import create_app
+from stock_probs.assistant.schemas import AssistantOAuthAttemptCallbackRequest
 from stock_probs.auth import CSRF_COOKIE_NAME, SESSION_COOKIE_NAME
 from stock_probs.config import Settings
 from stock_probs.provider import FixtureProvider
@@ -814,7 +816,31 @@ def test_opencode_model_review_delete_is_admin_owner_and_revision_bound(settings
                 client.close()
 
 
-def test_native_oauth_callback_and_cancel_are_bound_to_fresh_owner_session(settings: Settings):
+@pytest.mark.parametrize(
+    "callback_url",
+    [
+        "http://localhost:1455/auth/callback?code=synthetic-code&state=opaque-state",
+        "http://localhost:1455/auth/callback?"
+        + urlencode(
+            {
+                "code": "synthetic-code.first-segment",
+                "state": "S" * 43,
+                "scope": "openid profile email offline_access",
+            }
+        ),
+        "http://localhost:1455/auth/callback?"
+        + urlencode(
+            {
+                "code": "synthetic-code.first-segment",
+                "state": "S" * 43,
+                "scope": "email offline_access profile openid",
+            }
+        ),
+    ],
+)
+def test_native_oauth_callback_and_cancel_are_bound_to_fresh_owner_session(
+    settings: Settings, callback_url: str
+):
     providers = _NativeOAuthManager()
     application = _create_app(settings, providers)
     with TestClient(application, client=("127.0.0.1", 52124)):
@@ -824,7 +850,6 @@ def test_native_oauth_callback_and_cancel_are_bound_to_fresh_owner_session(setti
         clients = [_browser(application, item) for item in (owner, other_admin, stale_admin)]
         owner_browser, other_browser, stale_browser = clients
         attempts_path = "/api/v1/assistant/providers/oauth/attempts"
-        callback_url = "http://localhost:1455/auth/callback?code=synthetic-code&state=opaque-state"
         try:
             denied_begin = stale_browser.post(
                 attempts_path,
@@ -898,6 +923,40 @@ def test_native_oauth_callback_and_cancel_are_bound_to_fresh_owner_session(setti
         finally:
             for client in clients:
                 client.close()
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        "&scope=",
+        "&scope=openid",
+        "&scope=openid+profile+email+admin",
+        "&scope=openid+profile+email+offline_access+openid",
+        "&scope=openid+profile+email+offline_access&scope=openid",
+        "&other=x",
+    ],
+)
+def test_native_oauth_callback_schema_rejects_ambiguous_or_unrequested_scope(suffix: str):
+    with pytest.raises(ValidationError):
+        AssistantOAuthAttemptCallbackRequest(
+            callback_url="http://localhost:1455/auth/callback?"
+            + urlencode({"code": "synthetic-code.first-segment", "state": "S" * 43})
+            + suffix
+        )
+
+
+def test_native_oauth_callback_schema_keeps_denial_scope_rejected():
+    with pytest.raises(ValidationError):
+        AssistantOAuthAttemptCallbackRequest(
+            callback_url="http://localhost:1455/auth/callback?"
+            + urlencode(
+                {
+                    "error": "access_denied",
+                    "state": "S" * 43,
+                    "scope": "openid profile email offline_access",
+                }
+            )
+        )
 
 
 def test_active_event_stream_stops_before_emitting_after_session_revocation(

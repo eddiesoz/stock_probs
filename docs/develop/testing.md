@@ -15,6 +15,20 @@ model, preserved input/instructions, output budget and `store: false`, plus over
 Authentication still requires the normal owner-bound native sign-in and protected vault flow.
 Model catalog presence does not prove subscription entitlement or a completed live response.
 
+OAuth callback regressions cover dotted opaque codes, the optional exact requested scope echo,
+unchanged code/state forwarding, and rejection of ambiguous, unrequested or malformed values.
+The native callback parser and PKCE exchange remain authoritative after app validation. Local
+browser fixtures must match the managed worker's OAuth handoff setting and app broker port 8000,
+use a factor that can complete the actual admin UI step-up, and keep a valid local return page
+available when browser tooling cannot retain an unreachable callback address. A return page must
+not log, echo, store or exchange callback query data; codes go only through the private admin form.
+
+Exercise the OAuth sender through the real `request_public_https` header guard with only DNS and
+the TLS socket replaced by synthetic fixtures. JSON and form bodies must use its typed
+`content_type` option; passing `Content-Type` through custom headers is rejected. Assert the final
+wire content type, preserved authorization checks and exact code/form fields. A request stub that
+accepts arbitrary header dictionaries cannot establish this transport compatibility.
+
 Use isolated development data for these tests and keep their evidence separate from genuine free
 Zen acceptance. Return to the approved Zen route when it is available; use supported quota options,
 local replay and focused live calls to reduce test usage. All release gates remain required.
@@ -1396,3 +1410,21 @@ approved frontend build/stage and verify served/export bytes before rendered che
 [local focus repair evidence](../../MVP-PLAN.md#r-astra-121-f6-admin-verification-focus-repair-2026-10-24)
 for the original failures and separate scoped retests; those results do not establish a full
 browser aggregate or genuine Zen answer.
+
+For native provider routing, check the actual pinned SDK request path against the protected app
+route. The OpenAI SDK appends `/responses` directly, so its generated private base URL includes
+`/v1`; the other reviewed SDKs retain their existing base URLs. Exercise the same closed profile
+configuration in the local native run before claiming a provider response. Do not add a public
+proxy alias or relax the capability/session checks to compensate for a configuration mismatch.
+
+The native ChatGPT HTTP regression uses the SDK's actual `x-opencode-session`/`x-opencode-project`
+shape, without inventing a `session-id` header. Check matching active execution metadata, optional
+matching legacy correlation, wrong/duplicate/missing fields, invalid capability and revoked session.
+A diagnostic with a synthetic local provider can establish SDK wire shape; it is not account or
+model acceptance.
+
+For ChatGPT's missing-media response, exercise the manager through the real guarded HTTP parser
+with only DNS/TLS sockets replaced. Cover a valid chunked Responses event, an ordinary SSE
+header, explicit wrong/empty media headers, HTML, plain JSON, malformed/duplicate JSON and
+mismatched event/data types. Verify rejected inputs release no bytes. The compatibility option
+must reject other URLs, query variants and missing live authorization before network access.
