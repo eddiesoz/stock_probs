@@ -12967,3 +12967,21 @@ comparison incorrectly included an unserved Next 404 page and failed; its correc
 comparison passed. This is parent local verification, not independent QA, live provider, physical
 mobile, image or release acceptance. Free Zen's latest real turn remains a 429 limit failure,
 and current canonical, security, resource, recovery and release gates remain open.
+
+### R-ASTRA-121 F6 streaming authorization review (2026-10-29)
+
+At pre-documentation revision `c2b30597d8d004b2f4fa4dfd6f4ba339237dab0c`, the parent reviewed
+the new fixed ChatGPT endpoint, response framing, session correlation and OAuth callback boundaries.
+A first synthetic transport-only probe **Failed** its proposed per-chunk authorization assertion:
+the transport yielded the second response event after the simulated session was revoked. The
+application manager adds its own live authorization check before releasing response chunks. A
+separate synthetic regression exercising that manager and HTTP framing **Passed** both the
+authorized and mid-read revocation cases: the revoked session did not receive the later event and
+the writer closed. The two provider authorization files passed 40 tests; Ruff, security selection,
+format and diff checks passed. Receipt:
+`/var/tmp/r12r/f6-stream-revocation-20261029/review-v1.json`.
+
+This is parent review and synthetic local evidence, not independent security or release acceptance.
+The transport-only failure remains visible and does not establish that the complete manager path
+released the event. The latest real free Zen result remains the 429 limit failure; native/UI Zen
+completion and the remaining canonical, security, resource, recovery and rollback gates stay open.
